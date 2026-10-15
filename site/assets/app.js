@@ -543,43 +543,63 @@
     return "Fonderna sålde " + lcWord(worst) + (sells[0] ? " och mest av allt " + sells[0].name : "");
   }
 
-  // Överst på första sidan: kvartalets huvudnyhet ur fondernas innehav, med nyckeltal och diagram
+  // Överst på första sidan: kvartalets huvudnyhet, och bredvid den kvartalets nettoköp med historik
   function introBlock(ds, cont, buys, sells) {
     var m = quarterData().meta, t = ds.totals, net = t.buy + t.sell;
-    var kpi = function (label, value) { return "<div><dt>" + label + "</dt><dd>" + value + "</dd></div>"; };
     var word = marketWord();
     var top3 = buys.slice(0, 3);
     var deck = "Svenska fonder " + (net >= 0 ? "nettoköpte" : "nettosålde") + " " + word + " aktier för <b>" + bigSek(Math.abs(net)) + "</b> under " + quarterLabel(m.id) + "." +
       (top3.length ? " Mest köpte de " + sentenceList(top3, function (s) { return '<a href="' + stockHref(s) + '">' + esc(s.name) + "</a>"; }) + "." : "");
+    var stat = function (value, label) { return '<div><dt>' + label + '</dt><dd class="count">' + value + "</dd></div>"; };
     return '<section class="hero"><div class="hero-text">' +
-      '<p class="kicker">Kvartalsrapport ' + quarterLabel(m.id) + "</p>" +
+      '<p class="kicker"><span class="kicker-dot" aria-hidden="true"></span>Kvartalsrapport ' + quarterLabel(m.id) + "</p>" +
       '<h1><a href="#/rapport">' + esc(quarterHeadline(cont, buys, sells)) + "</a></h1>" +
       '<p class="intro">' + deck + "</p>" +
-      '<p class="hero-sub">' + int(t.funds) + " fonders innehav den " + dateText(m.curr) + " jämfört med " + quarterLabel(m.prevId) + ". Källa: Finansinspektionen.</p>" +
-      '<div class="hero-links"><a class="btn btn-primary" href="#/rapport">Läs kvartalsrapporten</a><a class="btn" href="#/aktier">Alla aktier</a></div></div>' +
-      '<div class="hero-side"><dl class="hero-kpis">' +
-      kpi("Nettoköp " + word + " aktier", '<span class="' + cls(net) + '">' + bigSek(net, true) + "</span>") +
-      kpi("Fonder som jämförs", int(t.funds)) +
-      kpi(word.charAt(0).toUpperCase() + word.slice(1) + " aktier", int(t.held)) +
-      kpi("Fondernas innehav", bigSek(t.value)) + "</dl>" + heroChart() + "</div></section>";
+      '<div class="hero-links"><a class="btn btn-primary" href="#/rapport">Läs kvartalsrapporten</a><a class="btn" href="#/aktier">Alla aktier</a></div>' +
+      '<p class="hero-sub">Innehaven den ' + dateText(m.curr) + " jämfört med " + quarterLabel(m.prevId) + ". Källa: Finansinspektionen.</p></div>" +
+      '<div class="hero-side">' + heroFigure(net) +
+      '<dl class="hero-stats">' + stat(int(t.funds), "fonder jämförs") + stat(int(t.held), word + " aktier") + stat(t.value >= 1e11 ? nf0.format(t.value / 1e9) + " mdkr" : bigSek(t.value), "fondernas innehav") + "</dl>" +
+      "</div></section>";
   }
 
-  // Fondernas sammanlagda nettoköp per kvartal de senaste tre åren (ur historiken, när den har laddats)
-  function heroChart() {
-    var head = '<div class="hero-chart"><div class="chart-title">Nettoköp per kvartal <span>' + marketWord() + " aktier, mdkr</span></div>";
+  // Kvartalets nettoköp som en stor siffra, en mening som sätter den i perspektiv och staplar för tre år
+  function heroFigure(net) {
+    var head = '<div class="hero-figure"><div class="hf-label">Fondernas nettoköp <span>' + marketWord() + " aktier, " + quarterLabel(state.q) + "</span></div>" +
+      '<div class="hf-value count ' + cls(net) + '">' + bigSek(net, true) + "</div>";
     var part = state.market === "world" ? "world" : "se";
-    if (state.loading["history-" + part] !== "done") return head + '<div class="sk sk-chart"></div></div>';
+    if (state.loading["history-" + part] !== "done") return head + '<div class="sk sk-line w70 hf-sk"></div><div class="sk sk-chart"></div></div>';
     var h = state.history, qi = h.qIndex[state.q];
-    if (qi == null) return "";
+    if (qi == null) return head + "</div>";
     var flows = sectorFlows(state.market), tot = {};
     Object.keys(flows).forEach(function (sec) { Object.keys(flows[sec]).forEach(function (k) { tot[k] = (tot[k] || 0) + flows[sec][k]; }); });
     var pts = [];
+    // Det valda kvartalet visar samma siffra som rubriken (den följer valet att utesluta indexfonder)
+    tot[qi] = net / 1e6;
     for (var k = Math.max(1, qi - 11); k <= qi; k++) pts.push({ q: h.quarters[k], value: tot[k] == null ? null : tot[k] / 1000, highlight: k === qi });
-    return head + chart(function (node) {
-      FFCharts.columns(node, pts, { height: 132, tip: function (p) {
-        return "<b>" + quarterLabel(p.q) + "</b><br>" + (p.value == null ? "Ingen data" : '<span class="' + cls(p.value) + '">' + bigSek(p.value * 1e9, true) + "</span>");
-      } });
+    return head + '<p class="hf-note">' + flowContext(tot, h.quarters, qi) + "</p>" + chart(function (node) {
+      FFCharts.columns(node, pts, { height: 148, ticks: 3, focus: true, barMax: 18,
+        label: function (p) { return signed(nf1.format(p.value), p.value); },
+        tip: function (p) {
+          return "<b>" + quarterLabel(p.q) + "</b><br>" + (p.value == null ? "Ingen data" : bigSek(p.value * 1e9, true));
+        } });
     }) + "</div>";
+  }
+
+  // "Det största nettoköpet sedan Q4 2023. Förra kvartalet −15,6 mdkr." Värdena i tot är mkr per kvartalsindex.
+  function flowContext(tot, quarters, qi) {
+    var cur = tot[qi];
+    if (cur == null) return "";
+    var parts = [], pos = cur >= 0;
+    var since = null;
+    for (var k = qi - 1; k >= 1; k--) {
+      if (tot[k] == null) continue;
+      if (pos ? tot[k] >= cur : tot[k] <= cur) { since = k; break; }
+    }
+    var what = pos ? "nettoköpet" : "nettosäljet";
+    if (since == null && qi > 8) parts.push("Det största " + what + " sedan mätningarna började " + quarters[1].slice(0, 4) + ".");
+    else if (since != null && qi - since >= 4) parts.push("Det största " + what + " sedan " + quarterLabel(quarters[since]) + ".");
+    if (tot[qi - 1] != null) parts.push("Förra kvartalet " + bigSek(tot[qi - 1] * 1e6, true) + ".");
+    return parts.join(" ");
   }
 
   function viewOverview() {
@@ -691,6 +711,7 @@
     var xy = pts.map(function (p, i) { return [i * step, H - 3 - (p - min) / span * (H - 6)]; });
     var line = xy.map(function (p, i) { return (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1); }).join("");
     return '<svg class="spark" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" aria-hidden="true">' +
+      '<defs><linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" class="c-grad-top"/><stop offset="100%" class="c-grad-bottom"/></linearGradient></defs>' +
       '<path class="spark-area" d="' + line + "L" + W + " " + H + "L0 " + H + 'Z"/>' +
       '<path class="draw" pathLength="1" vector-effect="non-scaling-stroke" d="' + line + '"/></svg>';
   }
@@ -3243,7 +3264,11 @@
     if (html !== null) app.innerHTML = html;
     // Mjuk övergång när man byter sida, men inte när samma sida ritas om efter att mer data laddats
     var routeKey = r.page + "/" + r.arg + "/" + r.arg2;
-    if (html !== null && routeKey !== lastRouteKey) { app.classList.remove("fade-in"); void app.offsetWidth; app.classList.add("fade-in"); }
+    if (html !== null && routeKey !== lastRouteKey) {
+      // Sidans delar glider in i tur och ordning
+      Array.prototype.forEach.call(app.children, function (c, i) { c.style.setProperty("--i", Math.min(i, 8)); });
+      app.classList.remove("fade-in"); void app.offsetWidth; app.classList.add("fade-in");
+    }
     if (routeKey !== lastRouteKey) countVisit();
     lastRouteKey = routeKey;
     // Pilar mellan leden i brödsmulorna
@@ -3266,7 +3291,103 @@
     document.body.setAttribute("data-page", r.page || "oversikt");
     $("marketSwitch").hidden = !MARKET_PAGES[r.page];
     renderSummary();
+    segThumbs();
+    tabIndicator();
+    navIndicator();
+    countUp();
     if (search.open) runSearch();
+  }
+
+  // ---------- Rörelse ----------
+
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // Segmentknapparna får en markering som glider till det valda alternativet. Läget sparas per knapprad,
+  // så att markeringen glider även när sidan ritas om och knapparna byts ut.
+  var segPos = {};
+  function segThumbs() {
+    var seen = {};
+    document.querySelectorAll(".seg").forEach(function (seg) {
+      if (!seg.offsetParent) return;
+      var base = seg.id || seg.getAttribute("aria-label") || "seg";
+      var key = base + "#" + (seen[base] = (seen[base] || 0) + 1);
+      var btn = seg.querySelector('.seg-btn[aria-pressed="true"]');
+      var th = seg.querySelector(".seg-thumb");
+      if (!btn) { if (th) th.style.opacity = "0"; return; }
+      var pos = { x: btn.offsetLeft, w: btn.offsetWidth };
+      var place = function (p) { th.style.width = p.w + "px"; th.style.transform = "translateX(" + p.x + "px)"; };
+      if (!th) {
+        th = document.createElement("span");
+        th.className = "seg-thumb";
+        th.setAttribute("aria-hidden", "true");
+        seg.insertBefore(th, seg.firstChild);
+        seg.classList.add("has-thumb");
+        var prev = segPos[key];
+        if (prev && !reduceMotion && (prev.x !== pos.x || prev.w !== pos.w)) {
+          th.style.transition = "none"; place(prev); void th.offsetWidth; th.style.transition = "";
+        }
+      }
+      place(pos);
+      th.style.opacity = "";
+      segPos[key] = pos;
+    });
+  }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { segThumbs(); navIndicator(); });
+
+  // Huvudmenyn: en linje som glider till sidan man är på
+  function navIndicator() {
+    var nav = document.querySelector(".mainnav"), ind = nav && nav.querySelector(".nav-ind");
+    if (!ind || !nav.offsetParent) return;
+    var a = nav.querySelector('a[aria-current="page"]');
+    // Första gången (och när linjen varit dold) hamnar den direkt på plats utan att glida dit
+    var jump = !nav.classList.contains("has-ind");
+    nav.classList.toggle("has-ind", !!a);
+    if (!a) return;
+    var pad = parseFloat(getComputedStyle(a).paddingLeft) || 0;
+    if (jump) ind.style.transition = "none";
+    ind.style.width = (a.offsetWidth - 2 * pad) + "px";
+    ind.style.transform = "translateX(" + (a.offsetLeft + pad) + "px)";
+    if (jump) { void ind.offsetWidth; ind.style.transition = ""; }
+  }
+
+  // Flikraden på mobil: en markering som glider till den aktiva fliken
+  function tabIndicator() {
+    var bar = document.querySelector(".tabbar");
+    if (!bar) return;
+    var items = Array.prototype.filter.call(bar.children, function (c) { return c.matches("a, button"); });
+    var idx = -1;
+    items.forEach(function (c, i) {
+      if (c.getAttribute("aria-current") === "page" || c.getAttribute("aria-expanded") === "true" || c.classList.contains("active")) idx = idx < 0 || c.getAttribute("aria-expanded") === "true" ? i : idx;
+    });
+    bar.style.setProperty("--ti", Math.max(0, idx));
+    bar.classList.toggle("has-ind", idx >= 0);
+  }
+
+  // Siffror med klassen count räknas upp första gången de visas
+  var counted = {};
+  function countUp() {
+    if (reduceMotion) return;
+    app.querySelectorAll(".count").forEach(function (el, n) {
+      var txt = el.textContent, key = lastRouteKey + "|" + n + "|" + txt;
+      if (counted[key]) return;
+      counted[key] = 1;
+      var m = /^([+−-]?)([\d\s  ]+(?:,\d+)?)(.*)$/.exec(txt);
+      if (!m) return;
+      var dec = (m[2].split(",")[1] || "").length;
+      var target = parseFloat(m[2].replace(/[\s  ]/g, "").replace(",", "."));
+      if (!isFinite(target) || target === 0) return;
+      var fmt = new Intl.NumberFormat("sv-SE", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+      var t0 = null, dur = 1100;
+      el.style.minWidth = el.offsetWidth + "px";
+      var step = function (ts) {
+        if (t0 == null) t0 = ts;
+        var k = Math.min(1, (ts - t0) / dur), e = 1 - Math.pow(1 - k, 4);
+        el.textContent = k < 1 ? m[1] + fmt.format(target * e) + m[3] : txt;
+        if (k < 1) requestAnimationFrame(step); else el.style.minWidth = "";
+      };
+      el.textContent = m[1] + fmt.format(0) + m[3];
+      requestAnimationFrame(step);
+    });
   }
 
   // Besöksräknare (GoatCounter, utan kakor och utan personuppgifter). Sajten byter sida utan att ladda om,
@@ -3330,6 +3451,7 @@
     document.body.classList.toggle("sheet-open", open && sheet);
     $("moreBtn").setAttribute("aria-expanded", String(open));
     $("moreBtnM").setAttribute("aria-expanded", String(open));
+    tabIndicator();
     if (!open) return;
     if (sheet) { menu.removeAttribute("style"); $("moreBackdrop").removeAttribute("style"); return; }
     menu.style.top = $("moreBackdrop").style.top = Math.round(document.querySelector(".topbar").getBoundingClientRect().bottom) + "px";
@@ -3360,7 +3482,7 @@
     if (window.innerWidth === lastWidth) return;
     lastWidth = window.innerWidth;
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(drawCharts, 150);
+    resizeTimer = setTimeout(function () { drawCharts(); segThumbs(); navIndicator(); }, 150);
   });
 
   // Ljust eller mörkt läge. Valet sparas i webbläsaren och läses in redan i <head> (index.html),

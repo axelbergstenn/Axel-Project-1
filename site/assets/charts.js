@@ -53,25 +53,44 @@
     container.appendChild(svg);
     var tip = document.createElement("div");
     tip.className = "chart-tip";
-    tip.hidden = true;
     container.appendChild(tip);
     return { svg: svg, w: w, h: height, tip: tip, fresh: fresh };
   }
 
   function showTip(ctx, html, x, y) {
-    var tip = ctx.tip;
+    var tip = ctx.tip, wasOn = tip.classList.contains("on");
+    // Första gången hoppar rutan direkt till sin plats, sedan glider den mellan punkterna
+    if (!wasOn) tip.classList.add("jump");
     tip.innerHTML = html;
-    tip.hidden = false;
     var tw = tip.offsetWidth, th = tip.offsetHeight;
     var left = x + 12;
     if (left + tw > ctx.w) left = x - tw - 12;
     if (left < 0) left = 0;
     var top = Math.max(0, Math.min(y - th / 2, ctx.h - th));
-    tip.style.left = left + "px";
-    tip.style.top = top + "px";
+    tip.style.transform = "translate(" + Math.round(left) + "px," + Math.round(top) + "px)";
+    tip.classList.add("on");
+    if (!wasOn) { void tip.offsetWidth; tip.classList.remove("jump"); }
   }
 
-  function hideTip(ctx) { ctx.tip.hidden = true; }
+  function hideTip(ctx) { ctx.tip.classList.remove("on"); }
+
+  // Bredd för y-axelns etiketter, efter den längsta
+  function axisWidth(scale, unit) {
+    var n = 0;
+    scale.ticks.forEach(function (t) { n = Math.max(n, (fmtTick(t) + (unit || "")).length); });
+    return Math.max(30, 12 + n * 6.6);
+  }
+
+  // Tonad yta under en linje: en gradient per diagram
+  var gradN = 0;
+  function areaGradient(svg) {
+    var id = "ffg" + (++gradN);
+    var defs = el("defs", {}, svg);
+    var lg = el("linearGradient", { id: id, x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
+    el("stop", { offset: "0%", "class": "c-grad-top" }, lg);
+    el("stop", { offset: "100%", "class": "c-grad-bottom" }, lg);
+    return "url(#" + id + ")";
+  }
 
   // Stapel med 4px rundad ände bort från nollinjen, rak vid nollinjen
   function barPath(x, y0, y1, w) {
@@ -110,46 +129,68 @@
   function columns(container, points, opts) {
     opts = opts || {};
     var ctx = setup(container, opts.height || 220);
-    var m = { t: 10, r: 8, b: 26, l: 52 };
     var vals = points.map(function (p) { return p.value || 0; });
-    var scale = niceTicks(Math.min(0, Math.min.apply(null, vals)), Math.max(0, Math.max.apply(null, vals)), 4);
+    var scale = niceTicks(Math.min(0, Math.min.apply(null, vals)), Math.max(0, Math.max.apply(null, vals)), opts.ticks || 4);
+    var m = { t: opts.label ? 24 : 10, r: 8, b: 26, l: axisWidth(scale) };
     var ih = ctx.h - m.t - m.b, iw = ctx.w - m.l - m.r;
     var y = function (v) { return m.t + (scale.max - v) / (scale.max - scale.min) * ih; };
     var band = iw / points.length;
-    var bw = Math.max(2, Math.min(24, band - 2));
+    var bw = Math.max(2, Math.min(opts.barMax || 22, band * 0.62));
     var xAt = function (i) { return m.l + band * i + band / 2; };
 
     grid(ctx, m, scale, y);
-    var hl = el("rect", { x: 0, y: m.t, width: band, height: ih, "class": "c-hover", visibility: "hidden" }, ctx.svg);
-    var g = el("g", ctx.fresh ? { "class": "rise" } : {}, ctx.svg);
-    points.forEach(function (p, i) {
-      if (p.value == null) return;
+    // Staplarna växer fram en i taget från nollinjen. Med opts.focus tonas alla utom den markerade ner.
+    var g = el("g", { "class": "c-bars" + (ctx.fresh ? " grow" : "") + (opts.focus ? " focus" : "") }, ctx.svg);
+    var bars = points.map(function (p, i) {
+      if (p.value == null) return null;
       var d = barPath(xAt(i) - bw / 2, y(0), y(p.value), bw);
-      if (d) el("path", { d: d, "class": (p.value >= 0 ? "c-pos" : "c-neg") + (p.highlight ? " c-strong" : "") }, g);
+      if (!d) return null;
+      var a = { d: d, "class": "c-bar " + (p.value >= 0 ? "c-pos" : "c-neg") + (p.highlight ? " c-strong" : "") };
+      if (ctx.fresh) a.style = "animation-delay:" + Math.round(i * Math.min(40, 600 / points.length)) + "ms";
+      return el("path", a, g);
     });
+    // Värdet ovanför den markerade stapeln
+    if (opts.label) {
+      points.forEach(function (p, i) {
+        if (!p.highlight || p.value == null) return;
+        var ly = p.value >= 0 ? y(p.value) - 7 : y(p.value) + 15;
+        var lx = Math.max(m.l + 16, Math.min(ctx.w - m.r - 16, xAt(i)));
+        text(ctx.svg, lx, Math.max(12, ly), opts.label(p), "c-label c-label-hl", "middle");
+      });
+    }
     // nollinjen ovanpå staplarna
     var z = Math.round(y(0)) + 0.5;
     el("line", { x1: m.l, x2: ctx.w - m.r, y1: z, y2: z, "class": "c-zero" }, ctx.svg);
     yearLabels(el("g", {}, ctx.svg), points, xAt, ctx.h - 6, ctx.w);
 
     var hit = el("rect", { x: m.l, y: 0, width: iw, height: ctx.h, fill: "transparent" }, ctx.svg);
+    var on = -1;
     hit.addEventListener("pointermove", function (e) {
       var r = ctx.svg.getBoundingClientRect();
       var i = Math.max(0, Math.min(points.length - 1, Math.floor((e.clientX - r.left - m.l) / band)));
-      hl.setAttribute("x", m.l + band * i);
-      hl.setAttribute("visibility", "visible");
+      if (i !== on) {
+        if (bars[on]) bars[on].classList.remove("on");
+        if (bars[i]) bars[i].classList.add("on");
+        on = i;
+      }
+      g.classList.add("hovering");
       showTip(ctx, opts.tip(points[i]), xAt(i), y(points[i].value || 0));
     });
-    hit.addEventListener("pointerleave", function () { hl.setAttribute("visibility", "hidden"); hideTip(ctx); });
+    hit.addEventListener("pointerleave", function () {
+      g.classList.remove("hovering");
+      if (bars[on]) bars[on].classList.remove("on");
+      on = -1;
+      hideTip(ctx);
+    });
   }
 
   // Linje med tunn yta under (antal fonder som äger)
   function line(container, points, opts) {
     opts = opts || {};
     var ctx = setup(container, opts.height || 220);
-    var m = { t: 14, r: 40, b: 26, l: 52 };
     var vals = points.map(function (p) { return p.value; }).filter(function (v) { return v != null; });
     var scale = niceTicks(0, Math.max.apply(null, vals.concat([1])), 4);
+    var m = { t: 14, r: 40, b: 26, l: axisWidth(scale) };
     var ih = ctx.h - m.t - m.b, iw = ctx.w - m.l - m.r;
     var y = function (v) { return m.t + (scale.max - v) / (scale.max - scale.min) * ih; };
     var step = points.length > 1 ? iw / (points.length - 1) : 0;
@@ -166,7 +207,7 @@
     points.forEach(function (p, i) { if (first < 0 && p.value != null) first = i; });
     if (first >= 0) {
       a = d + "L" + xAt(last).toFixed(1) + "," + y(0) + "L" + xAt(first).toFixed(1) + "," + y(0) + "Z";
-      el("path", { d: a, "class": "c-area" }, ctx.svg);
+      el("path", { d: a, "class": "c-area", fill: areaGradient(ctx.svg) }, ctx.svg);
       el("path", ctx.fresh ? { d: d, "class": "c-line draw", pathLength: 1 } : { d: d, "class": "c-line" }, ctx.svg);
       var lp = points[last];
       el("circle", { cx: xAt(last), cy: y(lp.value), r: 4.5, "class": "c-dot" }, ctx.svg);
@@ -252,7 +293,7 @@
     opts = opts || {};
     var ctx = setup(container, opts.height || 280);
     var narrow = ctx.w < 520;
-    var m = { t: 16, r: narrow ? 12 : 64, b: 26, l: 40 };
+    var m = { t: 16, r: narrow ? 12 : 64, b: 26, l: 44 };
     var all = [];
     series.forEach(function (s) { s.points.forEach(function (p) { all.push(p.v); }); });
     if (!all.length) return;
