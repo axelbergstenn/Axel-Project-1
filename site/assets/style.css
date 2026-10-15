@@ -583,6 +583,9 @@ a.btn { color: var(--fg-soft); }
 .rc-meta b { font-weight: 700; }
 .rc-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .rc-controls .select-sm { font-weight: 600; }
+.rc-go { display: inline-flex; align-items: center; gap: 12px; }
+.rc-web { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.btn-tag { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 5px; background: rgba(255, 255, 255, 0.18); }
 
 /* Signalmoduler: insynshandel, dubbelsignal, blankning och räntor */
 .modules { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
@@ -821,7 +824,13 @@ table.cmp-table thead th { font-size: 13px; color: var(--fg); text-transform: no
 
 .report { max-width: none; }
 .rep-hero .crumbs { margin-bottom: 14px; }
-.rep-market { align-self: flex-start; margin-bottom: 18px; }
+.rep-tools { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.rep-market { align-self: flex-start; }
+.rep-pdf { font-size: 13px; font-weight: 700; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--fg-soft); }
+.rep-pdf:hover { text-decoration: none; border-color: var(--fg-muted); color: var(--fg); }
+.rep-pdf::before { content: "↓ "; }
+.rep-share { display: flex; gap: 10px; flex-wrap: wrap; }
+.print-only { display: none; }
 .rep-market .seg-btn { padding: 6px 16px; font-size: 14px; }
 .report p { line-height: 1.7; }
 .rep-head { display: flex; align-items: baseline; gap: 16px; padding-top: 18px; margin-bottom: 18px; border-top: 1.5px solid var(--fg); }
@@ -981,7 +990,8 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .rc-controls { width: 100%; }
   .rc-controls .seg { flex: 1 1 auto; }
   .rc-controls .seg-btn { flex: 1; }
-  .rc-controls .btn { flex: 1 1 100%; }
+  .rc-go { flex: 1 1 100%; }
+  .rc-controls .btn { flex: 1 1 auto; }
   .summary { text-align: left; }
   /* Startsidan och rapporten visar samma siffror i toppen, så sammanfattningen behövs inte där på mobil */
   body[data-page="oversikt"] .summary, body[data-page="rapport"] .summary { display: none; }
@@ -995,7 +1005,8 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .rank-list li { grid-template-columns: 18px minmax(0, 1fr) auto; gap: 10px; }
   .rk-bar { display: none; }
   .story-grid { grid-template-columns: minmax(0, 1fr); }
-  .rep-market { align-self: stretch; display: flex; }
+  .rep-tools { align-self: stretch; }
+  .rep-market { flex: 1; display: flex; }
   .rep-market .seg-btn { flex: 1; padding: 7px 10px; }
   .seg { flex: none; }
   .subbar-controls { gap: 8px 12px; }
@@ -1123,4 +1134,64 @@ body, .table-wrap, .chart-card, .panel { transition-property: background-color, 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
   .draw { stroke-dashoffset: 0; }
+}
+
+/* ---------- Utskrift och PDF (kvartalsrapporten) ----------
+   scripts/build-pdf.sh skriver ut rapportsidan med Chrome. A4-sidan är smalare än brytpunkten för mobil,
+   så några av mobilreglerna återställs här så att rapporten får två spalter. */
+
+html.pdf *, html.pdf *::before, html.pdf *::after { animation: none !important; transition: none !important; }
+@page { size: A4; margin: 14mm 13mm 16mm; }
+@media print {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  :root { --canvas: #ffffff; --glass: #ffffff; }
+  html, body { background: #fff !important; }
+  body { padding: 0 !important; font-size: 13px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body::before, .ticker, .topbar, .subbar, .site-footer, .tabbar, .skip-link, .mega, .sheet-backdrop, .search-modal, .toast,
+  .rep-tools, .rep-share, .newsletter, .hero-links, .crumbs, .more, .csv-btn, .more-rows, .chart-tip { display: none !important; }
+  main, .container { padding: 0 !important; max-width: none; min-height: 0; }
+  .print-only { display: block; }
+  .print-head { display: flex !important; justify-content: space-between; align-items: baseline; gap: 12px; padding-bottom: 8px; margin-bottom: 18px; border-bottom: 1.5px solid #0c1424; font-size: 11px; color: #627084; }
+  .print-head b { font-size: 15px; color: #0c1424; letter-spacing: -0.01em; }
+  .print-foot { margin-top: 26px; padding-top: 8px; border-top: 1px solid #cdd4dd; font-size: 10px; line-height: 1.5; color: #627084; }
+  a { color: inherit !important; text-decoration: none !important; }
+
+  .hero, .rep-hero { box-shadow: none; border: 1px solid #e2e6eb; border-radius: 10px; padding: 18px 20px; margin: 0; gap: 18px; grid-template-columns: minmax(0, 1fr); }
+  .hero::after { display: none; }
+  .hero h1 { font-size: 26px; margin-bottom: 8px; }
+  .hero .intro { font-size: 13.5px; max-width: none; }
+  .hero-side { padding: 14px 0 0; border-left: 0; border-top: 1px solid #e2e6eb; }
+  .hf-value { font-size: 34px; }
+  .hero-stats dd { font-size: 15px; }
+  .section-gap { margin-top: 20px; }
+
+  .highlights.hl-4, .highlights.hl-3 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .highlights.hl-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .highlights .hl { border-bottom: 0 !important; border-top: 0 !important; padding: 10px 0 8px; }
+  .highlights .hl + .hl::before { display: block !important; }
+  .hl-name { font-size: 15px; }
+  .hl-value { font-size: 13px; }
+
+  .rep-section { break-inside: auto; }
+  /* Första sidan: rapportens topp och I korthet. Listorna börjar på sida två. */
+  .highlights + .rep-section, section:has(> .highlights) + .rep-section { break-before: page; }
+  .rep-head .desc .term { display: none; }
+  .rep-head { break-after: avoid; margin-bottom: 10px; padding-top: 12px; }
+  .rep-head h2 { font-size: 18px; }
+  .rep-head .desc { font-size: 12px; }
+  .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .rank-list { box-shadow: none; padding: 0 10px; }
+  .rank-list li { grid-template-columns: 16px minmax(0, 1fr) 46px auto; gap: 8px; padding: 6px 0; break-inside: avoid; }
+  .rk-bar { display: block; }
+  .rk-main a { font-size: 12px; }
+  .rk-sub { font-size: 10px; }
+  .rk-v { font-size: 12px; }
+  .divbars { box-shadow: none; padding: 10px 12px; gap: 4px; break-inside: avoid; }
+  .divbars li { grid-template-columns: 150px minmax(0, 1fr) 80px; font-size: 11.5px; }
+  .story-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .story { box-shadow: none; padding: 12px 14px; break-inside: avoid; }
+  .story h3 { font-size: 13px; }
+  .story p { font-size: 11.5px; line-height: 1.5; }
+  .chart-card, .module, .panel { box-shadow: none; break-inside: avoid; }
+  .chart svg { max-width: 100%; height: auto; }
 }

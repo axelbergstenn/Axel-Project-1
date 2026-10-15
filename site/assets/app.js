@@ -104,6 +104,7 @@
   }
   function pctPlain(v, digits) { return v == null ? "–" : (digits === 2 ? nf2 : nf1).format(v) + " %"; }
   function int(v) { return nf0.format(v || 0); }
+  function nFunds(n) { return int(n) + (n === 1 ? " fond" : " fonder"); }
   function cls(v) { return v > 0 ? "pos" : v < 0 ? "neg" : ""; }
   function quarterLabel(id) { return id ? "Q" + id.slice(5) + " " + id.slice(0, 4) : ""; }
   var MONTHS = ["januari", "februari", "mars", "april", "maj", "juni", "juli", "augusti", "september", "oktober", "november", "december"];
@@ -565,9 +566,31 @@
       '<div class="rc-controls" role="group" aria-label="Välj kvartalsrapport">' +
       '<select class="select-sm" id="repQ" aria-label="Kvartal">' + opts + "</select>" +
       '<div class="seg" role="group" aria-label="Marknad i rapporten">' + pick("se", "Sverige") + pick("world", "Utland") + "</div>" +
-      '<a class="btn btn-primary" id="repGo" href="' + reportHref(pq) + '">Läs rapporten</a></div></section>';
+      repGoLinks(pq, pm) + "</div></section>";
   }
   function reportHref(q) { return q === state.q ? "#/rapport" : "#/rapport/" + q; }
+
+  // ---------- Kvartalsrapporten som PDF ----------
+  // PDF-filerna skapas av scripts/build-pdf.sh när sajten publiceras (Chrome skriver ut rapportsidan med ?pdf).
+  // data/reports-pdf.json listar vilka som finns, t.ex. ["2026-q2", "2026-q2-utland"].
+  function reportSlug(q) { return q.slice(0, 4) + "-q" + q.slice(5); }
+  function pdfName(q, world) { return reportSlug(q) + (world ? "-utland" : ""); }
+  function pdfHref(q, world) { return "/rapport/" + reportSlug(q) + "/fondinsyn-" + pdfName(q, world) + ".pdf"; }
+  function hasPdf(q, world) {
+    if (!need("pdfs", function () { return getJSON("data/reports-pdf.json").then(function (d) { state.pdfs = d; }, function () { state.pdfs = []; }); })) return false;
+    return (state.pdfs || []).indexOf(pdfName(q, world)) >= 0;
+  }
+  // "Läs rapporten" öppnar PDF:en i en ny flik när den finns, annars webbversionen
+  function repGoLinks(q, market) {
+    var pdf = hasPdf(q, market === "world");
+    return '<span class="rc-go"><a class="btn btn-primary" id="repGo" href="' + (pdf ? pdfHref(q, market === "world") : reportHref(q)) + '"' +
+      (pdf ? ' target="_blank" rel="noopener" data-pdf="1"' : "") + ">Läs rapporten" + (pdf ? ' <span class="btn-tag">PDF</span>' : "") + "</a>" +
+      (pdf ? '<a class="rc-web" id="repWeb" href="' + reportHref(q) + '">Webbversion</a>' : "") + "</span>";
+  }
+  function updateRepGo() {
+    var box = document.querySelector(".rc-go");
+    if (box) box.outerHTML = repGoLinks(repPick.q || state.q, repPick.market || state.market);
+  }
 
   // Kvartalets nettoköp som en stor siffra, en mening som sätter den i perspektiv och staplar för tre år
   function heroFigure(net) {
@@ -646,7 +669,7 @@
     var top = buys[0], bottom = sells[0], longest = buyStreaks && buyStreaks[0];
     var highlights = '<div class="highlights">' +
       highlight("Mest köpt", top && top.name, top && stockHref(top), top ? '<span class="pos">' + bigSek(top.flow, true) + "</span>" : "", top ? int(top.nNew) + " nya fonder" : "") +
-      highlight("Mest sålt", bottom && bottom.name, bottom && stockHref(bottom), bottom ? '<span class="neg">' + bigSek(bottom.flow, true) + "</span>" : "", bottom ? int(bottom.nExit) + " fonder sålde allt" : "") +
+      highlight("Mest sålt", bottom && bottom.name, bottom && stockHref(bottom), bottom ? '<span class="neg">' + bigSek(bottom.flow, true) + "</span>" : "", bottom ? nFunds(bottom.nExit) + " sålde allt" : "") +
       (hasHist ? highlight("Längsta köpsvit", longest && longest.s.name, longest && stockHref(longest.s), longest ? longest.n + " kvartal i rad" : "Ingen", longest ? msek(longest.sum, true) + " mkr under perioden" : "")
         : highlight("Längsta köpsvit", null, null, '<span class="muted">Laddar…</span>', "")) +
       "</div>";
@@ -2850,7 +2873,8 @@
     var stat = function (value, label) { return '<div><dt>' + label + '</dt><dd class="count">' + value + "</dd></div>"; };
     var head = '<header class="hero rep-hero"><div class="hero-text">' +
       '<div class="crumbs"><a href="/rapport/">Kvartalsrapporter</a> / ' + quarterLabel(state.q) + "</div>" +
-      '<div class="seg rep-market" role="group" aria-label="Rapport för">' + mbtn("se", "Svenska aktier") + mbtn("world", "Utländska aktier") + "</div>" +
+      '<div class="rep-tools"><div class="seg rep-market" role="group" aria-label="Rapport för">' + mbtn("se", "Svenska aktier") + mbtn("world", "Utländska aktier") + "</div>" +
+      (hasPdf(state.q, world) ? '<a class="rep-pdf" href="' + pdfHref(state.q, world) + '" target="_blank" rel="noopener">PDF</a>' : "") + "</div>" +
       '<p class="kicker">Kvartalsrapport ' + quarterLabel(state.q) + " · " + Word + "</p>" +
       "<h1>" + esc(headline) + "</h1>" +
       '<p class="intro">' + lead + "</p>" +
@@ -2862,7 +2886,7 @@
     // I korthet
     var facts = [];
     if (buys[0]) facts.push(highlight("Mest köpt", buys[0].name, stockHref(buys[0]), '<span class="pos">' + bigSek(buys[0].flow, true) + "</span>", int(buys[0].nNew) + " nya fondägare"));
-    if (sells[0]) facts.push(highlight("Mest sålt", sells[0].name, stockHref(sells[0]), '<span class="neg">' + bigSek(sells[0].flow, true) + "</span>", int(sells[0].nExit) + " fonder sålde allt"));
+    if (sells[0]) facts.push(highlight("Mest sålt", sells[0].name, stockHref(sells[0]), '<span class="neg">' + bigSek(sells[0].flow, true) + "</span>", nFunds(sells[0].nExit) + " sålde allt"));
     if (sectors[0]) facts.push(highlight("Populäraste sektorn", sectors[0].s, null, '<span class="' + cls(sectors[0].v) + '">' + bigSek(sectors[0].v * 1e6, true) + "</span>",
       sectors.length > 1 ? "Minst populär: " + esc(lcWord(sectors[sectors.length - 1].s)) : ""));
     if (world && countries[0]) facts.push(highlight("Populäraste landet", countryName(countries[0].s), null, '<span class="' + cls(countries[0].v) + '">' + bigSek(countries[0].v * 1e6, true) + "</span>", ""));
@@ -2927,11 +2951,15 @@
     if (notes.length) out.push(repSection(++n, "Mer från kvartalet", "", '<div class="story-grid">' + notes.join("") + "</div>"));
 
     var url = location.href.split("#")[0] + "#/rapport";
-    return '<article class="report">' + head +
+    var pdfBtn = hasPdf(state.q, world) ? '<a class="btn" href="' + pdfHref(state.q, world) + '" target="_blank" rel="noopener">Ladda ner som PDF</a>' : "";
+    var printHead = '<div class="print-only print-head"><b>Fondinsyn</b><span>Kvartalsrapport ' + quarterLabel(state.q) + " · " + Word + "</span><span>www.fondinsyn.se</span></div>";
+    var printFoot = '<div class="print-only print-foot">Källa: fondbolagens innehavsrapporter till Finansinspektionen, sammanställda av Fondinsyn (www.fondinsyn.se) den ' +
+      dateText(new Date().toISOString().slice(0, 10)) + ". Nettoköp är förändringen i antal aktier gånger kursen vid kvartalets slut. Inte investeringsrådgivning.</div>";
+    return '<article class="report">' + printHead + head +
       (facts.length ? '<section class="section-gap"><h2 class="visually-hidden">I korthet</h2><div class="highlights hl-' + facts.length + '">' + facts.join("") + "</div></section>" : "") +
       out.join("") +
-      '<div class="rep-share section-gap"><button type="button" class="btn" id="repShare" data-url="' + esc(url) + '">Kopiera länk till rapporten</button></div>' +
-      newsletterBox() + "</article>";
+      '<div class="rep-share section-gap">' + pdfBtn + '<button type="button" class="btn" id="repShare" data-url="' + esc(url) + '">Kopiera länk till rapporten</button></div>' +
+      newsletterBox() + printFoot + "</article>";
   }
 
   // ---------- Nyhetsbrev ----------
@@ -3613,7 +3641,10 @@
     toastTimer = setTimeout(function () { el.classList.remove("on"); }, 2600);
   }
 
-  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // ?pdf i adressen: sidan skrivs ut som PDF (scripts/build-pdf.sh), då ska allt synas direkt utan animationer
+  var pdfMode = /[?&]pdf\b/.test(location.search);
+  if (pdfMode) document.documentElement.classList.add("pdf");
+  var reduceMotion = pdfMode || (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
   // Segmentknapparna får en markering som glider till det valda alternativet. Läget sparas per knapprad,
   // så att markeringen glider även när sidan ritas om och knapparna byts ut.
@@ -3846,10 +3877,11 @@
     if (rp) {
       repPick.market = rp.getAttribute("data-rep-pick");
       rp.parentNode.querySelectorAll("[data-rep-pick]").forEach(function (b) { b.setAttribute("aria-pressed", String(b === rp)); });
+      updateRepGo();
       segThumbs();
       return;
     }
-    if (e.target.closest("#repGo") && repPick.market && repPick.market !== state.market) setMarket(repPick.market);
+    if (e.target.closest("#repGo:not([data-pdf]), #repWeb") && repPick.market && repPick.market !== state.market) setMarket(repPick.market);
     var mk = e.target.closest("[data-market]");
     if (mk) {
       setMarket(mk.getAttribute("data-market"));
@@ -4009,7 +4041,7 @@
     }
     if (id === "repQ") {
       repPick.q = e.target.value;
-      $("repGo").setAttribute("href", reportHref(repPick.q));
+      updateRepGo();
     }
     if (id === "excludeIndex") {
       state.excludeIndex = e.target.checked;
