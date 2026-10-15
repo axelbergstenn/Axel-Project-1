@@ -417,10 +417,15 @@
       return "<th" + al + aria + ' scope="col"><button type="button" data-sort="' + key + ":" + c.key + '">' + c.label + arrow + "</button></th>";
     }).join("");
     var body = rows.map(function (r, n) {
-      return "<tr>" + cols.map(function (c) {
+      // Rader vars namn är en länk får klassen rl (hela raden går att klicka på)
+      var link = false;
+      var tds = cols.map(function (c) {
         var classes = [c.align === "l" ? "l" : "", c.cls || "", c.hideSm ? "hide-sm" : ""].join(" ").trim();
-        return "<td" + (classes ? ' class="' + classes + '"' : "") + ">" + c.cell(r, n) + "</td>";
-      }).join("") + "</tr>";
+        var html = c.cell(r, n);
+        if (c.cls === "name" && String(html).indexOf("<a ") === 0) link = true;
+        return "<td" + (classes ? ' class="' + classes + '"' : "") + ">" + html + "</td>";
+      }).join("");
+      return (link ? '<tr class="rl">' : "<tr>") + tds + "</tr>";
     }).join("");
     if (!rows.length) body = '<tr><td class="empty" colspan="' + cols.length + '">' + (opts.empty || "Inga rader.") + "</td></tr>";
     return '<div class="table-wrap"><table><thead><tr>' + head + "</tr></thead><tbody>" + body + "</tbody></table></div>" +
@@ -553,7 +558,7 @@
     }).join("");
     var pick = function (v, label) { return '<button type="button" class="seg-btn" data-rep-pick="' + v + '" aria-pressed="' + (pm === v) + '">' + label + "</button>"; };
     return '<section class="rep-card"><div class="rc-main">' +
-      '<p class="kicker"><span class="kicker-dot" aria-hidden="true"></span>Kvartalsrapport ' + quarterLabel(m.id) + "</p>" +
+      '<p class="kicker">Kvartalsrapport ' + quarterLabel(m.id) + "</p>" +
       '<a class="rc-title" href="#/rapport">' + esc(quarterHeadline(cont, buys, sells)) + "</a>" +
       '<p class="rc-meta">Nettoköp ' + marketWord() + ' aktier <b class="' + cls(net) + '">' + bigSek(net, true) + "</b> · " + int(t.funds) + " fonder" +
       (state.excludeIndex ? " utan indexfonder" : "") + " · innehaven den " + dateText(m.curr) + "</p></div>" +
@@ -2372,7 +2377,8 @@
     if (which === "I") return g.inet == null ? "Ingen handel" : (g.inet >= 0 ? "Köp minus sälj " : "Sälj minus köp ") + bigSek(Math.abs(g.inet));
     return g.short ? nf2.format(g.short.pct) + " % blankat" + (g.short.ch30 == null ? "" : Math.abs(g.short.ch30) < 0.005 ? ", oförändrat på 30 dagar" : ", " + signed(nf2.format(g.short.ch30), g.short.ch30) + " p.e. på 30 dagar") : "Ingen större blankning";
   }
-  function partArrow(v) { return '<span class="part ' + (v > 0.05 ? "pos" : v < -0.05 ? "neg" : "") + '">' + (v > 0.05 ? "▲" : v < -0.05 ? "▼" : "■") + "</span>"; }
+  // En liten färgad punkt per del: grön (positiv), röd (negativ) eller grå (neutral)
+  function partArrow(v) { return '<span class="part ' + (v > 0.05 ? "pos" : v < -0.05 ? "neg" : "") + '" aria-hidden="true"></span>'; }
 
   function viewSignals() {
     document.title = "Samlad signal – fonder, insiders och blankning ihop – Fondinsyn";
@@ -2845,7 +2851,7 @@
     var head = '<header class="hero rep-hero"><div class="hero-text">' +
       '<div class="crumbs"><a href="/rapport/">Kvartalsrapporter</a> / ' + quarterLabel(state.q) + "</div>" +
       '<div class="seg rep-market" role="group" aria-label="Rapport för">' + mbtn("se", "Svenska aktier") + mbtn("world", "Utländska aktier") + "</div>" +
-      '<p class="kicker"><span class="kicker-dot" aria-hidden="true"></span>Kvartalsrapport ' + quarterLabel(state.q) + " · " + Word + "</p>" +
+      '<p class="kicker">Kvartalsrapport ' + quarterLabel(state.q) + " · " + Word + "</p>" +
       "<h1>" + esc(headline) + "</h1>" +
       '<p class="intro">' + lead + "</p>" +
       '<p class="hero-sub">Jämförelsen gäller ' + int(t.funds) + " fonder som rapporterade sina innehav till Finansinspektionen både " + quarterLabel(m.prevId) +
@@ -3576,7 +3582,7 @@
     if (ph && !ph.querySelector(".crumbs, .kicker")) {
       var cur = document.querySelector('#moreMenu a[aria-current="page"]'), grp = cur && cur.closest(".mega-col");
       var gh = grp && grp.querySelector("h2");
-      if (gh) ph.insertAdjacentHTML("afterbegin", '<p class="kicker"><span class="kicker-dot" aria-hidden="true"></span>' + esc(gh.textContent) + "</p>");
+      if (gh) ph.insertAdjacentHTML("afterbegin", '<p class="kicker">' + esc(gh.textContent) + "</p>");
     }
     $("marketSwitch").hidden = !MARKET_PAGES[r.page];
     renderSummary();
@@ -3684,7 +3690,7 @@
       var target = parseFloat(m[2].replace(/[\s  ]/g, "").replace(",", "."));
       if (!isFinite(target) || target === 0) return;
       var fmt = new Intl.NumberFormat("sv-SE", { minimumFractionDigits: dec, maximumFractionDigits: dec });
-      var t0 = null, dur = 1100;
+      var t0 = null, dur = 650;
       el.style.minWidth = el.offsetWidth + "px";
       var step = function (ts) {
         if (t0 == null) t0 = ts;

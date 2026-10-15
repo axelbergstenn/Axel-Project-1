@@ -1467,7 +1467,7 @@ $introBuys = @($introCont | Where-Object { $_.flow -gt 0 } | Sort-Object flow -D
 $introSells = @($introCont | Where-Object { $_.flow -lt 0 } | Sort-Object flow)
 # Samma markup som reportCard() i app.js, så att sidan inte hoppar när appen tar över
 $repOpts = (@($index.quarters | ForEach-Object { '<a href="/rapport/' + (ReportSlug ([string]$_.id)) + '/">' + (QLabel ([string]$_.id)) + '</a>' })) -join " · "
-$intro = '<section class="rep-card"><div class="rc-main"><p class="kicker"><span class="kicker-dot" aria-hidden="true"></span>Kvartalsrapport ' + $QL + '</p>' +
+$intro = '<section class="rep-card"><div class="rc-main"><p class="kicker">Kvartalsrapport ' + $QL + '</p>' +
   '<a class="rc-title" href="/rapport/' + (ReportSlug $Q) + '/">' + (Esc (QuarterHeadline $introCont $introBuys $introSells)) + '</a>' +
   '<p class="rc-meta">Nettoköp svenska aktier <b class="' + (SignClass $tNet) + '">' + (BigSek $tNet -Sign) + '</b> · ' + (Num0 $tFunds) + ' fonder · innehaven den ' + $asOf + '</p>' +
   '<p class="rc-meta">Alla rapporter: ' + $repOpts + '</p></div></section>'
