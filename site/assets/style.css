@@ -84,70 +84,71 @@
 
 /* Mörkt läge: väljs med knappen i sidhuvudet och sparas i webbläsaren (data-theme på <html>) */
 :root[data-theme="dark"] {
-  /* Mörkt läge: varmt svart med en aning djupröd i sig, och vinrött som accent */
-  --canvas: #0e0b0b;
-  --bg: #171313;
-  --bg-subtle: #1c1717;
-  --bg-hover: #231d1c;
-  --fg: #f1ebe8;
-  --fg-soft: #d3c9c5;
-  --fg-muted: #9c8f8b;
-  --border: #2e2625;
-  --border-strong: #3e3432;
-  --border-muted: #221c1b;
-  --brand: #a3313f;
-  --brand-ink: #eba7af;
-  --brand-soft: rgba(163, 49, 63, 0.2);
-  --brand-border: rgba(235, 167, 175, 0.32);
-  --navy: #0a0808;
-  --navy-2: #161111;
-  --navy-fg: #ece4e1;
-  --navy-muted: #978986;
-  --logo-ink: #f1ebe8;
-  --logo-dot: #c8404f;
-  --link: #eba7af;
-  --pos: #49c988;
-  --neg: #ff7a68;
-  --pos-bg: rgba(73, 201, 136, 0.12);
-  --neg-bg: rgba(255, 122, 104, 0.12);
-  --bar-pos: #2fb46c;
-  --bar-neg: #e45a4c;
-  --bar-neutral: #6e6361;
+  /* Mörkt läge: svart med en lätt brun värme, blå accent och ljusa knappar */
+  --canvas: #0c0b0a;
+  --bg: #151312;
+  --bg-subtle: #1a1817;
+  --bg-hover: #211e1c;
+  --fg: #efece9;
+  --fg-soft: #cfcac5;
+  --fg-muted: #96908a;
+  --border: #2a2725;
+  --border-strong: #3a3633;
+  --border-muted: #1f1c1b;
+  --brand: #4a83f5;
+  --brand-ink: #9db9f7;
+  --brand-soft: rgba(74, 131, 245, 0.14);
+  --brand-border: rgba(157, 185, 247, 0.32);
+  --navy: #090808;
+  --navy-2: #141211;
+  --navy-fg: #ebe7e3;
+  --navy-muted: #8f8984;
+  --logo-ink: #efece9;
+  --logo-dot: #5a8dff;
+  --link: #9db9f7;
+  --pos: #45c785;
+  --neg: #ff6f5e;
+  --pos-bg: rgba(69, 199, 133, 0.12);
+  --neg-bg: rgba(255, 111, 94, 0.12);
+  --bar-pos: #2db86c;
+  --bar-neg: #e8574e;
+  --bar-neutral: #6b655f;
   --warn: #f2b65a;
   --warn-bg: rgba(242, 182, 90, 0.1);
   --warn-border: rgba(242, 182, 90, 0.32);
   --warn-fg: #f4c47a;
   --star-bg: rgba(242, 182, 90, 0.12);
   --star-fg: #f4c47a;
-  --dot-index: #6a5e5b;
+  --dot-index: #625c57;
   --zone: rgba(240, 140, 0, 0.1);
-  --seg-bg: #0b0909;
-  --seg-active: #2b2322;
-  --chip-bg: #241e1d;
-  --sk-a: #1d1817;
-  --sk-b: #272120;
-  --tip-bg: rgba(241, 235, 232, 0.94);
-  --tip-fg: #120e0e;
-  --tabbar-bg: rgba(23, 19, 19, 0.94);
+  --seg-bg: #0a0909;
+  --seg-active: #2a2725;
+  --chip-bg: #221f1d;
+  --sk-a: #1b1918;
+  --sk-b: #252220;
+  --tip-bg: rgba(239, 236, 233, 0.94);
+  --tip-fg: #0c0b0a;
+  --tabbar-bg: rgba(21, 19, 18, 0.94);
   --backdrop: rgba(0, 0, 0, 0.66);
-  --glass: rgba(24, 19, 19, 0.92);
-  --glass-strong: rgba(18, 14, 14, 0.8);
-  --glass-edge: rgba(255, 236, 230, 0.12);
-  --glass-line: rgba(255, 236, 230, 0.07);
-  --glass-shadow: inset 0 1px 0 rgba(255, 236, 230, 0.06), 0 0 0 1px rgba(255, 236, 230, 0.06), 0 16px 36px -14px rgba(0, 0, 0, 0.75);
-  --aura-1: rgba(163, 49, 63, 0.16);
-  --aura-2: rgba(140, 90, 60, 0.07);
-  --aura-3: rgba(163, 49, 63, 0.05);
+  --glass: rgba(22, 20, 19, 0.92);
+  --glass-strong: rgba(16, 14, 13, 0.8);
+  --glass-edge: rgba(255, 245, 235, 0.12);
+  --glass-line: rgba(255, 245, 235, 0.07);
+  --glass-shadow: inset 0 1px 0 rgba(255, 245, 235, 0.06), 0 0 0 1px rgba(255, 245, 235, 0.06), 0 16px 36px -14px rgba(0, 0, 0, 0.75);
+  --aura-1: rgba(150, 110, 70, 0.09);
+  --aura-2: rgba(74, 131, 245, 0.06);
+  --aura-3: rgba(150, 110, 70, 0.04);
   --shadow-sm: none;
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.65);
   --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
   --cat-bostad: #3987e5; --cat-stat: #d95926; --cat-kommun: #199e70; --cat-bank: #c98500;
-  --cat-fastighet: #d55181; --cat-foretag: #9085e9; --cat-utland: #6e6361;
+  --cat-fastighet: #d55181; --cat-foretag: #9085e9; --cat-utland: #6b655f;
   color-scheme: dark;
 }
 
-:root[data-theme="dark"] .select-sm { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5l3 3 3-3' fill='none' stroke='%239c8f8b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+
+:root[data-theme="dark"] .select-sm { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5l3 3 3-3' fill='none' stroke='%2396908a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 
 /* ---------- Grund ---------- */
 
@@ -250,9 +251,9 @@ body.scrolled .topbar { box-shadow: 0 1px 0 var(--border), 0 8px 24px rgba(12, 2
 
 /* Menyknappen: tre streck som blir ett kryss när menyn är öppen */
 .menu-btn { display: inline-flex; align-items: center; gap: 9px; height: 38px; padding: 0 14px 0 12px; font: inherit; font-size: 14px; font-weight: 650; color: #fff; background: var(--navy); border: 1px solid var(--navy); border-radius: 999px; cursor: pointer; transition: background 0.15s, transform 0.08s; }
-:root[data-theme="dark"] .menu-btn { background: var(--brand); border-color: var(--brand); }
+:root[data-theme="dark"] .menu-btn { background: #efece9; border-color: #efece9; color: #0c0b0a; }
 .menu-btn:hover { background: var(--navy-2); }
-:root[data-theme="dark"] .menu-btn:hover { background: #b23a49; }
+:root[data-theme="dark"] .menu-btn:hover { background: #ffffff; }
 .menu-btn:active { transform: scale(0.97); }
 .menu-icon { position: relative; width: 16px; height: 12px; display: inline-block; }
 .menu-icon i { position: absolute; left: 0; right: 0; height: 1.75px; border-radius: 2px; background: currentColor; transition: transform 0.28s var(--ease), opacity 0.2s, top 0.28s var(--ease); }
@@ -329,7 +330,7 @@ body.sheet-open { overflow: hidden; }
 .toast { position: fixed; left: 50%; bottom: 28px; z-index: 60; transform: translate(-50%, 16px); opacity: 0; pointer-events: none; padding: 10px 18px; border-radius: 999px; font-size: 14px; font-weight: 600; color: #fff; background: rgba(12, 20, 36, 0.86); box-shadow: 0 16px 36px -12px rgba(12, 20, 36, 0.5), inset 0 0 0 0.5px rgba(255, 255, 255, 0.15); white-space: nowrap; transition: opacity 0.25s, transform 0.45s var(--spring); }
 @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) { .toast { backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%); } }
 .toast.on { opacity: 1; transform: translate(-50%, 0); }
-:root[data-theme="dark"] .toast { background: rgba(241, 235, 232, 0.94); color: #120e0e; }
+:root[data-theme="dark"] .toast { background: rgba(239, 236, 233, 0.94); color: #0c0b0a; }
 
 /* Segmentknappar */
 .seg { position: relative; display: inline-flex; padding: 3px; gap: 2px; border-radius: 999px; background: var(--seg-bg); box-shadow: inset 0 1px 2px rgba(12, 20, 36, 0.06); isolation: isolate; }
@@ -493,8 +494,9 @@ table.cmp-table td { overflow-wrap: anywhere; }
 a.btn { color: var(--fg-soft); }
 .btn-primary, a.btn-primary { background: linear-gradient(180deg, #1b3a66, var(--navy)); border-color: var(--navy); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 1px 2px rgba(11, 31, 58, 0.3), 0 6px 16px -8px rgba(11, 31, 58, 0.55); }
 .btn-primary:hover, a.btn-primary:hover { background: linear-gradient(180deg, #22457a, var(--navy-2)); border-color: var(--navy-2); color: #fff; }
-:root[data-theme="dark"] .btn-primary, :root[data-theme="dark"] a.btn-primary { background: linear-gradient(180deg, #b43c4b, var(--brand)); border-color: var(--brand); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 6px 18px -8px rgba(163, 49, 63, 0.7); }
-:root[data-theme="dark"] .btn-primary:hover { background: linear-gradient(180deg, #c04656, #b23a49); border-color: #b23a49; }
+:root[data-theme="dark"] .btn-primary, :root[data-theme="dark"] a.btn-primary { background: #efece9; border-color: #efece9; color: #0c0b0a; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); }
+:root[data-theme="dark"] .btn-primary:hover, :root[data-theme="dark"] a.btn-primary:hover { background: #ffffff; border-color: #ffffff; color: #0c0b0a; }
+:root[data-theme="dark"] .btn-primary .btn-tag { background: rgba(0, 0, 0, 0.1); }
 .star { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 14px; font-weight: 600; color: var(--fg-soft); background: var(--bg); border: 1px solid var(--border-strong); border-radius: 999px; height: 40px; padding: 0 14px; cursor: pointer; box-shadow: var(--shadow-sm); transition: background 0.15s, border-color 0.15s, transform 0.08s; }
 .star svg { fill: none; stroke: var(--fg-muted); stroke-width: 1.3; transition: transform 0.3s var(--ease); }
 .star:hover { background: var(--bg-subtle); }
