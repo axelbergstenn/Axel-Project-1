@@ -29,7 +29,7 @@
   ],
   "faq": [
     ["Hur ofta uppdateras Fondinsyn?", "Fondernas innehav uppdateras när Finansinspektionen publicerar ett nytt kvartal, ungefär tolv veckor efter kvartalsslut. Blankning, insynshandel och uppköpserbjudanden hämtas varje morgon och avkastningen från Pensionsmyndigheten varje vecka."],
-    ["Varför hittar jag inte min fond?", "Fondinsyn visar fonder som är registrerade i Sverige. Fonder som är registrerade i till exempel Luxemburg eller Irland, liksom många ETF:er, rapporterar inte till Finansinspektionen och finns därför inte med."],
+    ["Varför hittar jag inte min fond?", "Fondinsyn visar de svenska värdepappersfonder som rapporterar sina innehav till Finansinspektionen varje kvartal. Specialfonder och hedgefonder, till exempel Alcur Grow, omfattas inte av den rapporteringen och finns därför inte med. Det gäller också fonder som är registrerade i till exempel Luxemburg eller Irland, liksom många ETF:er."],
     ["Varför skiljer sig siffrorna från fondbolagets egna?", "Uppgifterna avser kvartalets sista dag, och fonden kan ha handlat mycket sedan dess. Fondinsyn räknar också nettoköp på ett eget sätt, med kursen vid kvartalsslut."],
     ["Betyder det att en aktie är bra om fonderna köper den?", "Nej. Fondernas affärer kan bero på in- och utflöden av pengar, regler om hur mycket de får äga eller förvaltarens egna bedömningar. Se det som ett sätt att förstå marknaden, inte som ett köpråd."],
     ["Varför blankar fonder?", "Det är främst hedgefonder som blankar, antingen för att de tror att aktien ska falla eller för att skydda andra positioner. Vanliga svenska aktiefonder får i regel inte blanka."],

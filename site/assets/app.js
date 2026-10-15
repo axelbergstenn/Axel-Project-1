@@ -1704,7 +1704,8 @@
         (it.sub ? '<span class="sr-sub">' + esc(it.sub) + "</span>" : "") + "</li>";
     });
     if (!items.length) {
-      html = '<li class="sr-empty">' + (q ? "Inga träffar på \"" + esc(q) + "\"." : "Sök bland " + int(d.se.stocks.length + worldNames().length) + " aktier och " + int(fundList().length) + " fonder.") + "</li>";
+      html = '<li class="sr-empty">' + (q ? "Inga träffar på \"" + esc(q) + "\".<br><small>Fondinsyn visar de " + int(fundList().length) + " värdepappersfonder som rapporterar sina innehav till Finansinspektionen. " +
+        "Specialfonder och hedgefonder, till exempel Alcur Grow, rapporterar inte sina innehav öppet och finns därför inte med.</small>" : "Sök bland " + int(d.se.stocks.length + worldNames().length) + " aktier och " + int(fundList().length) + " fonder.") + "</li>";
     }
     $("searchResults").innerHTML = html;
   }
