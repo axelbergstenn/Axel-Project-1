@@ -543,24 +543,26 @@
     return "Fonderna sålde " + lcWord(worst) + (sells[0] ? " och mest av allt " + sells[0].name : "");
   }
 
-  // Överst på första sidan: kvartalets huvudnyhet, och bredvid den kvartalets nettoköp med historik
-  function introBlock(ds, cont, buys, sells) {
+  // Överst på startsidan: kvartalsrapporten i liten form, med val av kvartal och marknad
+  var repPick = { q: null, market: null };
+  function reportCard(ds, cont, buys, sells) {
     var m = quarterData().meta, t = ds.totals, net = t.buy + t.sell;
-    var word = marketWord();
-    var top3 = buys.slice(0, 3);
-    var deck = "Svenska fonder " + (net >= 0 ? "nettoköpte" : "nettosålde") + " " + word + " aktier för <b>" + bigSek(Math.abs(net)) + "</b> under " + quarterLabel(m.id) + "." +
-      (top3.length ? " Mest köpte de " + sentenceList(top3, function (s) { return '<a href="' + stockHref(s) + '">' + esc(s.name) + "</a>"; }) + "." : "");
-    var stat = function (value, label) { return '<div><dt>' + label + '</dt><dd class="count">' + value + "</dd></div>"; };
-    return '<section class="hero"><div class="hero-text">' +
-      '<p class="kicker"><span class="kicker-dot" aria-hidden="true"></span>Kvartalsrapport ' + quarterLabel(m.id) + " · " + (state.market === "world" ? "Utländska aktier" : "Svenska aktier") + "</p>" +
-      '<h1><a href="#/rapport">' + esc(quarterHeadline(cont, buys, sells)) + "</a></h1>" +
-      '<p class="intro">' + deck + "</p>" +
-      '<div class="hero-links"><a class="btn btn-primary" href="#/rapport">Läs kvartalsrapporten</a><a class="btn" href="#/aktier">Alla aktier</a></div>' +
-      '<p class="hero-sub">Innehaven den ' + dateText(m.curr) + " jämfört med " + quarterLabel(m.prevId) + ". Källa: Finansinspektionen.</p></div>" +
-      '<div class="hero-side">' + heroFigure(net) +
-      '<dl class="hero-stats">' + stat(int(t.funds), "fonder jämförs") + stat(int(t.held), word + " aktier") + stat(t.value >= 1e11 ? nf0.format(t.value / 1e9) + " mdkr" : bigSek(t.value), "fondernas innehav") + "</dl>" +
-      "</div></section>";
+    var pq = repPick.q || state.q, pm = repPick.market || state.market;
+    var opts = state.index.quarters.map(function (x) {
+      return '<option value="' + x.id + '"' + (x.id === pq ? " selected" : "") + ">" + quarterLabel(x.id) + "</option>";
+    }).join("");
+    var pick = function (v, label) { return '<button type="button" class="seg-btn" data-rep-pick="' + v + '" aria-pressed="' + (pm === v) + '">' + label + "</button>"; };
+    return '<section class="rep-card"><div class="rc-main">' +
+      '<p class="kicker"><span class="kicker-dot" aria-hidden="true"></span>Kvartalsrapport ' + quarterLabel(m.id) + "</p>" +
+      '<a class="rc-title" href="#/rapport">' + esc(quarterHeadline(cont, buys, sells)) + "</a>" +
+      '<p class="rc-meta">Nettoköp ' + marketWord() + ' aktier <b class="' + cls(net) + '">' + bigSek(net, true) + "</b> · " + int(t.funds) + " fonder" +
+      (state.excludeIndex ? " utan indexfonder" : "") + " · innehaven den " + dateText(m.curr) + "</p></div>" +
+      '<div class="rc-controls" role="group" aria-label="Välj kvartalsrapport">' +
+      '<select class="select-sm" id="repQ" aria-label="Kvartal">' + opts + "</select>" +
+      '<div class="seg" role="group" aria-label="Marknad i rapporten">' + pick("se", "Sverige") + pick("world", "Utland") + "</div>" +
+      '<a class="btn btn-primary" id="repGo" href="' + reportHref(pq) + '">Läs rapporten</a></div></section>';
   }
+  function reportHref(q) { return q === state.q ? "#/rapport" : "#/rapport/" + q; }
 
   // Kvartalets nettoköp som en stor siffra, en mening som sätter den i perspektiv och staplar för tre år
   function heroFigure(net) {
@@ -644,7 +646,7 @@
         : highlight("Längsta köpsvit", null, null, '<span class="muted">Laddar…</span>', "")) +
       "</div>";
 
-    return introBlock(ds, cont, buys, sells) + watchBlock() + signalModules() + '<div class="section-gap">' + highlights + "</div>" +
+    return reportCard(ds, cont, buys, sells) + watchBlock() + signalModules() + '<div class="section-gap">' + highlights + "</div>" +
       '<div class="grid-2 section-gap">' +
       block("Störst nettoköp", "Förändring i antal aktier × kurs vid kvartalsslut. " + termLink("nettokop", "Hur räknas det?"), table("ov-buy", flowCols, buys, st) + '<a class="more" href="#/aktier">Alla aktier</a>') +
       block("Störst nettosälj", "&nbsp;", table("ov-sell", flowCols, sells, st)) +
@@ -2177,6 +2179,8 @@
   // En del anmälningar har namnet i bara gemener ("björn krasse"): ge dem stor bokstav
   function personName(p) {
     p = String(p || "");
+    // Namn skrivna med bara gemener eller bara versaler får stor bokstav i början av varje namn
+    if (p === p.toUpperCase() && /[A-ZÅÄÖ]{2}/.test(p)) p = p.toLowerCase();
     return p === p.toLowerCase() ? p.replace(/(^|[\s-])(\S)/g, function (m, a, c) { return a + c.toUpperCase(); }) : p;
   }
   function personText(r) { return esc(personName(r.person)) + (r.close ? " (närstående)" : ""); }
@@ -3488,6 +3492,7 @@
     // går tillbaka dit när man lämnar rapporten. Ett vanligt byte glömmer det.
     if (restoring || !temporary) state.restoreQ = null;
     else if (!state.restoreQ && state.q !== id) state.restoreQ = state.q;
+    if (!temporary) repPick.q = null;
     state.q = id;
     if (!temporary) store("ff-quarter", id);
     $("quarter").value = id;
@@ -3591,6 +3596,14 @@
     }
     var csv = e.target.closest("[data-csv]");
     if (csv) { downloadCsv(csv.getAttribute("data-csv")); return; }
+    var rp = e.target.closest("[data-rep-pick]");
+    if (rp) {
+      repPick.market = rp.getAttribute("data-rep-pick");
+      rp.parentNode.querySelectorAll("[data-rep-pick]").forEach(function (b) { b.setAttribute("aria-pressed", String(b === rp)); });
+      segThumbs();
+      return;
+    }
+    if (e.target.closest("#repGo") && repPick.market && repPick.market !== state.market) setMarket(repPick.market);
     var mk = e.target.closest("[data-market]");
     if (mk) {
       setMarket(mk.getAttribute("data-market"));
@@ -3747,6 +3760,10 @@
       p.forEach(function (x) { if (x.id === pid) x.amount = val > 0 ? val : x.amount; });
       savePortfolio(p);
       render();
+    }
+    if (id === "repQ") {
+      repPick.q = e.target.value;
+      $("repGo").setAttribute("href", reportHref(repPick.q));
     }
     if (id === "excludeIndex") {
       state.excludeIndex = e.target.checked;

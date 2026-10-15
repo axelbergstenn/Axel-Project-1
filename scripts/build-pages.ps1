@@ -1424,19 +1424,12 @@ Save "data/front.json" ("{" + ($front -join ",") + "}")
 $introCont = @($cur.stocks | Where-Object { $_.price -and $null -ne $_.netFlow })
 $introBuys = @($introCont | Where-Object { $_.flow -gt 0 } | Sort-Object flow -Descending)
 $introSells = @($introCont | Where-Object { $_.flow -lt 0 } | Sort-Object flow)
-$introDeck = "Svenska fonder " + $(if ($tNet -ge 0) { "nettoköpte" } else { "nettosålde" }) + " svenska aktier för <b>" + (BigSek ([math]::Abs($tNet))) + "</b> under $QL." +
-  $(if ($introBuys.Count) { " Mest köpte de " + (JoinSv @($introBuys | Select-Object -First 3 | ForEach-Object { A (IsinUrl $_.isin) $_.name })) + "." } else { "" })
-# Samma markup som introBlock() i app.js, så att sidan inte hoppar när appen tar över
-$valueText = if ($tValue -ge 1e11) { ([math]::Round($tValue / 1e9)).ToString("N0", [System.Globalization.CultureInfo]::GetCultureInfo("sv-SE")) + " mdkr" } else { BigSek $tValue }
-$intro = '<section class="hero"><div class="hero-text"><p class="kicker"><span class="kicker-dot" aria-hidden="true"></span>Kvartalsrapport ' + $QL + '</p>' +
-  '<h1><a href="/rapport/' + (ReportSlug $Q) + '/">' + (Esc (QuarterHeadline $introCont $introBuys $introSells)) + '</a></h1>' +
-  '<p class="intro">' + $introDeck + '</p>' +
-  '<div class="hero-links"><a class="btn btn-primary" href="/rapport/' + (ReportSlug $Q) + '/">Läs kvartalsrapporten</a><a class="btn" href="/aktier/">Alla aktier</a></div>' +
-  '<p class="hero-sub">Innehaven den ' + $asOf + " jämfört med " + (QLabel ([string]$qMeta.prevId)) + ". Källa: Finansinspektionen.</p></div>" +
-  '<div class="hero-side"><div class="hero-figure"><div class="hf-label">Fondernas nettoköp <span>svenska aktier, ' + $QL + '</span></div>' +
-  '<div class="hf-value count ' + (SignClass $tNet) + '">' + (BigSek $tNet -Sign) + '</div><div class="sk sk-line w70 hf-sk"></div><div class="sk sk-chart"></div></div>' +
-  '<dl class="hero-stats"><div><dt>fonder jämförs</dt><dd class="count">' + (Num0 $tFunds) + '</dd></div><div><dt>svenska aktier</dt><dd class="count">' + (Num0 $tHeld) + '</dd></div>' +
-  '<div><dt>fondernas innehav</dt><dd class="count">' + $valueText + '</dd></div></dl></div></section>'
+# Samma markup som reportCard() i app.js, så att sidan inte hoppar när appen tar över
+$repOpts = (@($index.quarters | ForEach-Object { '<a href="/rapport/' + (ReportSlug ([string]$_.id)) + '/">' + (QLabel ([string]$_.id)) + '</a>' })) -join " · "
+$intro = '<section class="rep-card"><div class="rc-main"><p class="kicker"><span class="kicker-dot" aria-hidden="true"></span>Kvartalsrapport ' + $QL + '</p>' +
+  '<a class="rc-title" href="/rapport/' + (ReportSlug $Q) + '/">' + (Esc (QuarterHeadline $introCont $introBuys $introSells)) + '</a>' +
+  '<p class="rc-meta">Nettoköp svenska aktier <b class="' + (SignClass $tNet) + '">' + (BigSek $tNet -Sign) + '</b> · ' + (Num0 $tFunds) + ' fonder · innehaven den ' + $asOf + '</p>' +
+  '<p class="rc-meta">Alla rapporter: ' + $repOpts + '</p></div></section>'
 if ($WriteHome) {
   $cont = @($pageStocks | Where-Object { $null -ne $_.netFlow -and $_.price })
   $rowsB = NewList; foreach ($s in @($cont | Where-Object { $_.flow -gt 0 } | Sort-Object flow -Descending | Select-Object -First 15)) { $rowsB.Add(@((A (StockUrl $s) $s.name), (Colored $s.flow (Mkr $s.flow -Sign)), (Num0 $s.f2))) }

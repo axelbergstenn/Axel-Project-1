@@ -1,10 +1,10 @@
 /* Fondinsyn – stilmall, version 2
-   Typsnitt: Inter (gränssnitt och siffror) och Newsreader (rubriker), båda på sajten själv.
+   Typsnitt: Roboto (gränssnitt och siffror) och Roboto Slab (rubriker), båda på sajten själv.
    Brytpunkter: 1200px (menyn kortas), 900px (en spalt), 760px (mobil med flikrad längst ner).
    Tabeller anpassar sig efter sin egen bredd med container queries, inte efter skärmen. */
 
-@font-face { font-family: "Inter"; src: url("fonts/inter-var.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
-@font-face { font-family: "Newsreader"; src: url("fonts/newsreader-var.woff2") format("woff2"); font-weight: 200 800; font-style: normal; font-display: swap; }
+@font-face { font-family: "Roboto"; src: url("fonts/roboto-var.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: "Roboto Slab"; src: url("fonts/roboto-slab-var.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
 
 /* ---------- Färger och mått ---------- */
 
@@ -61,8 +61,8 @@
   --shadow-sm: 0 1px 2px rgba(12, 20, 36, 0.04);
   --shadow: 0 1px 3px rgba(12, 20, 36, 0.06), 0 1px 2px rgba(12, 20, 36, 0.03);
   --shadow-lg: 0 18px 48px rgba(12, 20, 36, 0.16), 0 4px 12px rgba(12, 20, 36, 0.06);
-  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --serif: "Newsreader", Georgia, "Times New Roman", serif;
+  --font: "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --serif: "Roboto Slab", Rockwell, Georgia, serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   --spring: cubic-bezier(0.32, 0.72, 0, 1);
@@ -155,7 +155,7 @@
 html { -webkit-text-size-adjust: 100%; scroll-padding-top: 84px; }
 body {
   margin: 0; background: var(--canvas); color: var(--fg);
-  font: 15px/1.55 var(--font); font-feature-settings: "cv05", "cv11";
+  font: 15px/1.55 var(--font);
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
 }
 a { color: var(--link); text-decoration: none; }
@@ -210,7 +210,7 @@ body.scrolled .topbar { box-shadow: 0 1px 0 var(--border), 0 8px 24px rgba(12, 2
 :root[data-theme="dark"] body.scrolled .topbar { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
 .topbar-inner { display: flex; align-items: center; gap: 30px; min-height: 64px; }
 /* Loggan: Kvartal-symbolen (en cirkel i fyra delar, senaste kvartalet i blått) och namnet */
-.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 750; font-size: 20px; line-height: 1; letter-spacing: -0.035em; color: var(--logo-ink); flex: none; }
+.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 750; font-size: 20px; line-height: 1; letter-spacing: -0.02em; color: var(--logo-ink); flex: none; }
 .brand-mark { width: 1.45em; height: 1.45em; flex: none; fill: var(--logo-ink); transition: transform 0.6s var(--ease); }
 .brand-mark .bm-a { fill: var(--logo-dot); }
 .brand:hover { text-decoration: none; }
@@ -303,11 +303,11 @@ body.sheet-open { overflow: hidden; }
 
 .subbar { background: var(--bg); border-bottom: 1px solid var(--border); }
 .subbar-inner { display: flex; justify-content: space-between; align-items: center; gap: 8px 20px; flex-wrap: wrap; min-height: 56px; padding-top: 8px; padding-bottom: 8px; font-size: 13.5px; }
-.summary { color: var(--fg-muted); text-align: right; }
+.summary { color: var(--fg-muted); }
 .filter-on { display: inline-block; font-size: 12px; font-weight: 650; color: var(--brand-ink); background: var(--brand-soft); border-radius: 999px; padding: 1px 9px; margin-left: 2px; }
 .summary b { color: var(--fg); font-weight: 650; }
 .summary .pos, .summary .neg { font-weight: 700; }
-.subbar-controls { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; }
+.subbar-controls { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; margin-left: auto; }
 .filter-label { font-size: 11.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--fg-muted); margin-right: -6px; }
 #marketSwitch .seg-btn { padding: 6px 16px; font-size: 14px; }
 /* Av/på-knapp i iOS-stil för indexfonderna */
@@ -345,7 +345,7 @@ body.sheet-open { overflow: hidden; }
 
 main { padding-top: 36px; padding-bottom: 64px; outline: none; min-height: 60vh; }
 .page-head { margin-bottom: 26px; display: flex; flex-direction: column; gap: 10px; }
-.page-head > h1 { font-size: 42px; line-height: 1.08; letter-spacing: -0.018em; }
+.page-head > h1 { font-size: 42px; line-height: 1.08; letter-spacing: -0.01em; }
 .page-head .meta { color: var(--fg-muted); font-size: 14.5px; max-width: 75ch; }
 .page-head .lead { margin-top: 2px; }
 .crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: 13px; color: var(--fg-muted); }
@@ -390,7 +390,7 @@ main { padding-top: 36px; padding-bottom: 64px; outline: none; min-height: 60vh;
 .figures div + div::before { content: ""; position: absolute; left: 0; top: 16px; bottom: 16px; width: 1px; background: var(--border); }
 .figures div:first-child { padding-left: 0; }
 .figures dt { font-size: 11.5px; color: var(--fg-muted); font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; }
-.figures dd { margin: 6px 0 0; font-size: 25px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.15; }
+.figures dd { margin: 6px 0 0; font-size: 25px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
 .fig-note { display: block; font-size: 12.5px; color: var(--fg-muted); margin-top: 4px; }
 
 .highlights { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 32px; border-top: 1.5px solid var(--fg); }
@@ -559,7 +559,7 @@ a.btn { color: var(--fg-soft); }
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
 .hero-text { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
 .hero .kicker { margin-bottom: 16px; }
-.hero h1 { font-size: 46px; line-height: 1.06; letter-spacing: -0.018em; margin-bottom: 18px; }
+.hero h1 { font-size: 46px; line-height: 1.06; letter-spacing: -0.01em; margin-bottom: 18px; }
 .hero h1 a { color: inherit; background: linear-gradient(currentColor, currentColor) 0 100% / 0 1.5px no-repeat; transition: background-size 0.45s var(--spring), color 0.2s; }
 .hero h1 a:hover { text-decoration: none; background-size: 100% 1.5px; }
 .hero .intro { margin: 0; font-size: 16.5px; line-height: 1.6; max-width: 54ch; color: var(--fg-soft); }
@@ -569,7 +569,7 @@ a.btn { color: var(--fg-soft); }
 .hero-figure { min-width: 0; }
 .hf-label { font-size: 12.5px; font-weight: 650; color: var(--fg-soft); }
 .hf-label span { font-weight: 450; color: var(--fg-muted); }
-.hf-value { font-size: 58px; font-weight: 700; letter-spacing: -0.045em; line-height: 1.02; margin: 6px 0 8px; font-variant-numeric: tabular-nums; font-feature-settings: "tnum", "ss01", "cv05"; }
+.hf-value { font-size: 58px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.02; margin: 6px 0 8px; font-variant-numeric: tabular-nums; }
 .hf-note { font-size: 13.5px; color: var(--fg-muted); margin-bottom: 14px; min-height: 1.5em; }
 .hf-sk { height: 12px; margin: 6px 0 16px; }
 .hero-figure .chart { margin: 0 -4px; }
@@ -580,6 +580,19 @@ a.btn { color: var(--fg-soft); }
 .hero-stats dt { order: 2; font-size: 12.5px; color: var(--fg-muted); }
 .hero-stats div { display: flex; flex-direction: column; }
 .hero-stats dd { order: 1; }
+
+/* Kvartalsrapporten i liten form överst på startsidan */
+.rep-card { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 18px 32px; flex-wrap: wrap; padding: 20px 24px; border-radius: 20px; background: var(--glass); box-shadow: var(--glass-shadow); }
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .rep-card { backdrop-filter: saturate(170%) blur(24px); -webkit-backdrop-filter: saturate(170%) blur(24px); }
+}
+.rc-main { min-width: 0; flex: 1 1 420px; display: flex; flex-direction: column; gap: 6px; }
+.rc-title { font-family: var(--serif); font-size: 24px; font-weight: 600; line-height: 1.2; color: var(--fg); text-wrap: balance; }
+.rc-title:hover { color: var(--brand-ink); text-decoration: none; }
+.rc-meta { font-size: 14px; color: var(--fg-muted); }
+.rc-meta b { font-weight: 700; }
+.rc-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.rc-controls .select-sm { font-weight: 600; }
 
 /* Signalmoduler: insynshandel, dubbelsignal, blankning och räntor */
 .modules { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
@@ -597,7 +610,7 @@ a.mod-n:hover { color: var(--link); text-decoration: none; }
 .mod-s { display: block; font-size: 11.5px; color: var(--fg-muted); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mod-v { flex: none; font-weight: 700; font-size: 13.5px; }
 .mod-big { display: flex; align-items: baseline; gap: 10px; margin: 2px 0 8px; }
-.mod-big b { font-size: 34px; font-weight: 700; letter-spacing: -0.04em; }
+.mod-big b { font-size: 34px; font-weight: 700; letter-spacing: -0.025em; }
 .spark { display: block; width: 100%; height: 44px; margin: 4px 0 10px; }
 .spark path { fill: none; stroke: var(--brand); stroke-width: 1.75; stroke-linejoin: round; stroke-linecap: round; }
 .spark .spark-area { fill: url(#sparkFill); stroke: none; }
@@ -795,7 +808,7 @@ table.cmp-table thead th { font-size: 13px; color: var(--fg); text-transform: no
 .report p { line-height: 1.7; }
 .rep-head { display: flex; align-items: baseline; gap: 16px; padding-top: 18px; margin-bottom: 18px; border-top: 1.5px solid var(--fg); }
 .rep-num { font-family: var(--serif); font-size: 15px; font-weight: 600; color: var(--brand-ink); font-variant-numeric: lining-nums tabular-nums; flex: none; }
-.rep-head h2 { font-family: var(--serif); font-size: 30px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.15; }
+.rep-head h2 { font-family: var(--serif); font-size: 30px; font-weight: 600; letter-spacing: -0.008em; line-height: 1.15; }
 .rep-head .desc { margin-top: 6px; font-size: 15px; color: var(--fg-soft); max-width: 75ch; }
 .rep-col h3 { font-size: 11.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--fg-muted); margin: 0 0 8px; }
 .highlights.hl-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -942,6 +955,12 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .subbar-inner { min-height: 0; padding-top: 10px; padding-bottom: 10px; font-size: 13px; gap: 8px; }
   .subbar-controls { width: 100%; justify-content: space-between; margin-left: 0; }
   .filter-label { display: none; }
+  .rep-card { padding: 18px; border-radius: 18px; }
+  .rc-title { font-size: 21px; }
+  .rc-controls { width: 100%; }
+  .rc-controls .seg { flex: 1 1 auto; }
+  .rc-controls .seg-btn { flex: 1; }
+  .rc-controls .btn { flex: 1 1 100%; }
   .summary { text-align: left; }
   /* Startsidan och rapporten visar samma siffror i toppen, så sammanfattningen behövs inte där på mobil */
   body[data-page="oversikt"] .summary, body[data-page="rapport"] .summary { display: none; }
