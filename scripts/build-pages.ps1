@@ -851,6 +851,15 @@ function StreakList($stockList, $qi, $sign) {
   return @($out | Sort-Object @{ Expression = "n"; Descending = $true }, @{ Expression = { [math]::Abs($_.sum) }; Descending = $true })
 }
 function LcWord($s) { if ($s -ceq $s.ToUpperInvariant()) { return $s }; return $s.ToLowerInvariant() }
+# Kvartalets rubrik, samma som quarterHeadline() i app.js
+function QuarterHeadline($cont, $buys, $sells) {
+  $by = @{}
+  foreach ($s in $cont) { if ($s.sector -and $s.sector -ne "Övrigt") { $by[$s.sector] = [double]$by[$s.sector] + $s.flow } }
+  $secs = @($by.Keys | Sort-Object { $by[$_] } -Descending)
+  if (-not $secs.Count) { return "Fondernas affärer" }
+  if ($by[$secs[0]] -gt 0) { return "Fonderna köpte " + (LcWord $secs[0]) + $(if ($buys.Count) { " och mest av allt " + $buys[0].name } else { "" }) }
+  return "Fonderna sålde " + (LcWord $secs[-1]) + $(if ($sells.Count) { " och mest av allt " + $sells[0].name } else { "" })
+}
 $slugByIsin = @{}
 foreach ($s in $pageStocks) { $slugByIsin[$s.isin] = $s.slug }
 function IsinUrl($isin) { if ($slugByIsin.ContainsKey($isin)) { return "/aktie/$($slugByIsin[$isin])/" }; return "/#/aktie/$isin" }
@@ -1011,7 +1020,7 @@ for ($ri = 0; $ri -lt $reportQs.Count; $ri++) {
   $sectors = @($by.Keys | Sort-Object { $by[$_] } -Descending)
   $topLinks = { param($list) JoinSv @($list | Select-Object -First 3 | ForEach-Object { (A (IsinUrl $_.isin) $_.name) + " (" + (BigSek $_.flow -Sign) + ")" }) }
 
-  $headline = $(if ($sectors.Count) { "Fonderna köpte " + (LcWord $sectors[0]) } else { "Fondernas affärer" }) + $(if ($buys.Count) { " och mest av allt " + $buys[0].name } else { "" })
+  $headline = QuarterHeadline $cont $buys $sells
   $paras = @("Svenska fonder " + $(if ($net -ge 0) { "nettoköpte" } else { "nettosålde" }) + " svenska aktier för <b>" + (BigSek ([math]::Abs($net))) + "</b> under " + $repQL +
     ". Jämförelsen gäller " + (Num0 $qd.tFunds) + " fonder som rapporterade både " + $repPL + " och " + $repQL + ".")
   if ($buys.Count) { $paras += "Mest köpte fonderna " + (& $topLinks $buys) + "." }
@@ -1099,7 +1108,7 @@ for ($ri = 0; $ri -lt $reportQs.Count; $ri++) {
   $countries = @($byCountry.Keys | Sort-Object { $byCountry[$_] } -Descending)
   $wLink = { param($s) (A "/#/aktie/$($s.isin)" $s.name) + " (" + (BigSek $s.flow -Sign) + ")" }
 
-  $headline = $(if ($sectors.Count) { "Fonderna köpte " + (LcWord $sectors[0]) } else { "Fondernas affärer" }) + $(if ($buys.Count) { " och mest av allt " + $buys[0].name } else { "" })
+  $headline = QuarterHeadline $cont $buys $sells
   $paras = @("Svenska fonder " + $(if ($net -ge 0) { "nettoköpte" } else { "nettosålde" }) + " utländska aktier för <b>" + (BigSek ([math]::Abs($net))) + "</b> under " + $repQL +
     ". Jämförelsen gäller " + (Num0 $wq.tFunds) + " fonder som rapporterade både " + $repPL + " och " + $repQL + ".")
   if ($buys.Count) { $paras += "Mest köpte fonderna " + (JoinSv @($buys | Select-Object -First 3 | ForEach-Object { & $wLink $_ })) + "." }
@@ -1370,13 +1379,59 @@ Page "integritet/" "integritet" "Integritet och villkor | Fondinsyn" "Hur Fondin
 Page "oppen-data/" "data" "Data och API – ladda ner fonddata | Fondinsyn" "Var Fondinsyns data kommer ifrån, hur ofta den uppdateras och hur du laddar ner den som CSV eller JSON. Öppna data från Finansinspektionen." $defaultImg ('<div class="text-page">' + $odContent + '</div>') -Crumbs @("Data och API", "oppen-data/") -Keep
 Write-Host "  öppen data: $($fileStocks.rows) aktier, $($fileFunds.rows) fonder, $($fileHold.rows) innehav"
 
+# ---------- Startsidans moduler och marknadsremsan: data/front.json ----------
+# En liten fil med det startsidan och remsan överst behöver, så att de inte hämtar de stora datafilerna.
+$front = New-Object System.Collections.Generic.List[string]
+$front.Add('"q":' + (J $Q) + ',"ql":' + (J $QL) + ',"net":' + [math]::Round([double]$tNet).ToString($Inv))
+$mkt = $null
+try { if (Test-Path (Join-Path $DataDir "rates-market.json")) { $mkt = ReadJson "rates-market.json" } } catch { }
+if ($mkt) {
+  $rs = foreach ($id in @("SECBREPOEFF", "SEGVB10YC", "SEMB5YCACOMB", "SEGVB2YC")) {
+    $ser = $mkt.series.$id
+    if (-not $ser -or -not $ser.points.Count) { continue }
+    $pts = @($ser.points); $lp = $pts[-1]
+    $yearAgoDate = ([datetime]::ParseExact([string]$lp[0], "yyyy-MM-dd", $Inv)).AddDays(-365).ToString("yyyy-MM-dd")
+    $ya = @($pts | Where-Object { [string]$_[0] -le $yearAgoDate } | Select-Object -Last 1)
+    $chg = if ($ya.Count) { [double]$lp[1] - [double]$ya[0][1] } else { $null }
+    # De senaste 52 veckorna för en liten kurva
+    $spark = (@($pts | Select-Object -Last 52 | ForEach-Object { ([double]$_[1]).ToString("0.###", $Inv) })) -join ","
+    "[" + (J $id) + "," + (J $ser.label) + "," + ([double]$lp[1]).ToString("0.###", $Inv) + "," + (J ([string]$lp[0])) + "," + $(if ($null -eq $chg) { "null" } else { $chg.ToString("0.###", $Inv) }) + ",[" + $spark + "]]"
+  }
+  $front.Add('"rates":[' + (@($rs) -join ",") + "]")
+}
+if ($ratesLight) { $front.Add('"bonds":[' + [math]::Round([double]$ratesLight.totals[1]).ToString($Inv) + "," + [math]::Round([double]$ratesLight.totals[2]).ToString($Inv) + "]") }
+if ($insider) {
+  $since30 = (Get-Date).AddDays(-30).ToString("yyyy-MM-dd"); $since14 = (Get-Date).AddDays(-14).ToString("yyyy-MM-dd")
+  $b30 = 0.0; $n30 = 0; $s30 = 0.0
+  foreach ($r in $insider.rows) { if ([string]$r[0] -ge $since30 -and $null -ne $r[11]) { if ($r[7] -eq "Förvärv") { $b30 += [double]$r[11]; $n30++ } elseif ($r[7] -eq "Avyttring") { $s30 += [double]$r[11] } } }
+  $big = @($insider.rows | Where-Object { $_[7] -eq "Förvärv" -and $null -ne $_[11] -and [double]$_[11] -ge 1e6 -and [string]$_[1] -ge $since14 } | Sort-Object { -[double]$_[11] } | Select-Object -First 12)
+  $bigJ = foreach ($r in $big) { "[" + (J $r[2]) + "," + (J $r[3]) + "," + (J (([string]$r[4]) -replace '\s+', ' ')) + "," + (J (([string]$r[5]) -replace '\s+', ' ')) + "," + [math]::Round([double]$r[11]).ToString($Inv) + "," + (J ([string]$r[0])) + "]" }
+  $front.Add('"insider":{"buy30":' + [math]::Round($b30).ToString($Inv) + ',"sell30":' + [math]::Round($s30).ToString($Inv) + ',"n30":' + $n30 + ',"top":[' + (@($bigJ) -join ",") + "]}")
+}
+if ($dBuy) {
+  $dj = foreach ($x in @($dBuy | Sort-Object net -Descending | Select-Object -First 6)) { "[" + (J $x.s.name) + "," + (J $x.s.isin) + "," + [math]::Round([double]$x.s.flow).ToString($Inv) + "," + [math]::Round([double]$x.net).ToString($Inv) + "]" }
+  $front.Add('"double":{"buy":' + $dBuy.Count + ',"sell":' + $dSell.Count + ',"top":[' + (@($dj) -join ",") + "]}")
+}
+try {
+  $sh = ReadJson "shorts.json"
+  $shTop = foreach ($a in @($sh.aggregate | Sort-Object { -[double]$_[2] } | Select-Object -First 6)) { "[" + (J $a[0]) + "," + (J $a[1]) + "," + ([double]$a[2]).ToString("0.##", $Inv) + "]" }
+  $front.Add('"shorts":[' + (@($shTop) -join ",") + "]")
+} catch { }
+$front.Add('"built":' + (J (Get-Date -Format "yyyy-MM-dd HH:mm")))
+Save "data/front.json" ("{" + ($front -join ",") + "}")
+
 # Startsidan och 404
 # Samma topp som introBlock() i app.js, så att sidan inte hoppar när appen tar över
-$intro = '<section class="hero"><div class="hero-text"><h1>Svenska fonders köp och sälj</h1>' +
-  '<p class="hero-sub">' + $QL + " jämfört med " + (QLabel ([string]$qMeta.prevId)) + ", innehav den " + $asOf + "</p>" +
-  '<p class="intro">Varje kvartal rapporterar fondbolagen alla sina innehav till Finansinspektionen. Fondinsyn räknar ut vad fonderna har köpt och sålt, ' +
-  "per aktie, fond och fondbolag, med historik sedan 2018. Här finns också avgifter, blankning och uppköp.</p>" +
-  '<div class="hero-links"><a class="btn btn-primary" href="/rapport/' + (ReportSlug $Q) + '/">Läs kvartalsrapporten</a><a class="btn" href="/#/om">Om datan</a></div></div>' +
+$introCont = @($cur.stocks | Where-Object { $_.price -and $null -ne $_.netFlow })
+$introBuys = @($introCont | Where-Object { $_.flow -gt 0 } | Sort-Object flow -Descending)
+$introSells = @($introCont | Where-Object { $_.flow -lt 0 } | Sort-Object flow)
+$introDeck = "Svenska fonder " + $(if ($tNet -ge 0) { "nettoköpte" } else { "nettosålde" }) + " svenska aktier för <b>" + (BigSek ([math]::Abs($tNet))) + "</b> under $QL." +
+  $(if ($introBuys.Count) { " Mest köpte de " + (JoinSv @($introBuys | Select-Object -First 3 | ForEach-Object { A (IsinUrl $_.isin) $_.name })) + "." } else { "" })
+$intro = '<section class="hero"><div class="hero-text"><p class="kicker">Kvartalsrapport ' + $QL + '</p>' +
+  '<h1><a href="/rapport/' + (ReportSlug $Q) + '/">' + (Esc (QuarterHeadline $introCont $introBuys $introSells)) + '</a></h1>' +
+  '<p class="intro">' + $introDeck + '</p>' +
+  '<p class="hero-sub">' + (Num0 $tFunds) + " fonders innehav den " + $asOf + " jämfört med " + (QLabel ([string]$qMeta.prevId)) + ". Källa: Finansinspektionen.</p>" +
+  '<div class="hero-links"><a class="btn btn-primary" href="/rapport/' + (ReportSlug $Q) + '/">Läs kvartalsrapporten</a><a class="btn" href="/aktier/">Alla aktier</a></div></div>' +
   '<div class="hero-side"><dl class="hero-kpis">' + (Fig "Nettoköp svenska aktier" (Colored $tNet (BigSek $tNet -Sign))) + (Fig "Fonder som jämförs" (Num0 $tFunds)) +
   (Fig "Svenska aktier" (Num0 $tHeld)) + (Fig "Fondernas innehav" (BigSek $tValue)) + "</dl>" +
   '<div class="hero-chart"><div class="chart-title">Nettoköp per kvartal <span>svenska aktier, mdkr</span></div><div class="sk sk-chart"></div></div></div></section>'

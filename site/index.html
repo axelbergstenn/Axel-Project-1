@@ -4,21 +4,21 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Fondinsyn – vad köper och säljer svenska fonder?</title>
-  <meta name="description" content="Insyn i svenska fonder: vilka aktier de köper och säljer, vad de kostar, hur lika de är och vilka bolag de ägde när uppköpsbud kom. Baserat på Finansinspektionens öppna data.">
+  <meta name="description" content="Insyn i svenska fonder: vilka aktier och obligationer de köper och säljer, vad de kostar, insynshandel, blankning och uppköp. Baserat på Finansinspektionens öppna data.">
   <link rel="canonical" href="https://www.fondinsyn.se/">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Fondinsyn">
   <meta property="og:locale" content="sv_SE">
   <meta property="og:url" content="https://www.fondinsyn.se/">
   <meta property="og:title" content="Fondinsyn">
-  <meta property="og:description" content="Insyn i svenska fonder: köp och sälj, avgifter, överlapp och uppköp. Baserat på Finansinspektionens öppna data.">
+  <meta property="og:description" content="Insyn i svenska fonder: köp och sälj i aktier och obligationer, avgifter, insynshandel, blankning och uppköp. Baserat på Finansinspektionens öppna data.">
   <meta property="og:image" content="https://www.fondinsyn.se/og/fondinsyn.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="theme-color" content="#ffffff">
   <meta name="color-scheme" content="light dark">
-  <script>try { if (localStorage.getItem("ff-theme") === "dark") { document.documentElement.setAttribute("data-theme", "dark"); document.querySelector('meta[name="theme-color"]').setAttribute("content", "#0b0f15"); } } catch (e) {}</script>
+  <script>try { if (localStorage.getItem("ff-theme") === "dark") { document.documentElement.setAttribute("data-theme", "dark"); document.querySelector('meta[name="theme-color"]').setAttribute("content", "#0d1117"); } } catch (e) {}</script>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230B1F3A'/%3E%3Cg transform='translate(5 5) scale(.6875)'%3E%3Cpath d='M17.5 2.08A14 14 0 0 1 29.92 14.5H17.5Z' fill='%234D84FF'/%3E%3Cpath d='M29.92 17.5A14 14 0 0 1 17.5 29.92V17.5ZM14.5 29.92A14 14 0 0 1 2.08 17.5H14.5ZM2.08 14.5A14 14 0 0 1 14.5 2.08V14.5Z' fill='%23fff'/%3E%3C/g%3E%3C/svg%3E">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
@@ -26,9 +26,17 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Fondinsyn">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="preload" href="assets/fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/newsreader-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="assets/style.css?v=__VERSION__">
 </head>
 <body>
+  <a class="skip-link" href="#app">Hoppa till innehållet</a>
+
+  <div class="ticker" aria-label="Marknaden i dag">
+    <div class="container ticker-inner" id="ticker"><span class="tk-placeholder"></span></div>
+  </div>
+
   <header class="topbar">
     <div class="container topbar-inner">
       <a class="brand" href="#/" aria-label="Fondinsyn, till översikten">
@@ -39,19 +47,12 @@
         <a href="#/aktier" data-nav="aktier">Aktier</a>
         <a href="#/fonder" data-nav="fonder">Fonder</a>
         <a href="#/rantor" data-nav="rantor">Räntor</a>
-        <a href="#/forvaltare" data-nav="forvaltare">Förvaltare</a>
-        <a href="#/avgifter" data-nav="avgifter">Avgifter</a>
-        <a href="#/blankning" data-nav="blankning">Blankning</a>
         <a href="#/insyn" data-nav="insyn">Insyn</a>
-        <a href="#/uppkop" data-nav="uppkop">Uppköp</a>
-        <button type="button" class="more-btn" id="moreBtn" aria-expanded="false" aria-haspopup="true" aria-controls="moreMenu">
-          Mer <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
       </nav>
       <div class="topbar-right">
-        <button type="button" class="search-btn" id="searchBtn" aria-label="Sök aktie eller fond (Ctrl K)">
+        <button type="button" class="search-btn" id="searchBtn" aria-label="Sök aktie, fond eller emittent (Ctrl K)">
           <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.75" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-          <span class="search-btn-text">Sök aktie, fond eller fondbolag</span><kbd>Ctrl K</kbd>
+          <span class="search-btn-text">Sök aktie, fond, emittent</span><kbd>Ctrl K</kbd>
         </button>
         <button type="button" class="icon-btn theme-btn" id="themeBtn" aria-label="Byt till mörkt läge" title="Mörkt läge">
           <svg class="i-moon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
@@ -59,6 +60,9 @@
         </button>
         <label class="visually-hidden" for="quarter">Kvartal</label>
         <select id="quarter" class="select-sm quarter-select" disabled><option>Laddar…</option></select>
+        <button type="button" class="menu-btn" id="moreBtn" aria-expanded="false" aria-haspopup="true" aria-controls="moreMenu">
+          <span class="menu-icon" aria-hidden="true"><i></i><i></i><i></i></span><span class="menu-label">Meny</span>
+        </button>
       </div>
     </div>
   </header>
@@ -82,11 +86,11 @@
     <div class="container footer-inner">
       <div class="footer-brand">
         <a class="brand" href="#/" aria-label="Fondinsyn, till översikten"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path class="bm-a" d="M17.5 2.08A14 14 0 0 1 29.92 14.5H17.5Z"/><path d="M29.92 17.5A14 14 0 0 1 17.5 29.92V17.5Z"/><path d="M14.5 29.92A14 14 0 0 1 2.08 17.5H14.5Z"/><path d="M2.08 14.5A14 14 0 0 1 14.5 2.08V14.5Z"/></svg><span class="brand-word">Fondinsyn</span></a>
-        <p>Vad svenska fonder äger, köper och säljer. Byggt på Finansinspektionens öppna data och uppdaterat varje dag.</p>
+        <p>Vart svenska fondpengar tar vägen: aktier och obligationer, insynshandel, blankning och uppköp. Fritt, oberoende och uppdaterat varje morgon.</p>
       </div>
       <nav class="footer-links" aria-label="Sidfot">
         <div>
-          <h2>Utforska</h2>
+          <h2>Marknaden</h2>
           <a href="#/aktier">Aktier</a>
           <a href="#/fonder">Fonder</a>
           <a href="#/rantor">Räntor</a>
@@ -94,13 +98,18 @@
           <a href="#/rapport">Kvartalsrapport</a>
         </div>
         <div>
+          <h2>Signaler</h2>
+          <a href="#/insyn">Insynshandel</a>
+          <a href="#/dubbelsignal">Dubbelsignal</a>
+          <a href="#/blankning">Blankning</a>
+          <a href="#/uppkop">Uppköp</a>
+        </div>
+        <div>
           <h2>Verktyg</h2>
           <a href="#/portfolj">Min portfölj</a>
           <a href="#/jamfor">Jämför fonder</a>
-          <a href="#/avgifter">Avgifter</a>
-          <a href="#/blankning">Blankning</a>
-          <a href="#/insyn">Insynshandel</a>
-          <a href="#/dubbelsignal">Dubbelsignal</a>
+          <a href="#/avgifter">Avgiftskollen</a>
+          <a href="#/forvaltare">Kända förvaltare</a>
         </div>
         <div>
           <h2>Om</h2>
@@ -113,7 +122,8 @@
       </nav>
     </div>
     <div class="container footer-bottom">
-      <span>Källa: <a href="https://www.fi.se/sv/vara-register/fondinnehav-per-kvartal/" rel="noopener" target="_blank">Finansinspektionen</a></span>
+      <span>© 2026 Fondinsyn</span>
+      <span>Källor: <a href="https://www.fi.se/sv/vara-register/fondinnehav-per-kvartal/" rel="noopener" target="_blank">Finansinspektionen</a>, <a href="https://www.riksbank.se/" rel="noopener" target="_blank">Riksbanken</a> och <a href="https://www.pensionsmyndigheten.se/" rel="noopener" target="_blank">Pensionsmyndigheten</a></span>
       <span id="updated"></span>
       <span>Inte investeringsrådgivning.</span>
     </div>
@@ -138,25 +148,45 @@
     </button>
     <button type="button" id="moreBtnM" aria-expanded="false" aria-haspopup="true" aria-controls="moreMenu">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-      <span>Mer</span>
+      <span>Meny</span>
     </button>
   </nav>
   <div class="sheet-backdrop" id="moreBackdrop" hidden></div>
-  <div class="more-menu" id="moreMenu" hidden>
+  <div class="mega" id="moreMenu" hidden>
     <div class="sheet-handle" aria-hidden="true"></div>
-    <a class="m-only" href="#/rantor" data-nav="rantor"><b>Räntor</b><span>Marknadsräntor och vad räntefonderna äger</span></a>
-    <a class="m-only" href="#/forvaltare" data-nav="forvaltare"><b>Kända förvaltare</b><span>Vad de populära fonderna gör</span></a>
-    <a class="m-only" href="#/avgifter" data-nav="avgifter"><b>Avgifter</b><span>Indexnära fonder och vad de kostar</span></a>
-    <a class="m-only" href="#/blankning" data-nav="blankning"><b>Blankning</b><span>Vilka aktier som blankas</span></a>
-  <a class="m-only" href="#/insyn" data-nav="insyn"><b>Insynshandel</b><span>Vd:ar och styrelser som köper och säljer</span></a>
-    <a class="m-only" href="#/uppkop" data-nav="uppkop"><b>Uppköp</b><span>Bud och vilka fonder som ägde bolagen</span></a>
-    <a href="#/dubbelsignal" data-nav="dubbelsignal"><b>Dubbelsignal</b><span>När både fonder och insiders köper</span></a>
-    <a href="#/portfolj" data-nav="portfolj"><b>Min portfölj</b><span>Se vad dina fonder äger</span></a>
-    <a href="#/jamfor" data-nav="jamfor"><b>Jämför fonder</b><span>Hur lika är två fonder?</span></a>
-    <a href="#/rapport" data-nav="rapport"><b>Kvartalsrapport</b><span>Kvartalet i korthet</span></a>
-    <a href="#/ordlista" data-nav="ordlista"><b>Frågor &amp; ordlista</b><span>Begreppen förklarade</span></a>
-  <a href="/oppen-data/"><b>Data och API</b><span>Källor, uppdatering och nedladdning</span></a>
-    <a href="#/kontakt" data-nav="kontakt"><b>Kontakt</b><span>Frågor, tips och synpunkter</span></a>
+    <div class="container mega-inner">
+      <div class="mega-col">
+        <h2>Marknaden</h2>
+        <a href="#/" data-nav="oversikt" class="m-only"><b>Översikt</b><span>Kvartalet, signaler och räntor</span></a>
+        <a href="#/aktier" data-nav="aktier"><b>Aktier</b><span>Vad fonderna äger, köper och säljer</span></a>
+        <a href="#/fonder" data-nav="fonder"><b>Fonder</b><span>Innehav, avgifter och affärer</span></a>
+        <a href="#/rantor" data-nav="rantor"><b>Räntor</b><span>Marknadsräntor och räntefonder</span></a>
+        <a href="#/fondbolag" data-nav="fondbolag"><b>Fondbolag</b><span>Alla bolag och deras fonder</span></a>
+        <a href="#/rapport" data-nav="rapport"><b>Kvartalsrapport</b><span>Kvartalet i korthet</span></a>
+      </div>
+      <div class="mega-col">
+        <h2>Signaler</h2>
+        <a href="#/insyn" data-nav="insyn"><b>Insynshandel</b><span>Vd:ar och styrelser som köper och säljer</span></a>
+        <a href="#/dubbelsignal" data-nav="dubbelsignal"><b>Dubbelsignal</b><span>När både fonder och insiders köper</span></a>
+        <a href="#/blankning" data-nav="blankning"><b>Blankning</b><span>Vilka aktier som blankas</span></a>
+        <a href="#/uppkop" data-nav="uppkop"><b>Uppköp</b><span>Bud och vilka fonder som ägde bolagen</span></a>
+      </div>
+      <div class="mega-col">
+        <h2>Verktyg</h2>
+        <a href="#/portfolj" data-nav="portfolj"><b>Min portfölj</b><span>Se vad dina fonder äger</span></a>
+        <a href="#/jamfor" data-nav="jamfor"><b>Jämför fonder</b><span>Hur lika är två fonder?</span></a>
+        <a href="#/avgifter" data-nav="avgifter"><b>Avgiftskollen</b><span>Indexnära fonder och vad de kostar</span></a>
+        <a href="#/forvaltare" data-nav="forvaltare"><b>Kända förvaltare</b><span>Vad de populära fonderna gör</span></a>
+      </div>
+      <div class="mega-col mega-about">
+        <h2>Om Fondinsyn</h2>
+        <a href="#/om" data-nav="om"><b>Om datan och metoden</b></a>
+        <a href="/oppen-data/" data-nav="data"><b>Data och API</b></a>
+        <a href="#/ordlista" data-nav="ordlista"><b>Ordlista och vanliga frågor</b></a>
+        <a href="/integritet/" data-nav="integritet"><b>Integritet och villkor</b></a>
+        <a href="#/kontakt" data-nav="kontakt"><b>Kontakt</b></a>
+      </div>
+    </div>
   </div>
 
   <div class="search-modal" id="searchModal" hidden>
@@ -164,7 +194,7 @@
     <div class="search-panel" role="dialog" aria-modal="true" aria-label="Sök">
       <div class="search-field">
         <svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.75" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-        <input id="searchInput" class="search-input" type="search" placeholder="Sök aktie, ISIN eller fond" autocomplete="off" aria-controls="searchResults">
+        <input id="searchInput" class="search-input" type="search" placeholder="Sök aktie, ISIN, fond eller emittent" autocomplete="off" aria-controls="searchResults">
         <button type="button" class="search-close" data-search-close aria-label="Stäng">Esc</button>
       </div>
       <ul id="searchResults" class="search-results" role="listbox"></ul>

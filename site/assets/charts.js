@@ -43,6 +43,9 @@
   }
 
   function setup(container, height) {
+    // Första gången diagrammet ritas animeras det fram, inte när det ritas om efter att fönstret ändrat storlek
+    var fresh = !container.hasAttribute("data-drawn");
+    container.setAttribute("data-drawn", "");
     container.innerHTML = "";
     container.style.position = "relative";
     var w = Math.max(240, container.clientWidth);
@@ -52,7 +55,7 @@
     tip.className = "chart-tip";
     tip.hidden = true;
     container.appendChild(tip);
-    return { svg: svg, w: w, h: height, tip: tip };
+    return { svg: svg, w: w, h: height, tip: tip, fresh: fresh };
   }
 
   function showTip(ctx, html, x, y) {
@@ -118,7 +121,7 @@
 
     grid(ctx, m, scale, y);
     var hl = el("rect", { x: 0, y: m.t, width: band, height: ih, "class": "c-hover", visibility: "hidden" }, ctx.svg);
-    var g = el("g", {}, ctx.svg);
+    var g = el("g", ctx.fresh ? { "class": "rise" } : {}, ctx.svg);
     points.forEach(function (p, i) {
       if (p.value == null) return;
       var d = barPath(xAt(i) - bw / 2, y(0), y(p.value), bw);
@@ -164,7 +167,7 @@
     if (first >= 0) {
       a = d + "L" + xAt(last).toFixed(1) + "," + y(0) + "L" + xAt(first).toFixed(1) + "," + y(0) + "Z";
       el("path", { d: a, "class": "c-area" }, ctx.svg);
-      el("path", { d: d, "class": "c-line" }, ctx.svg);
+      el("path", ctx.fresh ? { d: d, "class": "c-line draw", pathLength: 1 } : { d: d, "class": "c-line" }, ctx.svg);
       var lp = points[last];
       el("circle", { cx: xAt(last), cy: y(lp.value), r: 4.5, "class": "c-dot" }, ctx.svg);
       text(ctx.svg, xAt(last) + 8, y(lp.value) + 4, opts.format ? opts.format(lp.value) : fmtTick(lp.value), "c-label");
@@ -282,7 +285,7 @@
     series.forEach(function (s) {
       var d = "";
       s.points.forEach(function (p, i) { d += (i ? "L" : "M") + x(p.t).toFixed(1) + "," + y(p.v).toFixed(1); });
-      el("path", { d: d, "class": "c-series " + s.cls }, ctx.svg);
+      el("path", ctx.fresh ? { d: d, "class": "c-series draw " + s.cls, pathLength: 1 } : { d: d, "class": "c-series " + s.cls }, ctx.svg);
       var lp = s.points[s.points.length - 1];
       if (lp) { el("circle", { cx: x(lp.t), cy: y(lp.v), r: 4, "class": "c-end " + s.cls }, ctx.svg); ends.push({ s: s, p: lp, y: y(lp.v) }); }
     });
