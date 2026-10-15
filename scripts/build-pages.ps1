@@ -283,7 +283,7 @@ function FundUrl($id) { $fi = $infoById[$id]; if ($fi) { return "/fond/$($fi.slu
 function CoUrl($co) { if ($companies.ContainsKey($co)) { return "/fondbolag/$($companies[$co].slug)/" }; return "/#/fondbolag/" + [uri]::EscapeDataString($co) }
 
 # Gamla sidor tas bort så att aktier och fonder som försvunnit inte ligger kvar
-foreach ($dir in @("aktie", "fond", "fondbolag", "aktier", "fonder", "ordlista", "rapport", "og", "data/fund", "data/hist", "data/csv", "oppen-data", "data/insyn", "data/rf", "data/re", "rantor", "emittent")) {
+foreach ($dir in @("aktie", "fond", "fondbolag", "aktier", "fonder", "ordlista", "rapport", "og", "data/fund", "data/hist", "data/csv", "oppen-data", "data/insyn", "data/rf", "data/re", "rantor", "emittent", "integritet", "dubbelsignal")) {
   $p = Join-Path $Site $dir
   if (Test-Path $p) { Remove-Item $p -Recurse -Force }
 }
@@ -1314,7 +1314,60 @@ $odContent = '<div class="page-head"><h1>Data och API</h1></div>' +
   (Block "JSON för utvecklare" (Table @("Adress", "Innehåll") $apiRows) "section-gap") +
   '<p class="desc">Filerna ligger på https://www.fondinsyn.se och kan hämtas fritt utan nyckel, även från andra webbplatser. Formatet kan ändras. Ange gärna Fondinsyn och Finansinspektionen som källa.</p>' +
   (Block "Villkor" "<p>Uppgifterna kommer från myndigheternas öppna register och får användas fritt. Fondinsyns uträkningar får också användas om du anger källan. Inget här är investeringsrådgivning.</p>" "section-gap")
-Page "oppen-data/" "data" "Data och API – ladda ner fonddata | Fondinsyn" "Var Fondinsyns data kommer ifrån, hur ofta den uppdateras och hur du laddar ner den som CSV eller JSON. Öppna data från Finansinspektionen." $defaultImg ('<div class="text-page">' + $odContent + '</div>') -Crumbs @("Data och API", "oppen-data/") -Keep
+# ---------- Dubbelsignal: /dubbelsignal/ (samma regler som viewDouble i app.js) ----------
+if ($insider) {
+  $insBy = @{}
+  foreach ($r in $insider.rows) {
+    if ($null -eq $r[11] -or ($r[7] -ne "Förvärv" -and $r[7] -ne "Avyttring")) { continue }
+    $k = [string]$r[3]
+    if (-not $insBy.ContainsKey($k)) { $insBy[$k] = @{ buy = 0.0; sell = 0.0 } }
+    if ($r[7] -eq "Förvärv") { $insBy[$k].buy += [double]$r[11] } else { $insBy[$k].sell += [double]$r[11] }
+  }
+  $dBuy = New-Object System.Collections.Generic.List[object]; $dSell = New-Object System.Collections.Generic.List[object]
+  foreach ($s in $pageStocks) {
+    if ($null -eq $s.netFlow -or -not $insBy.ContainsKey($s.isin)) { continue }
+    $net = $insBy[$s.isin].buy - $insBy[$s.isin].sell
+    if ([math]::Abs([double]$s.flow) -lt 1e6 -or [math]::Abs($net) -lt 5e5 -or (([double]$s.flow -gt 0) -ne ($net -gt 0))) { continue }
+    $x = [pscustomobject]@{ s = $s; net = $net }
+    if ($s.flow -gt 0) { $dBuy.Add($x) } else { $dSell.Add($x) }
+  }
+  $dRows = { param($list) foreach ($x in $list) { ,@((A (StockUrl $x.s) $x.s.name), (Colored $x.s.flow (BigSek $x.s.flow -Sign)), (Colored $x.net (BigSek $x.net -Sign))) } }
+  $topBuy = @($dBuy | Sort-Object net -Descending | Select-Object -First 15)
+  $topSell = @($dSell | Sort-Object net | Select-Object -First 15)
+  $days = $insider.days
+  $content = '<div class="page-head"><h1>Dubbelsignal</h1><p class="meta lead">Aktier där både fonderna och bolagets egna insiders har köpt, eller där båda har sålt. Fondernas affärer gäller ' + $QL +
+    ", insidernas köp och sälj de senaste $days dagarna enligt Finansinspektionens insynsregister.</p></div>" +
+    '<dl class="figures">' + (Fig "Dubbel köpsignal" "$($dBuy.Count) aktier") + (Fig "Dubbel säljsignal" "$($dSell.Count) aktier") + "</dl>" +
+    (Block "Både fonder och insiders köper" (Table @("Aktie", "Fonderna $QL", "Insiders $days dagar") @(& $dRows $topBuy)) "section-gap") +
+    (Block "Både fonder och insiders säljer" (Table @("Aktie", "Fonderna $QL", "Insiders $days dagar") @(& $dRows $topSell)) "section-gap") +
+    '<p class="desc section-gap">En dubbelsignal är en observation, inte en köp- eller säljrekommendation. Insiders kan sälja av skäl som skatt eller lån, och fondernas affärer kan spegla in- och utflöden. ' + (A "/#/dubbelsignal" "Se hela listan") + "</p>"
+  Page "dubbelsignal/" "dubbelsignal" "Dubbelsignal – aktier som både fonder och insiders köper | Fondinsyn" `
+    "Aktier där både svenska fonder och bolagets egna insiders köper ($($dBuy.Count) st) eller säljer ($($dSell.Count) st). Fondernas affärer $QL och insidernas de senaste $days dagarna." `
+    $defaultImg $content -Crumbs @("Dubbelsignal", "dubbelsignal/")
+  Write-Host "  dubbelsignal: $($dBuy.Count) köp, $($dSell.Count) sälj"
+}
+
+# ---------- Integritet och villkor: /integritet/ ----------
+$privacy = '<div class="page-head"><h1>Integritet och villkor</h1><p class="meta">Senast uppdaterad 15 oktober 2026</p></div>' +
+  '<p class="lead">Fondinsyn sätter inga kakor, kräver inget konto och säljer inga uppgifter. Här beskrivs vilka uppgifter som ändå hanteras när du använder sajten, och vilka villkor som gäller för innehållet.</p>' +
+  (Block "Vem ansvarar" ("<p>Fondinsyn drivs som ett privat projekt och är personuppgiftsansvarig för de uppgifter som beskrivs här. Frågor om dina uppgifter skickar du via " + (A "/#/kontakt" "kontaktsidan") + ".</p>") "section-gap") +
+  (Block "Besöksstatistik" ("<p>Fondinsyn räknar besök med " + (A "https://www.goatcounter.com/help/privacy" "GoatCounter") + ", som inte använder kakor och inte sparar IP-adresser. " +
+    "Det som registreras är vilken sida som visas, vilken sajt du kom ifrån, webbläsare, operativsystem, skärmstorlek och land. Uppgifterna kan inte knytas till dig som person och används bara för att se vilka delar av sajten som används.</p>") "section-gap") +
+  (Block "Det som sparas i din webbläsare" ("<p>Vissa val sparas i din egen webbläsare (lokal lagring) så att sajten kommer ihåg dem nästa gång: mörkt eller ljust läge, valt kvartal, Sverige eller utland, om indexfonder ska tas bort, " +
+    "dina bevakade aktier och fonder och det du lagt in i Min portfölj. Uppgifterna skickas aldrig till Fondinsyn eller någon annan, och du tar bort dem genom att rensa webbplatsdata i webbläsaren.</p>") "section-gap") +
+  (Block "Nyhetsbrev och bevakning" ("<p>Om du anmäler dig till nyhetsbrevet eller bevakar en aktie via e-post sparas din e-postadress och vilka aktier du bevakar hos " + (A "https://buttondown.com/legal/privacy" "Buttondown") +
+    ", som skickar utskicken. Uppgifterna används bara för de utskick du anmält dig till, med ditt samtycke som grund. Varje mejl har en länk för att avregistrera dig, och då tas adressen bort från listan.</p>") "section-gap") +
+  (Block "Kontakt och drift" ("<p>Skriver du till Fondinsyn används din e-postadress bara för att svara, och mejlet raderas när ärendet är klart. Sajten ligger hos " + (A "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" "GitHub Pages") +
+    ", som av säkerhetsskäl kan logga IP-adresser enligt sin egen integritetspolicy. Fondinsyn får inte ta del av de loggarna.</p>") "section-gap") +
+  (Block "Dina rättigheter" ("<p>Du har rätt att få veta vilka uppgifter om dig som behandlas, att få dem rättade eller raderade och att återkalla ditt samtycke. Är du missnöjd med hur uppgifterna hanteras kan du klaga hos " +
+    (A "https://www.imy.se/" "Integritetsskyddsmyndigheten") + ".</p>") "section-gap") +
+  (Block "Villkor för innehållet" ("<p>Allt på Fondinsyn är information och inte investeringsrådgivning. Innehållet tar inte hänsyn till din ekonomi eller dina mål, och historiska affärer säger inget säkert om framtiden.</p>" +
+    "<p>Uppgifterna kommer från Finansinspektionen, Riksbanken och Pensionsmyndigheten och bearbetas automatiskt av Fondinsyn. Källorna kan innehålla fel, och Fondinsyns uträkningar, till exempel nettoköp och vilken emittent en obligation hör till, kan bli fel. " +
+    "Kontrollera därför viktiga uppgifter mot källan innan du fattar beslut. Fondinsyn ansvarar inte för förluster som uppstår när innehållet används.</p>" +
+    "<p>Du får gärna använda och dela uppgifterna om du anger Fondinsyn och Finansinspektionen som källa. Se " + (A "/oppen-data/" "Data och API") + " för nedladdning.</p>") "section-gap")
+Page "integritet/" "integritet" "Integritet och villkor | Fondinsyn" "Hur Fondinsyn hanterar uppgifter: inga kakor, besöksstatistik utan personuppgifter och vad som gäller för nyhetsbrev. Plus villkoren för innehållet." $defaultImg ('<div class="text-page">' + $privacy + '</div>') -Crumbs @("Integritet och villkor", "integritet/") -Keep
+
+Page "oppen-data/" "data""Data och API – ladda ner fonddata | Fondinsyn" "Var Fondinsyns data kommer ifrån, hur ofta den uppdateras och hur du laddar ner den som CSV eller JSON. Öppna data från Finansinspektionen." $defaultImg ('<div class="text-page">' + $odContent + '</div>') -Crumbs @("Data och API", "oppen-data/") -Keep
 Write-Host "  öppen data: $($fileStocks.rows) aktier, $($fileFunds.rows) fonder, $($fileHold.rows) innehav"
 
 # Startsidan och 404
