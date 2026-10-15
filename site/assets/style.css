@@ -618,6 +618,35 @@ a.mod-n:hover { color: var(--link); text-decoration: none; }
 .mod-rates span { color: var(--fg-muted); }
 .mod-rates b { text-align: right; }
 
+/* ---------- Samlad signal ---------- */
+
+.sig { display: inline-grid; place-items: center; min-width: 46px; height: 26px; padding: 0 8px; border-radius: 999px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.sig b { font-weight: 700; }
+.sig.sp2 { background: var(--bar-pos); color: #fff; }
+.sig.sp1 { background: var(--pos-bg); color: var(--pos); }
+.sig.s0 { background: var(--chip-bg); color: var(--fg-soft); }
+.sig.sn1 { background: var(--neg-bg); color: var(--neg); }
+.sig.sn2 { background: var(--bar-neg); color: #fff; }
+.sig-cell { display: inline-flex; align-items: center; gap: 10px; justify-content: flex-end; }
+.sig-meter { position: relative; display: inline-block; width: 64px; height: 6px; border-radius: 3px; background: linear-gradient(var(--border-strong), var(--border-strong)) center / 1px 100% no-repeat, var(--border-muted); }
+.sig-meter i { position: absolute; top: 0; bottom: 0; border-radius: 3px; transform-origin: left; animation: bar-grow 0.7s var(--spring) both; }
+.sig-meter i.pos { background: var(--bar-pos); }
+.sig-meter i.neg { background: var(--bar-neg); transform-origin: right; }
+.part { font-size: 10px; margin-right: 2px; color: var(--fg-muted); }
+.part.pos { color: var(--pos); }
+.part.neg { color: var(--neg); }
+.signal-panel { margin: 0 0 28px; padding: 18px 20px; border-radius: var(--radius-lg); background: var(--glass); box-shadow: var(--glass-shadow); }
+.sp-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.sp-word { font-family: var(--serif); font-size: 22px; font-weight: 600; margin-top: 2px; }
+.sp-score { display: flex; align-items: center; gap: 12px; }
+.sp-score .sig { min-width: 56px; height: 32px; font-size: 15px; }
+.sp-score .sig-meter { width: 120px; }
+.sp-parts { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; border-top: 1px solid var(--glass-line); padding-top: 12px; }
+.sp-parts li { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sp-l { font-weight: 650; font-size: 14px; }
+.sp-t { font-size: 13px; color: var(--fg-muted); }
+.signal-panel .more { margin-top: 10px; font-size: 13px; }
+
 /* ---------- Diagram ---------- */
 
 .charts { gap: 20px; }
@@ -955,6 +984,9 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .subbar-inner { min-height: 0; padding-top: 10px; padding-bottom: 10px; font-size: 13px; gap: 8px; }
   .subbar-controls { width: 100%; justify-content: space-between; margin-left: 0; }
   .filter-label { display: none; }
+  .lg { display: none; }
+  .sp-parts { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .sig-cell .sig-meter { display: none; }
   .rep-card { padding: 18px; border-radius: 18px; }
   .rc-title { font-size: 21px; }
   .rc-controls { width: 100%; }

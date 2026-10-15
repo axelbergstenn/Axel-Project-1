@@ -105,12 +105,13 @@
       "H" + (x + w - r) + "Q" + (x + w) + "," + y1 + " " + (x + w) + "," + (y1 - r) + "V" + y0 + "Z";
   }
 
-  // x-etiketter: årtal vid första kvartalet varje år
+  // x-etiketter: årtal vid första kvartalet (p.q = "2026Q1") eller första månaden (p.m = "2026-01") varje år
   function yearLabels(g, points, xAt, y, w) {
     var every = w < 420 ? 2 : 1, n = 0;
     points.forEach(function (p, i) {
-      if (p.q && p.q.slice(5) === "1") {
-        if (n++ % every === 0) text(g, xAt(i), y, p.q.slice(0, 4), "c-axis", "middle");
+      var first = p.q ? p.q.slice(5) === "1" : p.m ? p.m.slice(5) === "01" : false;
+      if (first) {
+        if (n++ % every === 0) text(g, xAt(i), y, (p.q || p.m).slice(0, 4), "c-axis", "middle");
       }
     });
   }

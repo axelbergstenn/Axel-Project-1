@@ -859,6 +859,7 @@
         fig("Nya fonder", int(s.nNew)) + fig("Avvecklat", int(s.nExit)) + "</dl>";
       if (s.isNew) html += '<p class="notice">Ingen fond ägde aktien förra kvartalet. Det beror oftast på en notering, avknoppning eller ett nytt aktieslag, så innehaven räknas inte som köp i översikten.</p>';
       if (s.isGone) html += '<p class="notice">Ingen fond äger aktien längre. Det beror oftast på uppköp, avnotering eller byte av aktieslag.</p>';
+      html += stockSignalPanel(s);
     }
 
     // Uppköpserbjudanden på bolaget
@@ -1059,7 +1060,9 @@
 
     if (d.fi[id]) {
       var fi = d.fi[id];
-      html += '<dl class="figures">' + fig("Fondförmögenhet", bigSek(fi.aum)) +
+      var ff = needFlows() ? fundFlowFor(id) : null;
+      html += '<dl class="figures">' + fig("Fondförmögenhet", bigSek(fi.aum),
+        ff ? 'Nettoflöde ' + quarterLabel(state.q) + ' <span class="' + cls(ff[4]) + '">' + bigSek(ff[4], true) + "</span> (uppskattat, " + '<a href="#/sparande">om siffran</a>)' : "") +
         fig(termLink("avgift", "Förvaltningsavgift"), feeText(fi), fi.perf ? "+ prestationsbaserad avgift" : "") +
         fig(termLink("aktiv-risk", "Aktiv risk"), pctPlain(fi.ar), "Avvikelse mot index, 24 mån") +
         fig(termLink("standardavvikelse", "Standardavvikelse"), pctPlain(fi.sd), "24 månader") +
@@ -2185,6 +2188,239 @@
   }
   function personText(r) { return esc(personName(r.person)) + (r.close ? " (närstående)" : ""); }
 
+  // ---------- Fondsparandet ----------
+  // data/flows.json byggs av scripts/build-flows.ps1: månadsstatistik från Fondbolagens förening (MSEK)
+  // och uppskattade nettoflöden per fond och kvartal ur FI:s fondinnehav.
+
+  function needFlows() {
+    return need("flows", function () { return getJSON("data/flows.json").then(function (d) { state.flows = d; }); });
+  }
+  var MONTH_SHORT = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
+  function monthLabel(ym, long) {
+    var y = ym.slice(0, 4), m = parseInt(ym.slice(5), 10) - 1;
+    return (long ? MONTH_NAMES[m] : MONTH_SHORT[m]) + " " + y;
+  }
+  var MONTH_NAMES = ["januari", "februari", "mars", "april", "maj", "juni", "juli", "augusti", "september", "oktober", "november", "december"];
+  // Uppskattat flöde för en fond det valda kvartalet: [id, namn, bolag, förmögenhet i början, flöde, andel aktier]
+  function fundFlowFor(id) {
+    var F = state.flows && state.flows.funds && state.flows.funds[state.q];
+    if (!F) return null;
+    if (!F.byId) { F.byId = {}; F.forEach(function (r) { F.byId[r[0]] = r; }); }
+    return F.byId[id] || null;
+  }
+
+  var savingsState = { type: "TOTALT" };
+  // På mobil står bara början av namnet ("Aktie", "Bland") så att alla fyra får plats
+  var SAVINGS_TYPES = [["TOTALT", 'Alla<span class="lg"> fonder</span>'], ["Aktiefonder", 'Aktie<span class="lg">fonder</span>'],
+    ["Blandfonder", 'Bland<span class="lg">fonder</span>'], ["Räntefonder", 'Ränte<span class="lg">fonder</span>']];
+
+  function viewSavings() {
+    document.title = "Fondsparandet – vart spararnas pengar går – Fondinsyn";
+    var head = '<div class="page-head"><h1>Fondsparandet</h1><p class="meta lead">Hur mycket svenskarna sätter in i och tar ut ur fonder varje månad, ' +
+      "vilka sorters fonder som får pengarna och vilka enskilda fonder som växer mest. Månadssiffrorna kommer från Fondbolagens förening, " +
+      "flödena per fond är uppskattade ur Finansinspektionens fondinnehav.</p></div>";
+    if (!needFlows()) return head + (failed("flows") ? errorBlock() : loadingBlock("Laddar fondsparandet…"));
+    var D = state.flows, html = head;
+
+    if (D.months && D.types && D.types.TOTALT) {
+      var months = D.months, T = D.types;
+      // Räntefonder = långa + korta
+      var rate = months.map(function (m, i) {
+        var a = T["Långa räntefonder"] && T["Långa räntefonder"][i], b = T["Korta räntefonder"] && T["Korta räntefonder"][i];
+        return a || b ? [(a ? a[0] : 0) + (b ? b[0] : 0), (a ? a[1] : 0) + (b ? b[1] : 0)] : null;
+      });
+      var series = function (name) { return name === "Räntefonder" ? rate : (T[name] || D.focus[name] || []); };
+      var last = months.length - 1;
+      while (last > 0 && !T.TOTALT[last]) last--;
+      var lm = months[last], year = lm.slice(0, 4);
+      var net = function (name, i) { var v = series(name)[i]; return v ? v[0] : null; };
+      var sumNet = function (name, from, to) { var s = 0; for (var i = Math.max(0, from); i <= to; i++) { var v = net(name, i); if (v != null) s += v; } return s; };
+      var ytdFrom = months.indexOf(year + "-01");
+      var msek = function (v, sign) { return v == null ? "–" : '<span class="' + (sign ? cls(v) : "") + '">' + bigSek(v * 1e6, sign) + "</span>"; };
+
+      html += '<dl class="figures">' +
+        fig("Nettosparande " + monthLabel(lm, true), msek(net("TOTALT", last), true), "Hittills i år " + bigSek(sumNet("TOTALT", ytdFrom, last) * 1e6, true)) +
+        fig("Aktiefonder", msek(net("Aktiefonder", last), true), "Hittills i år " + bigSek(sumNet("Aktiefonder", ytdFrom, last) * 1e6, true)) +
+        fig("Räntefonder", msek(net("Räntefonder", last), true), "Hittills i år " + bigSek(sumNet("Räntefonder", ytdFrom, last) * 1e6, true)) +
+        fig("Indexfonder (aktier)", msek(net("varav indexfonder", last), true), "Hittills i år " + bigSek(sumNet("varav indexfonder", ytdFrom, last) * 1e6, true)) +
+        fig("Fondförmögenhet", T.TOTALT[last] ? bigSek(T.TOTALT[last][1] * 1e6) : "–", "alla fonder, " + monthLabel(lm)) + "</dl>";
+
+      // Diagram: nettosparande per månad
+      var segBtn = function (v, label) { return '<button type="button" class="seg-btn" data-sav-type="' + v + '" aria-pressed="' + (savingsState.type === v) + '">' + label + "</button>"; };
+      var pts = [];
+      for (var i = Math.max(0, last - 23); i <= last; i++) pts.push({ m: months[i], value: net(savingsState.type, i) == null ? null : net(savingsState.type, i) / 1000, highlight: i === last });
+      html += '<section class="block section-gap"><div class="block-head"><h2>Nettosparande per månad</h2>' +
+        '<div class="seg" role="group" aria-label="Fondtyp">' + SAVINGS_TYPES.map(function (t) { return segBtn(t[0], t[1]); }).join("") + "</div></div>" +
+        '<p class="desc">Insättningar minus uttag, miljarder kronor. Senaste månaden är markerad.</p>' +
+        '<div class="chart-card">' + chart(function (node) {
+          FFCharts.columns(node, pts, { height: 240, focus: true, label: function (p) { return signed(nf1.format(p.value), p.value); },
+            tip: function (p) { return "<b>" + monthLabel(p.m, true) + "</b><br>" + (p.value == null ? "Ingen data" : '<span class="' + cls(p.value) + '">' + bigSek(p.value * 1e9, true) + "</span>"); } });
+        }) + "</div></section>";
+
+      // Tabell per fondtyp
+      var typeNames = ["Aktiefonder", "Blandfonder", "Långa räntefonder", "Korta räntefonder", "Hedgefonder", "Övriga fonder", "TOTALT"].filter(function (n) { return T[n]; });
+      var typeRows = typeNames.map(function (n) {
+        return { name: n === "TOTALT" ? "Alla fonder" : n, total: n === "TOTALT", m: net(n, last), ytd: sumNet(n, ytdFrom, last), y12: sumNet(n, last - 11, last), aum: T[n][last] ? T[n][last][1] : null };
+      });
+      var colMsek = function (key, label, hide) { return { key: key, label: label, hideSm: hide, cell: function (r) { return msek(r[key], true); }, value: function (r) { return r[key]; } }; };
+      html += '<div class="grid-2 section-gap">' +
+        block("Per fondtyp", "Nettosparande " + monthLabel(lm, true) + ", hittills i år och de senaste tolv månaderna.",
+          table("sav-types", [
+            { key: "name", label: "Fondtyp", align: "l", cls: "name", cell: function (r) { return '<span class="nm-plain">' + esc(r.name) + "</span>"; } },
+            colMsek("m", monthLabel(lm)), colMsek("ytd", "I år", true), colMsek("y12", "12 mån"),
+            { key: "aum", label: "Förmögenhet", hideSm: true, cell: function (r) { return r.aum == null ? "–" : bigSek(r.aum * 1e6); } }
+          ], typeRows, { static: true })) +
+        (function () {
+          var skip = { "AKTIEFONDER TOTALT": 1, "varav indexfonder": 1, "Ryssland": 1 };
+          var items = Object.keys(D.focus).filter(function (n) { return !skip[n]; }).map(function (n) { return { label: n, v: sumNet(n, last - 11, last) }; })
+            .sort(function (a, b) { return b.v - a.v; });
+          var idx = sumNet("varav indexfonder", last - 11, last), allEq = sumNet("AKTIEFONDER TOTALT", last - 11, last);
+          return block("Aktiefonder per inriktning", "Nettosparande de senaste tolv månaderna." +
+            (allEq ? " Indexfonderna fick " + bigSek(idx * 1e6, true) + " av aktiefondernas " + bigSek(allEq * 1e6, true) + "." : ""),
+            divBars(items));
+        })() + "</div>";
+    }
+
+    // Uppskattade flöden per fond
+    var F = D.funds && D.funds[state.q];
+    if (F && F.length) {
+      var rows = F.map(function (r) { return { id: r[0], name: r[1], co: r[2], a1: r[3], flow: r[4], p: r[3] ? r[4] / r[3] : null }; });
+      var ins = rows.filter(function (r) { return r.flow > 0; }).sort(function (a, b) { return b.flow - a.flow; });
+      var outs = rows.filter(function (r) { return r.flow < 0; }).sort(function (a, b) { return a.flow - b.flow; });
+      var flowCols = [
+        { key: "name", label: "Fond", align: "l", cls: "name", cell: function (r) { return nameCell(fundHref({ id: r.id }), r.name, esc(r.co) + " · " + pct(r.p) + " av förmögenheten"); }, value: function (r) { return r.name; } },
+        { key: "co", label: "Fondbolag", align: "l", cls: "muted", hideSm: true, cell: function (r) { return esc(r.co); } },
+        { key: "flow", label: "Nettoflöde (mkr)", cell: function (r) { return '<span class="' + cls(r.flow) + '">' + mkr(r.flow, true) + "</span>"; }, value: function (r) { return r.flow; } },
+        { key: "p", label: "Andel", hideSm: true, cell: function (r) { return '<span class="' + cls(r.p) + '">' + pct(r.p) + "</span>"; }, value: function (r) { return r.p; } }
+      ];
+      // Per fondbolag
+      var byCo = {};
+      rows.forEach(function (r) { var c = byCo[r.co] = byCo[r.co] || { co: r.co, flow: 0, a1: 0, n: 0 }; c.flow += r.flow; c.a1 += r.a1; c.n++; });
+      var cos = Object.keys(byCo).map(function (k) { return byCo[k]; }).filter(function (c) { return c.a1 >= 1e9; }).sort(function (a, b) { return b.flow - a.flow; });
+      var coCols = [
+        { key: "co", label: "Fondbolag", align: "l", cls: "name", cell: function (c) { return nameCell(companyHref(c.co), c.co, int(c.n) + " fonder · " + pct(c.flow / c.a1) + " av förmögenheten"); } },
+        { key: "flow", label: "Nettoflöde (mkr)", cell: function (c) { return '<span class="' + cls(c.flow) + '">' + mkr(c.flow, true) + "</span>"; } },
+        { key: "p", label: "Andel", hideSm: true, cell: function (c) { return '<span class="' + cls(c.flow) + '">' + pct(c.flow / c.a1) + "</span>"; } }
+      ];
+      var Q = quarterLabel(state.q);
+      html += '<h2 class="section-title">Fonderna som växte och krympte mest ' + Q + "</h2>" +
+        '<p class="intro">Uppskattat nettoflöde: hur mycket fondförmögenheten ändrades utöver kursrörelserna på fondens aktier. ' +
+        "Det är i huvudsak spararnas insättningar minus uttag, men också fusioner med andra fonder och utdelningar som fonden fått, " +
+        "så det andra kvartalet, när de flesta bolag delar ut, ser för positivt ut. Fonder under 100 mkr är inte med.</p>" +
+        '<div class="grid-2">' +
+        block("Störst inflöde", "", table("flow-in", flowCols, ins.slice(0, 15), { static: true })) +
+        block("Störst utflöde", "", table("flow-out", flowCols, outs.slice(0, 15), { static: true })) + "</div>" +
+        '<div class="grid-2 section-gap">' +
+        block("Fondbolag som fick mest", "Summan för bolagets fonder. Bolag med minst 1 mdkr i fonderna.", table("flow-co-in", coCols, cos.slice(0, 10), { static: true })) +
+        block("Fondbolag som tappade mest", "&nbsp;", table("flow-co-out", coCols, cos.slice().reverse().filter(function (c) { return c.flow < 0; }).slice(0, 10), { static: true })) + "</div>";
+    } else {
+      html += '<div class="notice section-gap">Flöden per fond finns inte för ' + quarterLabel(state.q) + ".</div>";
+    }
+    html += '<p class="desc section-gap">Källor: <a href="https://www.fondbolagen.se/fakta_index/statistik/" rel="noopener">Fondbolagens förening</a> (månadsstatistik, ' +
+      "fonder som marknadsförs av föreningens medlemmar och premiepensionens fonder) och Finansinspektionens fondinnehav. Uppdaterad " + esc(D.built) + ".</p>";
+    return html;
+  }
+
+  // ---------- Samlad signal ----------
+  // Väger ihop tre saker som redan finns på sajten: fondernas köp och sälj under kvartalet (40 %), insidernas köp minus
+  // sälj de senaste 90 dagarna (40 %) och hur blankningen ändrats de senaste 30 dagarna (20 %). Varje del blir ett tal
+  // mellan −1 och 1, och summan skalas till −100 … +100. Det är ett sätt att se var flera signaler pekar åt samma håll,
+  // inte en rekommendation.
+
+  var SIGNAL_MIN_VALUE = 50e6; // aktier där fonderna äger minst 50 mkr
+  function clamp1(v) { return Math.max(-1, Math.min(1, v)); }
+
+  function signalFor(s, insBy) {
+    var fb = 0, fs = 0;
+    s.trades.forEach(function (t) { if (t.d > 0) fb++; else if (t.d < 0) fs++; });
+    var breadth = fb + fs ? (fb - fs) / (fb + fs) : 0;
+    var mag = s.chg == null ? 0 : clamp1(s.chg / 0.1);
+    var F = (breadth + mag) / 2;
+    if (fb + fs < 3) F *= 0.5;
+    var e = insBy[s.isin], inet = e ? e.buy - e.sell : 0;
+    var I = Math.abs(inet) < 2e5 ? 0 : clamp1(inet / 5e6);
+    var a = state.shorts && state.shorts.byIsin[s.isin];
+    var S = a && a.ch30 != null ? clamp1(-a.ch30 / 1) : 0;
+    return { s: s, score: Math.round(100 * (0.4 * F + 0.4 * I + 0.2 * S)), F: F, I: I, S: S, fb: fb, fs: fs, inet: e ? inet : null, nIns: e ? e.n : 0, short: a || null };
+  }
+  function insiderTotals() {
+    var by = {};
+    state.insider.rows.forEach(function (r) {
+      if (r.sek == null || r.kind === "other") return;
+      var e = by[r.isin] = by[r.isin] || { buy: 0, sell: 0, n: 0 };
+      if (r.kind === "buy") e.buy += r.sek; else e.sell += r.sek;
+      e.n++;
+    });
+    return by;
+  }
+  function allSignals() {
+    var insBy = insiderTotals();
+    return quarterData().se.stocks.filter(function (s) { return s.netFlow != null && s.price && Math.max(s.val1, s.val2) >= SIGNAL_MIN_VALUE; })
+      .map(function (s) { return signalFor(s, insBy); });
+  }
+  function signalWord(v) { return v >= 40 ? "Starkt positiv" : v >= 15 ? "Positiv" : v > -15 ? "Neutral" : v > -40 ? "Negativ" : "Starkt negativ"; }
+  function signalBadge(v) {
+    var c = v >= 40 ? "sp2" : v >= 15 ? "sp1" : v > -15 ? "s0" : v > -40 ? "sn1" : "sn2";
+    return '<span class="sig ' + c + '" title="' + signalWord(v) + '"><b>' + (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v) + "</b></span>";
+  }
+  function signalMeter(v) {
+    var w = Math.abs(v) / 2;
+    return '<span class="sig-meter" aria-hidden="true"><i class="' + (v >= 0 ? "pos" : "neg") + '" style="width:' + w + "%;" + (v >= 0 ? "left:50%" : "right:50%") + '"></i></span>';
+  }
+  function partText(g, which) {
+    if (which === "F") return (g.fb || g.fs ? g.fb + " köpte, " + g.fs + " sålde" : "Inga affärer") + (g.s.chg != null ? " · aktier " + pct(g.s.chg) : "");
+    if (which === "I") return g.inet == null ? "Ingen handel" : (g.inet >= 0 ? "Köp minus sälj " : "Sälj minus köp ") + bigSek(Math.abs(g.inet));
+    return g.short ? nf2.format(g.short.pct) + " % blankat" + (g.short.ch30 == null ? "" : Math.abs(g.short.ch30) < 0.005 ? ", oförändrat på 30 dagar" : ", " + signed(nf2.format(g.short.ch30), g.short.ch30) + " p.e. på 30 dagar") : "Ingen större blankning";
+  }
+  function partArrow(v) { return '<span class="part ' + (v > 0.05 ? "pos" : v < -0.05 ? "neg" : "") + '">' + (v > 0.05 ? "▲" : v < -0.05 ? "▼" : "■") + "</span>"; }
+
+  function viewSignals() {
+    document.title = "Samlad signal – fonder, insiders och blankning ihop – Fondinsyn";
+    var head = '<div class="page-head"><h1>Samlad signal</h1><p class="meta lead">Fondernas köp och sälj, insidernas affärer och blankningen vägda ihop till ett tal per aktie, ' +
+      "från −100 till +100. Ett sätt att se var flera signaler pekar åt samma håll. Det är inte en rekommendation att köpa eller sälja.</p></div>";
+    var okI = needInsider(), okS = needShorts();
+    if (!okI || !okS) return head + (failed("insider") || failed("shorts") ? errorBlock() : loadingBlock("Laddar insynshandel och blankning…"));
+    var all = allSignals();
+    var pos = all.filter(function (g) { return g.score > 0; }).sort(function (a, b) { return b.score - a.score; });
+    var neg = all.filter(function (g) { return g.score < 0; }).sort(function (a, b) { return a.score - b.score; });
+    var cols = [
+      { key: "name", label: "Aktie", align: "l", cls: "name", cell: function (g) {
+        return nameCell(stockHref(g.s), g.s.name, partArrow(g.F) + " Fonder " + partArrow(g.I) + " Insiders " + partArrow(g.S) + " Blankning");
+      }, value: function (g) { return g.s.name; }, csv: function (g) { return g.s.name; } },
+      { key: "score", label: "Signal", cell: function (g) { return '<span class="sig-cell">' + signalMeter(g.score) + signalBadge(g.score) + "</span>"; }, value: function (g) { return g.score; }, csv: function (g) { return g.score; } },
+      { key: "F", label: "Fonderna " + quarterLabel(state.q), align: "l", hideSm: true, cell: function (g) { return partArrow(g.F) + " " + partText(g, "F"); }, value: function (g) { return g.F; } },
+      { key: "I", label: "Insiders 90 dagar", align: "l", hideSm: true, cell: function (g) { return partArrow(g.I) + " " + partText(g, "I"); }, value: function (g) { return g.I; } },
+      { key: "S", label: "Blankning", align: "l", hideSm: true, cell: function (g) { return partArrow(g.S) + " " + partText(g, "S"); }, value: function (g) { return g.S; } }
+    ];
+    var strong = function (list, lim) { return list.filter(function (g) { return Math.abs(g.score) >= lim; }).length; };
+    return head +
+      '<dl class="figures">' + fig("Aktier med signal", int(all.length), "fonderna äger minst 50 mkr") +
+      fig("Starkt positiva", '<span class="pos">' + int(strong(pos, 40)) + "</span>", "+40 eller mer") +
+      fig("Starkt negativa", '<span class="neg">' + int(strong(neg, 40)) + "</span>", "−40 eller lägre") + "</dl>" +
+      '<div class="stack">' +
+      block("Starkast positiva", "Aktier där fonderna köper, insiders köper och blankningen minskar.", table("sig-pos", cols, pos.slice(0, 25), { csv: true, sort: { col: "score", dir: -1 } })) +
+      block("Starkast negativa", "Aktier där fonderna säljer, insiders säljer och blankningen ökar.", table("sig-neg", cols, neg.slice(0, 25), { csv: true, sort: { col: "score", dir: 1 } })) +
+      "</div>" +
+      '<section class="block section-gap text-page"><div class="block-head"><h2>Så räknas signalen</h2></div>' +
+      "<p><b>Fonderna (40 %).</b> Hälften är hur många fonder som ökade jämfört med hur många som minskade i aktien under " + quarterLabel(state.q) +
+      ", hälften hur mycket fondernas antal aktier ändrades (±10 % ger fullt utslag). Färre än tre fonder som handlat ger halv vikt.</p>" +
+      "<p><b>Insiders (40 %).</b> Köp minus sälj i bolaget de senaste 90 dagarna enligt Finansinspektionens insynsregister. Under 200 000 kr räknas som brus, 5 mkr ger fullt utslag.</p>" +
+      "<p><b>Blankning (20 %).</b> Hur den blankade andelen ändrats de senaste 30 dagarna. En procentenhet mindre blankning ger fullt positivt utslag, en mer fullt negativt.</p>" +
+      "<p>Delarna blir tal mellan −1 och 1 och vägs ihop till en signal mellan −100 och +100. Bara svenska aktier där fonderna äger minst 50 mkr är med.</p></section>";
+  }
+
+  // Panelen på aktiesidan
+  function stockSignalPanel(s) {
+    if (!s || s.netFlow == null || !s.price || s.isin.slice(0, 2) !== "SE") return "";
+    if (!needInsider() || !needShorts()) return "";
+    var g = signalFor(s, insiderTotals());
+    var row = function (label, v, which) { return '<li><span class="sp-l">' + partArrow(v) + " " + label + '</span><span class="sp-t">' + partText(g, which) + "</span></li>"; };
+    return '<section class="signal-panel"><div class="sp-head"><div><p class="kicker">Samlad signal</p><p class="sp-word">' + signalWord(g.score) + "</p></div>" +
+      '<div class="sp-score">' + signalBadge(g.score) + signalMeter(g.score) + "</div></div>" +
+      '<ul class="sp-parts">' + row("Fonderna", g.F, "F") + row("Insiders", g.I, "I") + row("Blankning", g.S, "S") + "</ul>" +
+      '<a class="more" href="#/signaler">Så räknas signalen</a></section>';
+  }
+
   // ---------- Dubbelsignal ----------
   // Aktier där både fonderna (kvartalets nettoköp) och bolagets egna insiders (köp minus sälj) går åt samma håll.
   var doubleFilter = { period: "90" };
@@ -3302,6 +3538,8 @@
       case "kontakt": html = viewContact(); break;
       case "rantor": html = viewRates(); break;
       case "dubbelsignal": html = viewDouble(); break;
+      case "sparande": html = viewSavings(); break;
+      case "signaler": html = viewSignals(); break;
       case "emittent": html = viewIssuer(r.arg); break;
       default: html = viewOverview();
     }
@@ -3596,6 +3834,8 @@
     }
     var csv = e.target.closest("[data-csv]");
     if (csv) { downloadCsv(csv.getAttribute("data-csv")); return; }
+    var sv = e.target.closest("[data-sav-type]");
+    if (sv) { savingsState.type = sv.getAttribute("data-sav-type"); var sy = window.scrollY; render(); window.scrollTo(0, sy); return; }
     var rp = e.target.closest("[data-rep-pick]");
     if (rp) {
       repPick.market = rp.getAttribute("data-rep-pick");

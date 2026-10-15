@@ -27,7 +27,7 @@ $DataDir = Join-Path $Site "data"
 $NB = [string][char]0xA0
 $MINUS = [string][char]0x2212
 $MONTHS = @("januari", "februari", "mars", "april", "maj", "juni", "juli", "augusti", "september", "oktober", "november", "december")
-$FONT = "Inter, 'Inter Variable', 'DejaVu Sans', Arial, sans-serif"
+$FONT = "Roboto, 'Roboto Flex', 'DejaVu Sans', Arial, sans-serif"
 
 # Samma regler som i app.js
 $INDEX_RE = '(?i)index|indx|\bomx|passiv|tracker|\betf\b|\bzero\b|\baccess\b'
@@ -283,7 +283,7 @@ function FundUrl($id) { $fi = $infoById[$id]; if ($fi) { return "/fond/$($fi.slu
 function CoUrl($co) { if ($companies.ContainsKey($co)) { return "/fondbolag/$($companies[$co].slug)/" }; return "/#/fondbolag/" + [uri]::EscapeDataString($co) }
 
 # Gamla sidor tas bort så att aktier och fonder som försvunnit inte ligger kvar
-foreach ($dir in @("aktie", "fond", "fondbolag", "aktier", "fonder", "ordlista", "rapport", "og", "data/fund", "data/hist", "data/csv", "oppen-data", "data/insyn", "data/rf", "data/re", "rantor", "emittent", "integritet", "dubbelsignal")) {
+foreach ($dir in @("aktie", "fond", "fondbolag", "aktier", "fonder", "ordlista", "rapport", "og", "data/fund", "data/hist", "data/csv", "oppen-data", "data/insyn", "data/rf", "data/re", "rantor", "emittent", "integritet", "dubbelsignal", "sparande", "signaler")) {
   $p = Join-Path $Site $dir
   if (Test-Path $p) { Remove-Item $p -Recurse -Force }
 }
@@ -1355,6 +1355,47 @@ if ($insider) {
     $defaultImg $content -Crumbs @("Dubbelsignal", "dubbelsignal/")
   Write-Host "  dubbelsignal: $($dBuy.Count) köp, $($dSell.Count) sälj"
 }
+
+# ---------- Fondsparandet: /sparande/ (månadsstatistik ur data/flows.json, samma sida som viewSavings i app.js) ----------
+$flowsData = $null
+try { if (Test-Path (Join-Path $DataDir "flows.json")) { $flowsData = ReadJson "flows.json" } } catch { }
+if ($flowsData -and $flowsData.months -and $flowsData.types.TOTALT) {
+  $fm = @($flowsData.months); $li = $fm.Count - 1
+  while ($li -gt 0 -and $null -eq $flowsData.types.TOTALT[$li]) { $li-- }
+  $mNames = @("januari", "februari", "mars", "april", "maj", "juni", "juli", "augusti", "september", "oktober", "november", "december")
+  $lmText = $mNames[[int]$fm[$li].Substring(5) - 1] + " " + $fm[$li].Substring(0, 4)
+  $msekText = { param($v) if ($null -eq $v) { "–" } else { Colored ([double]$v) (BigSek ([double]$v * 1e6) -Sign) } }
+  $sum12 = { param($name) $t = 0.0; for ($i = [math]::Max(0, $li - 11); $i -le $li; $i++) { $v = $flowsData.types.$name[$i]; if ($null -ne $v) { $t += [double]$v[0] } }; $t }
+  $tRows = NewList
+  foreach ($n in @("Aktiefonder", "Blandfonder", "Långa räntefonder", "Korta räntefonder", "Hedgefonder", "Övriga fonder", "TOTALT")) {
+    $ser = $flowsData.types.$n
+    if (-not $ser) { continue }
+    $lastV = $ser[$li]
+    $tRows.Add(@($(if ($n -eq "TOTALT") { "Alla fonder" } else { Esc $n }), (& $msekText $(if ($lastV) { $lastV[0] } else { $null })), (& $msekText (& $sum12 $n))))
+  }
+  $totNow = $flowsData.types.TOTALT[$li][0]
+  $content = '<div class="page-head"><h1>Fondsparandet</h1><p class="meta lead">Hur mycket svenskarna sätter in i och tar ut ur fonder varje månad, vilka sorters fonder som får pengarna och vilka enskilda fonder som växer mest. ' +
+    'Månadssiffrorna kommer från Fondbolagens förening, flödena per fond är uppskattade ur Finansinspektionens fondinnehav.</p></div>' +
+    '<dl class="figures">' + (Fig "Nettosparande $lmText" (& $msekText $totNow)) + (Fig "Aktiefonder" (& $msekText $flowsData.types.Aktiefonder[$li][0])) + "</dl>" +
+    (Block "Per fondtyp" (Table @("Fondtyp", $lmText, "12 månader") $tRows) "section-gap") +
+    '<p class="desc section-gap">Källa: Fondbolagens förening och Finansinspektionen. ' + (A "/#/sparande" "Se diagram och flöden per fond") + "</p>"
+  Page "sparande/" "sparande" "Fondsparandet $lmText – vart spararnas pengar går | Fondinsyn" `
+    ("Svenskarnas nettosparande i fonder var " + (BigSek ([double]$totNow * 1e6) -Sign) + " i $lmText. Insättningar och uttag per fondtyp, aktiefonder per inriktning och vilka fonder som växer mest.") `
+    $defaultImg $content -Crumbs @("Fondsparandet", "sparande/")
+  Write-Host "  fondsparandet: $lmText"
+}
+
+# ---------- Samlad signal: /signaler/ (listan räknas i appen, här står metoden för sökmotorer) ----------
+$content = '<div class="page-head"><h1>Samlad signal</h1><p class="meta lead">Fondernas köp och sälj, insidernas affärer och blankningen vägda ihop till ett tal per aktie, från −100 till +100. ' +
+  'Ett sätt att se var flera signaler pekar åt samma håll. Det är inte en rekommendation att köpa eller sälja.</p></div>' +
+  '<section class="block section-gap text-page"><div class="block-head"><h2>Så räknas signalen</h2></div>' +
+  '<p><b>Fonderna (40 %).</b> Hur många fonder som ökade jämfört med hur många som minskade i aktien senaste kvartalet, och hur mycket fondernas antal aktier ändrades.</p>' +
+  '<p><b>Insiders (40 %).</b> Köp minus sälj i bolaget de senaste 90 dagarna enligt Finansinspektionens insynsregister.</p>' +
+  '<p><b>Blankning (20 %).</b> Hur den blankade andelen ändrats de senaste 30 dagarna.</p>' +
+  '<p>' + (A "/#/signaler" "Se listan med aktierna") + '</p></section>'
+Page "signaler/" "signaler" "Samlad signal – fonder, insiders och blankning ihop | Fondinsyn" `
+  "Svenska aktier där fonderna köper, insiders köper och blankningen minskar, eller tvärtom. Tre signaler vägda ihop till ett tal per aktie." `
+  $defaultImg $content -Crumbs @("Samlad signal", "signaler/")
 
 # ---------- Integritet och villkor: /integritet/ ----------
 $privacy = '<div class="page-head"><h1>Integritet och villkor</h1><p class="meta">Senast uppdaterad 15 oktober 2026</p></div>' +

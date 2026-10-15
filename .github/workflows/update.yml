@@ -52,12 +52,12 @@ jobs:
           restore-keys: fi-zips-
 
       # pdftotext läser målbolag, pris och premie ur erbjudandehandlingarna.
-      # rsvg-convert och typsnittet Inter ritar delningsbilderna.
+      # rsvg-convert och typsnittet Roboto ritar delningsbilderna.
       - name: Installera verktyg
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq poppler-utils librsvg2-bin
-          sudo apt-get install -y -qq fonts-inter || echo "Inter saknas, bilderna använder DejaVu Sans"
+          sudo apt-get install -y -qq fonts-roboto || echo "Roboto saknas, bilderna använder DejaVu Sans"
 
       - name: Hämta fondinnehav från FI
         shell: pwsh
@@ -70,6 +70,12 @@ jobs:
         shell: pwsh
         continue-on-error: true
         run: ./scripts/build-rates.ps1
+
+      # Spararnas nettoflöden per fondtyp (Fondbolagens förening, månadsvis) och uppskattade flöden per fond (ur FI-datan)
+      - name: Bygg fondsparandet
+        shell: pwsh
+        continue-on-error: true
+        run: ./scripts/build-flows.ps1
 
       # Blankning byggs varje gång men sparas inte i repot (den ändras dagligen)
       - name: Hämta blankning från FI
