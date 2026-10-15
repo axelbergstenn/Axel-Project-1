@@ -1367,7 +1367,7 @@ $privacy = '<div class="page-head"><h1>Integritet och villkor</h1><p class="meta
     "<p>Du får gärna använda och dela uppgifterna om du anger Fondinsyn och Finansinspektionen som källa. Se " + (A "/oppen-data/" "Data och API") + " för nedladdning.</p>") "section-gap")
 Page "integritet/" "integritet" "Integritet och villkor | Fondinsyn" "Hur Fondinsyn hanterar uppgifter: inga kakor, besöksstatistik utan personuppgifter och vad som gäller för nyhetsbrev. Plus villkoren för innehållet." $defaultImg ('<div class="text-page">' + $privacy + '</div>') -Crumbs @("Integritet och villkor", "integritet/") -Keep
 
-Page "oppen-data/" "data""Data och API – ladda ner fonddata | Fondinsyn" "Var Fondinsyns data kommer ifrån, hur ofta den uppdateras och hur du laddar ner den som CSV eller JSON. Öppna data från Finansinspektionen." $defaultImg ('<div class="text-page">' + $odContent + '</div>') -Crumbs @("Data och API", "oppen-data/") -Keep
+Page "oppen-data/" "data" "Data och API – ladda ner fonddata | Fondinsyn" "Var Fondinsyns data kommer ifrån, hur ofta den uppdateras och hur du laddar ner den som CSV eller JSON. Öppna data från Finansinspektionen." $defaultImg ('<div class="text-page">' + $odContent + '</div>') -Crumbs @("Data och API", "oppen-data/") -Keep
 Write-Host "  öppen data: $($fileStocks.rows) aktier, $($fileFunds.rows) fonder, $($fileHold.rows) innehav"
 
 # Startsidan och 404
