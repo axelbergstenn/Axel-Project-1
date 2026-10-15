@@ -69,14 +69,19 @@
 
   <div class="subbar">
     <div class="container subbar-inner">
-      <p id="summary" class="summary">Laddar data…</p>
-      <div class="subbar-controls">
+      <div class="subbar-controls" role="group" aria-label="Urval">
+        <span class="filter-label" aria-hidden="true">Visa</span>
         <div class="seg" id="marketSwitch" role="group" aria-label="Marknad">
-          <button type="button" class="seg-btn" data-market="se" aria-pressed="true">Sverige</button>
-          <button type="button" class="seg-btn" data-market="world" aria-pressed="false">Utland</button>
+          <button type="button" class="seg-btn" data-market="se" aria-pressed="true">Svenska aktier</button>
+          <button type="button" class="seg-btn" data-market="world" aria-pressed="false">Utländska aktier</button>
         </div>
-        <label class="check"><input type="checkbox" id="excludeIndex"> Exkludera indexfonder</label>
+        <label class="switch" title="Indexfonder följer ett index och gör inga egna val. Räkna bort dem för att se vad de aktivt förvaltade fonderna gör.">
+          <input type="checkbox" id="excludeIndex" role="switch">
+          <span class="switch-track" aria-hidden="true"></span>
+          <span class="switch-text">Utan indexfonder</span>
+        </label>
       </div>
+      <p id="summary" class="summary">Laddar data…</p>
     </div>
   </div>
 
