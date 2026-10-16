@@ -283,7 +283,7 @@ function FundUrl($id) { $fi = $infoById[$id]; if ($fi) { return "/fond/$($fi.slu
 function CoUrl($co) { if ($companies.ContainsKey($co)) { return "/fondbolag/$($companies[$co].slug)/" }; return "/#/fondbolag/" + [uri]::EscapeDataString($co) }
 
 # Gamla sidor tas bort så att aktier och fonder som försvunnit inte ligger kvar
-foreach ($dir in @("aktie", "fond", "fondbolag", "aktier", "fonder", "ordlista", "rapport", "og", "data/fund", "data/hist", "data/csv", "oppen-data", "data/insyn", "data/rf", "data/re", "rantor", "emittent", "integritet", "dubbelsignal", "sparande", "signaler")) {
+foreach ($dir in @("aktie", "fond", "fondbolag", "aktier", "fonder", "ordlista", "rapport", "og", "data/fund", "data/hist", "data/csv", "oppen-data", "data/insyn", "data/rf", "data/re", "rantor", "emittent", "integritet", "dubbelsignal", "sparande", "signaler", "agarandel", "toppfonder")) {
   $p = Join-Path $Site $dir
   if (Test-Path $p) { Remove-Item $p -Recurse -Force }
 }
@@ -575,6 +575,46 @@ function OgSvg($title, $sub, $stats, $label, $bars, $line) {
   return $sb.ToString()
 }
 function FlowColor($v) { if ($null -eq $v) { return "#1f2328" }; if ($v -gt 0) { return "#1a7f37" }; if ($v -lt 0) { return "#cf222e" }; return "#1f2328" }
+# Delningsbild för en kvartalsrapport: rubriken, nettoköpet och de fem största köpen som staplar.
+# $items: lista med @(namn, nettoköp i kr)
+function ReportOgSvg($kicker, $headline, $netLabel, $net, $items) {
+  $sb = New-Object System.Text.StringBuilder
+  [void]$sb.Append('<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">')
+  [void]$sb.Append('<rect width="1200" height="630" fill="#ffffff"/>')
+  [void]$sb.Append('<g transform="translate(64,46) scale(1.15)"><path d="M17.5 2.08A14 14 0 0 1 29.92 14.5H17.5Z" fill="#2f6bff"/><path d="M29.92 17.5A14 14 0 0 1 17.5 29.92V17.5ZM14.5 29.92A14 14 0 0 1 2.08 17.5H14.5ZM2.08 14.5A14 14 0 0 1 14.5 2.08V14.5Z" fill="#0b1f3a"/></g>')
+  [void]$sb.Append((TextEl 112 76 30 "#0b1f3a" "Fondinsyn" ' font-weight="800" letter-spacing="-0.6"'))
+  [void]$sb.Append((TextEl 1136 76 24 "#1d5bd6" $kicker ' font-weight="600" text-anchor="end"'))
+  # Rubriken på högst två rader
+  $size = 50; $maxW = 1072; $factor = 0.54
+  $words = ([string]$headline).Split(" "); $lines = @("");
+  foreach ($w in $words) {
+    $try = ($lines[-1] + " " + $w).Trim()
+    if ($try.Length * $size * $factor -le $maxW -or -not $lines[-1]) { $lines[-1] = $try } elseif ($lines.Count -lt 2) { $lines += $w } else { $lines[-1] = Clip ($lines[-1] + " " + $w) $size $maxW $factor }
+  }
+  for ($i = 0; $i -lt $lines.Count; $i++) { [void]$sb.Append((TextEl 64 (170 + $i * 60) $size "#0c1424" $lines[$i] ' font-weight="700" letter-spacing="-1"')) }
+  $top = 170 + $lines.Count * 60 + 18
+  # Nettoköpet till vänster
+  [void]$sb.Append((TextEl 64 ($top + 40) 24 "#627084" $netLabel ""))
+  [void]$sb.Append((TextEl 64 ($top + 112) 76 (FlowColor $net) (BigSek $net -Sign) ' font-weight="700" letter-spacing="-2"'))
+  # De största köpen till höger
+  $x0 = 560; $rowH = [math]::Min([double]44, (630 - 48 - ($top + 52)) / [math]::Max(1, $items.Count))
+  [void]$sb.Append((TextEl $x0 ($top + 40) 22 "#627084" "Mest köpta aktier" ""))
+  $max = 1.0
+  foreach ($it in $items) { if ([double]$it[1] -gt $max) { $max = [double]$it[1] } }
+  for ($i = 0; $i -lt $items.Count; $i++) {
+    $y = $top + 52 + $i * $rowH
+    $name = Clip ([string]$items[$i][0]) 24 225 0.55
+    $w = [math]::Max([double]4, [double]$items[$i][1] / $max * 150)
+    [void]$sb.Append((TextEl $x0 ($y + 28) 24 "#0c1424" $name ' font-weight="600"'))
+    [void]$sb.Append('<rect x="800" y="' + ($y + 12) + '" width="' + [math]::Round($w, 1).ToString($Inv) + '" height="18" rx="5" fill="#1f9d63"/>')
+    [void]$sb.Append((TextEl 1136 ($y + 28) 24 "#0a7a4a" (BigSek ([double]$items[$i][1]) -Sign) ' font-weight="700" text-anchor="end"'))
+  }
+  [void]$sb.Append('<rect y="606" width="1200" height="24" fill="#0b1f3a"/>')
+  [void]$sb.Append((TextEl 64 623 14 "#c9d3e0" "www.fondinsyn.se · Källa: Finansinspektionens fondinnehav" ""))
+  [void]$sb.Append("</svg>")
+  return $sb.ToString()
+}
+
 function Image($name, $svg) {
   Save "og/$name.svg" $svg
   if ($HasRsvg) { return "og/$name.png" }
@@ -1068,7 +1108,7 @@ for ($ri = 0; $ri -lt $reportQs.Count; $ri++) {
     $(if ($sells.Count) { " Mest sålde de " + (JoinSv @($sells | Select-Object -First 3 | ForEach-Object { $_.name })) + "." } else { "" })
   $stats = @(@("Fonder", (Num0 $qd.tFunds), "#1f2328"), @("Nettoköp", (BigSek $net -Sign), (FlowColor $net)), @("Största köp", $(if ($buys.Count) { BigSek $buys[0].flow -Sign } else { "–" }), "#1a7f37"))
   $rs = ReportSlug $qid
-  $img = Image "rapport-$rs" (OgSvg "Kvartalsrapport $repQL" "Svenska fonders köp och sälj" $stats "Mest köpta aktier" $null ($top3 -join " · "))
+  $img = Image "rapport-$rs" (ReportOgSvg "Kvartalsrapport $repQL" $headline "Nettoköp svenska aktier" $net @($buys | Select-Object -First 5 | ForEach-Object { ,@($_.name, $_.flow) }))
   $article = '{"@context":"https://schema.org","@type":"Article","headline":' + (J "Fondernas köp och sälj $repQL") + ',"description":' + (J $desc) +
     ',"datePublished":' + (J ([string]$m.built)) + ',"dateModified":' + (J ([string]$m.built)) + ',"inLanguage":"sv-SE","image":' + (J "$BaseUrl/$img") +
     ',"author":{"@type":"Organization","name":"Fondinsyn","url":' + (J "$BaseUrl/") + '},"publisher":{"@type":"Organization","name":"Fondinsyn","url":' + (J "$BaseUrl/") + "}}"
@@ -1141,7 +1181,7 @@ for ($ri = 0; $ri -lt $reportQs.Count; $ri++) {
     $(if ($top3.Count) { " Mest köpte de " + (JoinSv $top3) + "." } else { "" }) +
     $(if ($cPos.Count) { " Mest pengar gick till aktier från " + (JoinSv $cPos) + "." } else { "" })
   $stats = @(@("Fonder", (Num0 $wq.tFunds), "#1f2328"), @("Nettoköp", (BigSek $net -Sign), (FlowColor $net)), @("Största köp", $(if ($buys.Count) { BigSek $buys[0].flow -Sign } else { "–" }), "#1a7f37"))
-  $img = Image "rapport-$rs-utland" (OgSvg "Utländska aktier $repQL" "Svenska fonders köp och sälj av utländska aktier" $stats "Mest köpta utländska aktier" $null ($top3 -join " · "))
+  $img = Image "rapport-$rs-utland" (ReportOgSvg "Kvartalsrapport $repQL · utländska aktier" $headline "Nettoköp utländska aktier" $net @($buys | Select-Object -First 5 | ForEach-Object { ,@($_.name, $_.flow) }))
   $article = '{"@context":"https://schema.org","@type":"Article","headline":' + (J "Fondernas köp och sälj av utländska aktier $repQL") + ',"description":' + (J $desc) +
     ',"datePublished":' + (J ([string]$qMeta.built)) + ',"dateModified":' + (J ([string]$qMeta.built)) + ',"inLanguage":"sv-SE","image":' + (J "$BaseUrl/$img") +
     ',"author":{"@type":"Organization","name":"Fondinsyn","url":' + (J "$BaseUrl/") + '},"publisher":{"@type":"Organization","name":"Fondinsyn","url":' + (J "$BaseUrl/") + "}}"
@@ -1397,6 +1437,18 @@ Page "signaler/" "signaler" "Samlad signal – fonder, insiders och blankning ih
   "Svenska aktier där fonderna köper, insiders köper och blankningen minskar, eller tvärtom. Tre signaler vägda ihop till ett tal per aktie." `
   $defaultImg $content -Crumbs @("Samlad signal", "signaler/")
 
+# ---------- Fondernas ägarandel och Toppfonderna (listorna räknas i appen) ----------
+$content = '<div class="page-head"><h1>Fondernas ägarandel</h1><p class="meta lead">Hur stor del av bolagen på Stockholmsbörsen och First North som svenska fonder äger tillsammans, ' +
+  'och var fonderna ökade och minskade sin andel under ' + $QL + '.</p></div><p class="desc">' + (A "/#/agarandel" "Se listan med alla bolag") + '</p>'
+Page "agarandel/" "agarandel" "Fondernas ägarandel – hur mycket av bolagen svenska fonder äger | Fondinsyn" `
+  "Hur stor andel av svenska börsbolag som ägs av svenska fonder, vilka bolag fonderna äger mest av och var de ökade och minskade sin andel $QL." `
+  $defaultImg $content -Crumbs @("Fondernas ägarandel", "agarandel/")
+$content = '<div class="page-head"><h1>Toppfonderna</h1><p class="meta lead">De aktivt förvaltade fonderna med bäst avkastning de senaste fem åren, och vilka aktier de köpte och sålde under ' + $QL + '.</p></div>' +
+  '<p class="desc">' + (A "/#/toppfonder" "Se fonderna och deras affärer") + '</p>'
+Page "toppfonder/" "toppfonder" "Toppfonderna – vad fonderna med bäst avkastning köper | Fondinsyn" `
+  "Vilka aktier de svenska fonderna med bäst avkastning de senaste fem åren köpte och sålde under $QL." `
+  $defaultImg $content -Crumbs @("Toppfonderna", "toppfonder/")
+
 # ---------- Integritet och villkor: /integritet/ ----------
 $privacy = '<div class="page-head"><h1>Integritet och villkor</h1><p class="meta">Senast uppdaterad 15 oktober 2026</p></div>' +
   '<p class="lead">Fondinsyn sätter inga kakor, kräver inget konto och säljer inga uppgifter. Här beskrivs vilka uppgifter som ändå hanteras när du använder sajten, och vilka villkor som gäller för innehållet.</p>' +
@@ -1457,6 +1509,14 @@ try {
   $sh = ReadJson "shorts.json"
   $shTop = foreach ($a in @($sh.aggregate | Sort-Object { -[double]$_[2] } | Select-Object -First 6)) { "[" + (J $a[0]) + "," + (J $a[1]) + "," + ([double]$a[2]).ToString("0.##", $Inv) + "]" }
   $front.Add('"shorts":[' + (@($shTop) -join ",") + "]")
+} catch { }
+# Spararnas nettosparande senaste månaden (data/flows.json från build-flows.ps1), i MSEK
+try {
+  if (Test-Path (Join-Path $DataDir "flows.json")) {
+    $fl = ReadJson "flows.json"
+    $fmo = @($fl.months); $ser = @($fl.types.TOTALT)
+    for ($k = $fmo.Count - 1; $k -ge 0; $k--) { if ($null -ne $ser[$k]) { $front.Add('"savings":[' + (J ([string]$fmo[$k])) + "," + ([double]$ser[$k][0]).ToString("0.#", $Inv) + "]"); break } }
+  }
 } catch { }
 $front.Add('"built":' + (J (Get-Date -Format "yyyy-MM-dd HH:mm")))
 Save "data/front.json" ("{" + ($front -join ",") + "}")

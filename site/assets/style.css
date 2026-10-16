@@ -592,6 +592,23 @@ a.btn { color: var(--fg-soft); }
 .rc-web { font-size: 13px; font-weight: 600; white-space: nowrap; }
 .btn-tag { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 5px; background: rgba(255, 255, 255, 0.18); }
 
+/* Genvägar till avdelningarna på startsidan */
+.quick { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.ql { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 14px 16px 15px; border-radius: 14px; background: var(--bg); border: 1px solid var(--border); color: var(--fg); transition: border-color 0.2s, background 0.2s; }
+.ql:hover { text-decoration: none; border-color: var(--border-strong); background: var(--bg-subtle); }
+.ql-t { font-size: 13px; font-weight: 600; color: var(--fg-muted); display: flex; justify-content: space-between; align-items: center; }
+.ql-t::after { content: "→"; color: var(--fg-muted); transition: transform 0.2s var(--ease), color 0.2s; }
+.ql:hover .ql-t::after { transform: translateX(3px); color: var(--fg); }
+.ql-v { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ql-d { font-size: 12.5px; color: var(--fg-muted); line-height: 1.4; }
+.rc-next { font-size: 12.5px; color: var(--fg-muted); }
+
+/* Flikar för avdelningen överst på sidan */
+.subnav { display: flex; flex-wrap: wrap; gap: 6px; margin: -8px 0 22px; }
+.subnav a { font-size: 13.5px; font-weight: 600; color: var(--fg-soft); padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg); transition: border-color 0.15s, background 0.15s, color 0.15s; }
+.subnav a:hover { text-decoration: none; border-color: var(--border-strong); color: var(--fg); }
+.subnav a[aria-current="page"] { background: var(--fg); border-color: var(--fg); color: var(--bg); }
+
 /* Signalmoduler: insynshandel, dubbelsignal, blankning och räntor */
 .modules { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 .module { position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 20px 14px; display: flex; flex-direction: column; min-width: 0; box-shadow: var(--shadow-sm); transition: border-color 0.25s, box-shadow 0.35s var(--spring), transform 0.35s var(--spring); }
@@ -944,6 +961,7 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .hero { grid-template-columns: minmax(0, 1fr); gap: 32px; }
   .hero-side { padding-left: 0; border-left: 0; padding-top: 28px; border-top: 1px solid var(--glass-line); }
   .modules { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .quick { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .story-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .highlights.hl-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .highlights.hl-4 .hl:nth-child(3)::before { display: none; }
@@ -985,13 +1003,21 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .ticker-inner { gap: 18px; height: 32px; }
   .topbar-inner { min-height: 56px; gap: 10px; }
   .brand { font-size: 19px; }
-  .mainnav, .search-btn, .menu-btn { display: none; }
+  .mainnav, .menu-btn { display: none; }
+  /* Sökknappen som en rund ikon i toppen (flikraden har Signaler i stället för Sök) */
+  .search-btn { display: inline-flex; flex: none; width: 38px; padding: 0; justify-content: center; }
+  .search-btn-text, .search-btn kbd { display: none; }
   .select-sm { height: 38px; font-size: 16px; }
   .quarter-select { font-size: 15px; }
 
   .subbar-inner { min-height: 0; padding-top: 10px; padding-bottom: 10px; font-size: 13px; gap: 8px; }
   .subbar-controls { width: 100%; justify-content: space-between; margin-left: 0; }
   .filter-label { display: none; }
+  .quick { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .ql { padding: 12px 14px 13px; }
+  .ql-v { font-size: 18px; }
+  .subnav { margin: -4px 0 18px; gap: 6px; }
+  .subnav a { font-size: 13px; padding: 5px 12px; }
   .lg { display: none; }
   .sp-parts { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .sig-cell .sig-meter { display: none; }

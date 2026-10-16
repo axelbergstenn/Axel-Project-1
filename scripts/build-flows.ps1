@@ -16,11 +16,13 @@
   fonden får räknas också dit, så kvartal med många utdelningar (det andra kvartalet) ser för positiva ut, och
   räntepappers kursrörelser räknas inte bort. Därför visas siffrorna som en uppskattning.
 
-  Går hämtningen från Fondbolagens förening fel behålls månadsdatan från förra körningen.
+  Går hämtningen från Fondbolagens förening fel behålls månadsdatan från förra körningen. Hela år som redan finns
+  i flows.json (alla tolv månader) laddas inte ner igen, bara de två senaste åren hämtas varje gång.
 #>
 param(
   [string]$OutDir = "site/data",
-  [int]$Years = 3
+  # Första året med Excel-filer (xlsx) hos Fondbolagens förening. Äldre år finns bara som xls.
+  [int]$FirstYear = 2014
 )
 
 $ErrorActionPreference = "Stop"
@@ -92,6 +94,7 @@ function Read-Xlsx([string]$path) {
   } finally { $zip.Dispose() }
 }
 
+$Rename = @{ "Obligationsfonder" = "Långa räntefonder"; "Penningmarknadsfonder" = "Korta räntefonder"; "Genrationsfonder" = "Generationsfonder" }
 $MonthNo = @{ jan = 1; feb = 2; mar = 3; apr = 4; maj = 5; jun = 6; jul = 7; aug = 8; sep = 9; okt = 10; nov = 11; dec = 12 }
 
 # Läser tabellerna i en fil till $target[fondtyp][ "YYYY-MM" ] = @(netto, förmögenhet)
@@ -124,6 +127,8 @@ function Read-Flows($rows, [int]$year, $target) {
       # Månader som inte har kommit än står som nollor
       if (-not $ins -and -not $out -and -not $aum) { continue }
       $name = $cats[$c]
+      # Äldre filer använde andra namn på samma fondtyper
+      if ($Rename.ContainsKey($name)) { $name = $Rename[$name] }
       if (-not $target.ContainsKey($name)) { $target[$name] = @{} }
       $target[$name][$ym] = @($net, $aum)
     }
@@ -145,27 +150,52 @@ function Get-Workbook([string]$file, [string]$dir) {
 # Månadsstatistik
 
 $types = @{}; $focus = @{}
+$old = $null
+if (Test-Path $OutFile) { try { $old = [System.IO.File]::ReadAllText((Resolve-Path $OutFile).Path, $Utf8) | ConvertFrom-Json } catch { } }
+
+# Hela år från förra körningen återanvänds
+$kept = @{}
+if ($old -and $old.months) {
+  $om = @($old.months)
+  foreach ($pair in @(@($old.types, $types), @($old.focus, $focus))) {
+    $src = $pair[0]; $dst = $pair[1]
+    if (-not $src) { continue }
+    foreach ($prop in $src.PSObject.Properties) {
+      $vals = @($prop.Value)
+      for ($k = 0; $k -lt $om.Count; $k++) {
+        $yy = [int]([string]$om[$k]).Substring(0, 4)
+        if ($yy -ge (Get-Date).Year - 1 -or $null -eq $vals[$k]) { continue }
+        if (-not ($om -contains "$yy-12")) { continue }
+        if (-not $dst.ContainsKey($prop.Name)) { $dst[$prop.Name] = @{} }
+        $dst[$prop.Name][[string]$om[$k]] = @($vals[$k][0], $vals[$k][1])
+        $kept[$yy] = $true
+      }
+    }
+  }
+}
+
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("fondflode-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force $tmp | Out-Null
 $thisYear = (Get-Date).Year
+$fetched = 0
 try {
-  for ($y = $thisYear - $Years + 1; $y -le $thisYear; $y++) {
-    # Filnamnen har skiftat genom åren (formogenhet/fondformogenhet)
+  for ($y = $FirstYear; $y -le $thisYear; $y++) {
+    if ($kept[$y]) { continue }
+    # Filnamnen har skiftat genom åren (formogenhet/fondformogenhet, aktiefonder först eller sist)
     $p = Get-Workbook "nysparande-och-formogenhet-$y.xlsx" $tmp
     if (-not $p) { $p = Get-Workbook "nysparande-och-fondformogenhet-$y.xlsx" $tmp }
-    if ($p) { Read-Flows (Read-Xlsx $p) $y $types }
+    if ($p) { Read-Flows (Read-Xlsx $p) $y $types; $fetched++ }
     $p = Get-Workbook "aktiefonder-$y.xlsx" $tmp
+    if (-not $p) { $p = Get-Workbook "nysparande-och-formogenhet-$y-aktiefonder.xlsx" $tmp }
     if ($p) { Read-Flows (Read-Xlsx $p) $y $focus }
   }
+  Write-Host ("  Hämtade {0} år, återanvände {1}" -f $fetched, $kept.Count)
 } catch {
   Write-Host "Kunde inte läsa månadsstatistiken: $($_.Exception.Message)"
   $types = @{}; $focus = @{}
 } finally {
   Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
 }
-
-$old = $null
-if (Test-Path $OutFile) { try { $old = Get-Content $OutFile -Raw -Encoding UTF8 | ConvertFrom-Json } catch { } }
 
 function Series-Json($set, $months) {
   $parts = foreach ($name in ($set.Keys | Sort-Object)) {

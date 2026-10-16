@@ -71,6 +71,12 @@ jobs:
         continue-on-error: true
         run: ./scripts/build-rates.ps1
 
+      # Antal aktier per bolag från Nasdaq (för fondernas ägarandel). Högst 60 aktier per körning, varje aktie en gång i månaden.
+      - name: Hämta antal aktier
+        shell: pwsh
+        continue-on-error: true
+        run: ./scripts/build-shares.ps1
+
       # Spararnas nettoflöden per fondtyp (Fondbolagens förening, månadsvis) och uppskattade flöden per fond (ur FI-datan)
       - name: Bygg fondsparandet
         shell: pwsh

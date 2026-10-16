@@ -8,7 +8,7 @@
 (function () {
   "use strict";
 
-  var INDEX_RE = /index|indx|\bomx|passiv|tracker|\betf\b|\bzero\b|\baccess\b/i;
+  var INDEX_RE = /index|indx|\bomx|passiv|tracker|\betf\b|\bzero\b|\baccess\b|aktiespararna topp/i;
 
   // Gränser för "indexnära men dyr": aktiv risk under 3 % och avgift på minst 0,7 %
   var CLOSET_AR = 3;
@@ -562,13 +562,35 @@
       '<p class="kicker">Kvartalsrapport ' + quarterLabel(m.id) + "</p>" +
       '<a class="rc-title" href="#/rapport">' + esc(quarterHeadline(cont, buys, sells)) + "</a>" +
       '<p class="rc-meta">Nettoköp ' + marketWord() + ' aktier <b class="' + cls(net) + '">' + bigSek(net, true) + "</b> · " + int(t.funds) + " fonder" +
-      (state.excludeIndex ? " utan indexfonder" : "") + " · innehaven den " + dateText(m.curr) + "</p></div>" +
+      (state.excludeIndex ? " utan indexfonder" : "") + " · innehaven den " + dateText(m.curr) + "</p>" +
+      (state.q === state.index.quarters[0].id ? '<p class="rc-next">Nästa kvartal, ' + quarterLabel(nextQuarter(state.q)) + ", läggs in automatiskt samma morgon som Finansinspektionen publicerar det.</p>" : "") +
+      "</div>" +
       '<div class="rc-controls" role="group" aria-label="Välj kvartalsrapport">' +
       '<select class="select-sm" id="repQ" aria-label="Kvartal">' + opts + "</select>" +
       '<div class="seg" role="group" aria-label="Marknad i rapporten">' + pick("se", "Sverige") + pick("world", "Utland") + "</div>" +
       repGoLinks(pq, pm) + "</div></section>";
   }
   function reportHref(q) { return q === state.q ? "#/rapport" : "#/rapport/" + q; }
+  function nextQuarter(q) { var y = +q.slice(0, 4), n = +q.slice(5); return n === 4 ? (y + 1) + "Q1" : y + "Q" + (n + 1); }
+
+  // Genvägar till sajtens avdelningar, var och en med en aktuell siffra
+  function quickLinks(ds) {
+    var f = state.front || {}, t = ds.totals, net = t.buy + t.sell;
+    var policy = (f.rates || []).filter(function (r) { return r[0] === "SECBREPOEFF"; })[0];
+    var sav = f.savings;
+    var tile = function (href, title, value, desc) {
+      return '<a class="ql" href="' + href + '"><span class="ql-t">' + title + '</span><span class="ql-v">' + value + '</span><span class="ql-d">' + desc + "</span></a>";
+    };
+    return '<nav class="quick section-gap" aria-label="Genvägar">' +
+      tile("#/aktier", "Aktier", '<span class="' + cls(net) + '">' + bigSek(net, true) + "</span>", "fondernas nettoköp i " + int(t.held) + " " + marketWord() + " aktier") +
+      tile("#/fonder", "Fonder", int(Object.keys(quarterData().fi).length), "fonder med innehav, avgifter och toppfonderna") +
+      tile("#/signaler", "Signaler", f.double ? int(f.double.buy) : "Insyn", f.double ? "dubbelsignaler just nu, och insyn och blankning" : "insynshandel, blankning och samlad signal") +
+      tile("#/sparande", "Sparande", sav ? '<span class="' + cls(sav[1]) + '">' + bigSek(sav[1] * 1e6, true) + "</span>" : "Fondsparandet",
+        sav ? "spararnas nettosparande i " + monthLabel(sav[0], true) : "vart spararnas pengar går") +
+      tile("#/rantor", "Räntor", policy ? nf2.format(policy[2]) + " %" : "Räntor", "styrräntan, obligationer och räntefonder") +
+      tile("#/rapport", "Kvartalsrapporter", quarterLabel(state.index.quarters[0].id), "alla kvartal, även som PDF") +
+      "</nav>";
+  }
 
   // ---------- Kvartalsrapporten som PDF ----------
   // PDF-filerna skapas av scripts/build-pdf.sh när sajten publiceras (Chrome skriver ut rapportsidan med ?pdf).
@@ -674,7 +696,7 @@
         : highlight("Längsta köpsvit", null, null, '<span class="muted">Laddar…</span>', "")) +
       "</div>";
 
-    return reportCard(ds, cont, buys, sells) + watchBlock() + signalModules() + '<div class="section-gap">' + highlights + "</div>" +
+    return reportCard(ds, cont, buys, sells) + quickLinks(ds) + watchBlock() + signalModules() + '<div class="section-gap">' + highlights + "</div>" +
       '<div class="grid-2 section-gap">' +
       block("Störst nettoköp", "Förändring i antal aktier × kurs vid kvartalsslut. " + termLink("nettokop", "Hur räknas det?"), table("ov-buy", flowCols, buys, st) + '<a class="more" href="#/aktier">Alla aktier</a>') +
       block("Störst nettosälj", "&nbsp;", table("ov-sell", flowCols, sells, st)) +
@@ -848,7 +870,9 @@
     });
     var world = state.market === "world";
     var nameWithSub = stockCol(function (s) { return (world && s.country ? esc(countryName(s.country)) + " · " : "") + esc(s.sector) + " · " + int(s.f2) + " fonder · " + mkr(s.val2) + " mkr"; });
-    var cols = [nameWithSub].concat(world ? [col.country] : [], [col.sector, col.funds, col.dFunds, col.value, col.flow, col.chg]);
+    // Fondernas ägarandel finns för svenska bolag på Nasdaq Stockholm och First North
+    var ownCol = !world && needShares() ? [{ key: "own", label: "Ägarandel", hideSm: true, cell: function (s) { return ownText(ownShare(s)); }, value: function (s) { return ownShare(s); } }] : [];
+    var cols = [nameWithSub].concat(world ? [col.country] : [], [col.sector, col.funds, col.dFunds, col.value], ownCol, [col.flow, col.chg]);
     $("stockTable").innerHTML = table("stocks-" + state.market, cols, rows, { csv: true, sort: { col: "flow", dir: -1 }, empty: "Inga aktier matchar filtret." });
     $("stockCount").textContent = int(rows.length) + " aktier";
   }
@@ -884,7 +908,9 @@
         fig("Fonder som äger", int(s.f2)) + fig("Fondernas innehav", s.price ? bigSek(s.val2) : "–", s.price ? "" : "kurs saknas") +
         fig("Nettoköp " + quarterLabel(state.q), s.netFlow == null || !s.price ? "–" : '<span class="' + cls(s.flow) + '">' + bigSek(s.flow, true) + "</span>") +
         fig("Δ antal aktier", '<span class="' + cls(s.chg) + '">' + pct(s.chg, true) + "</span>") +
-        fig("Nya fonder", int(s.nNew)) + fig("Avvecklat", int(s.nExit)) + "</dl>";
+        fig("Nya fonder", int(s.nNew)) + fig("Avvecklat", int(s.nExit)) +
+        (!world && needShares() && ownShare(s) != null ? fig('<a href="#/agarandel">Fondernas ägarandel</a>', ownText(ownShare(s)),
+          s.isNew ? "" : (function (d) { return (d >= 0 ? "+" : "−") + nf1.format(Math.abs(d) * 100) + " p.e. sedan " + quarterLabel(quarterData().meta.prevId); })(ownShare(s) - ownShare(s, true))) : "") + "</dl>";
       if (s.isNew) html += '<p class="notice">Ingen fond ägde aktien förra kvartalet. Det beror oftast på en notering, avknoppning eller ett nytt aktieslag, så innehaven räknas inte som köp i översikten.</p>';
       if (s.isGone) html += '<p class="notice">Ingen fond äger aktien längre. Det beror oftast på uppköp, avnotering eller byte av aktieslag.</p>';
       html += stockSignalPanel(s);
@@ -2216,6 +2242,124 @@
   }
   function personText(r) { return esc(personName(r.person)) + (r.close ? " (närstående)" : ""); }
 
+  // ---------- Fondernas ägarandel ----------
+  // data/shares.json (scripts/build-shares.ps1): antal aktier per aktieslag för bolag på Nasdaq Stockholm och First North.
+  // Ägarandelen är fondernas antal aktier delat med antalet aktier i aktieslaget, samma antal aktier för båda kvartalen.
+
+  function needShares() {
+    return need("shares", function () { return getJSON("data/shares.json").then(function (d) { state.shares = d.shares || {}; state.sharesBuilt = d.built; }); });
+  }
+  function ownShare(s, prev) {
+    var n = state.shares && state.shares[s.isin];
+    if (!n || !n[0]) return null;
+    var h = prev ? s.h1b : s.h2;
+    return h ? Math.min(1, h / n[0]) : 0;
+  }
+  function ownText(v) { return v == null ? "–" : nf1.format(v * 100) + " %"; }
+
+  function viewOwnership() {
+    document.title = "Fondernas ägarandel – hur mycket av bolagen svenska fonder äger – Fondinsyn";
+    var head = '<div class="page-head"><h1>Fondernas ägarandel</h1><p class="meta lead">Hur stor del av bolagen som svenska fonder äger tillsammans, ' +
+      "och var de ökade och minskade sin andel under " + quarterLabel(state.q) + ". En hög andel betyder att många fonder redan äger aktien: " +
+      "de kan bära kursen, men säljer de samtidigt blir det trångt i dörren.</p></div>";
+    if (!needShares()) return head + (failed("shares") ? errorBlock() : loadingBlock());
+    var rows = quarterData().se.stocks.filter(function (s) { return s.price && s.h2 && ownShare(s) != null; }).map(function (s) {
+      // Nynoterade bolag (ingen fond ägde dem förra kvartalet) har ingen jämförelse
+      var a = ownShare(s), b = s.isNew ? null : ownShare(s, true);
+      return { s: s, name: s.name, isin: s.isin, own: a, prev: b, d: b == null ? null : a - b };
+    });
+    var top = rows.slice().sort(function (a, b) { return b.own - a.own; });
+    var up = rows.filter(function (r) { return r.d > 0; }).sort(function (a, b) { return b.d - a.d; });
+    var down = rows.filter(function (r) { return r.d < 0; }).sort(function (a, b) { return a.d - b.d; });
+    var colName = { key: "name", label: "Aktie", align: "l", cls: "name", cell: function (r) { return nameCell(stockHref(r.s), r.s.name, int(r.s.f2) + " fonder äger " + ownText(r.own)); }, value: function (r) { return r.name; } };
+    var colOwn = { key: "own", label: "Ägarandel", cell: function (r) { return '<span class="own-cell"><span class="own-bar"><i style="width:' + Math.min(100, r.own / 0.4 * 100).toFixed(1) + '%"></i></span>' + ownText(r.own) + "</span>"; }, value: function (r) { return r.own; } };
+    var colD = { key: "d", label: "Förändring", cell: function (r) { return r.d == null ? "–" : '<span class="' + cls(r.d) + '">' + signed(nf1.format(r.d * 100), r.d) + " p.e.</span>"; }, value: function (r) { return r.d; } };
+    var colF = { key: "f", label: "Fonder", hideSm: true, cell: function (r) { return int(r.s.f2); }, value: function (r) { return r.s.f2; } };
+    var colV = { key: "v", label: "Innehav (mkr)", hideSm: true, cell: function (r) { return mkr(r.s.val2); }, value: function (r) { return r.s.val2; } };
+    var avg = rows.length ? rows.reduce(function (a, r) { return a + r.own; }, 0) / rows.length : 0;
+    var over20 = rows.filter(function (r) { return r.own >= 0.2; }).length;
+    return head +
+      '<dl class="figures">' + fig("Aktier med uppgift", int(rows.length), "Nasdaq Stockholm och First North") +
+      fig("Fonderna äger minst 20 %", int(over20) + " bolag") + fig("Genomsnittlig ägarandel", ownText(avg)) +
+      fig("Högst ägarandel", top[0] ? esc(top[0].s.name) : "–", top[0] ? ownText(top[0].own) : "") + "</dl>" +
+      block("Där fonderna äger mest", "Andel av aktierna i aktieslaget som ägs av svenska fonder i slutet av " + quarterLabel(state.q) + ".",
+        table("own-top", [colName, colOwn, colD, colF, colV], top, { csv: true, sort: { col: "own", dir: -1 }, limit: 30, expand: true })) +
+      '<div class="grid-2 section-gap">' +
+      block("Fonderna ökade sin andel mest", "Förändring i procentenheter jämfört med " + quarterLabel(quarterData().meta.prevId) + ".", table("own-up", [colName, colD, colOwn], up.slice(0, 15), { static: true })) +
+      block("Fonderna minskade sin andel mest", "&nbsp;", table("own-down", [colName, colD, colOwn], down.slice(0, 15), { static: true })) + "</div>" +
+      '<p class="desc section-gap">Antalet aktier per aktieslag kommer från Nasdaq (uppdaterat ' + esc(state.sharesBuilt || "") + "). För bolag med flera aktieslag (A och B) gäller andelen det aktieslag som står i listan. " +
+      "Fonder som inte rapporterar till Finansinspektionen, till exempel utländska fonder, räknas inte med.</p>";
+  }
+
+  // ---------- Toppfonderna ----------
+  // De fonder som haft bäst avkastning de senaste fem åren (Pensionsmyndighetens snitt per år, efter avgifter),
+  // och vad de köpte och sålde under kvartalet. Svenska aktier: fonder som placerar i Sverige och Norden.
+  // Utländska aktier: aktiefonder med andra placeringsinriktningar.
+
+  var TOP_SE = /^(Sverige|Sverige småbolag|Norden)$/;
+  var TOP_WORLD = /^(Global|Global och Sverige|USA och Nordamerika|Europa|Europa småbolag|Asien|Japan|Indien|Nya marknader|IT och kommunikation|Läkemedel och bioteknik|Fastighet)$/;
+  var TOP_N = 15;
+
+  function topFunds(world) {
+    var d = quarterData(), ds = world ? d.world : d.se;
+    if (!ds) return [];
+    var re = world ? TOP_WORLD : TOP_SE;
+    return Object.keys(state.perf.funds).map(function (id) { return { id: id, p: state.perf.funds[id], fi: d.fi[id], m: ds.fundById[id] }; })
+      .filter(function (x) { return x.fi && !x.fi.isIndex && x.m && x.m.both && x.p[3] != null && re.test(x.p[7] || ""); })
+      .sort(function (a, b) { return b.p[3] - a.p[3]; }).slice(0, TOP_N);
+  }
+
+  function viewTopFunds() {
+    var world = state.market === "world";
+    document.title = "Toppfonderna – vad fonderna med bäst avkastning köper – Fondinsyn";
+    var head = '<div class="page-head"><h1>Toppfonderna</h1><p class="meta lead">De ' + TOP_N + " aktivt förvaltade fonderna med bäst avkastning de senaste fem åren " +
+      (world ? "bland fonder som placerar utanför Sverige" : "bland fonder som placerar i Sverige och Norden") + ", och vad de köpte och sålde under " + quarterLabel(state.q) +
+      ". Byt till " + (world ? "svenska" : "utländska") + " aktier uppe till höger.</p></div>";
+    if (!needPerf()) return head + (failed("perf") ? errorBlock() : loadingBlock());
+    var ds = marketDs();
+    if (!ds) return head + (failed("world-" + state.q) ? errorBlock() : loadingBlock("Laddar utländska aktier…"));
+    var funds = topFunds(world);
+    if (!funds.length) return head + '<div class="notice">Det finns ingen avkastning för fonderna det här kvartalet.</div>';
+    // Summera fondernas affärer per aktie
+    var by = {};
+    funds.forEach(function (x) {
+      x.m.h.forEach(function (r) {
+        var st = ds.stocks[r[0]], s1 = r[1] || 0, s2 = r[2] || 0;
+        if (s1 === s2 || !st.price || st.isNew || st.isGone) return;
+        var e = by[st.isin] = by[st.isin] || { s: st, buy: 0, sell: 0, flow: 0, buyers: [], sellers: [] };
+        var v = (s2 - s1) * st.price;
+        e.flow += v;
+        if (s2 > s1) { e.buy++; e.buyers.push(x.fi.name); } else { e.sell++; e.sellers.push(x.fi.name); }
+      });
+    });
+    var all = Object.keys(by).map(function (k) { return by[k]; });
+    var buys = all.filter(function (e) { return e.flow > 0; }).sort(function (a, b) { return (b.buy - b.sell) - (a.buy - a.sell) || b.flow - a.flow; });
+    var sells = all.filter(function (e) { return e.flow < 0; }).sort(function (a, b) { return (b.sell - b.buy) - (a.sell - a.buy) || a.flow - b.flow; });
+    var stockCol = { key: "name", label: "Aktie", align: "l", cls: "name", cell: function (e) {
+      return nameCell(stockHref(e.s), e.s.name, e.buy + " köpte, " + e.sell + " sålde");
+    }, value: function (e) { return e.s.name; } };
+    var cntCol = { key: "n", label: "Fonder", align: "l", hideSm: true, cell: function (e) {
+      return '<span class="pos">' + e.buy + " köpte</span>, " + '<span class="neg">' + e.sell + " sålde</span>";
+    }, value: function (e) { return e.buy - e.sell; } };
+    var flowC = { key: "flow", label: "Nettoköp (mkr)", cell: function (e) { return '<span class="' + cls(e.flow) + '">' + mkr(e.flow, true) + "</span>"; }, value: function (e) { return e.flow; } };
+    var fundCols = [
+      { key: "rank", label: "#", cls: "rank", hideSm: true, cell: function (x, n) { return n + 1; } },
+      { key: "name", label: "Fond", align: "l", cls: "name", cell: function (x) { return nameCell(fundHref({ id: x.id }), x.fi.name, esc(x.fi.co) + " · " + esc(x.p[7])); }, value: function (x) { return x.fi.name; } },
+      { key: "cat", label: "Inriktning", align: "l", cls: "muted", hideSm: true, cell: function (x) { return esc(x.p[7]); } },
+      { key: "r5", label: "Per år, 5 år", cell: function (x) { return retText(x.p[3]); }, value: function (x) { return x.p[3]; } },
+      { key: "ytd", label: "I år", hideSm: true, cell: function (x) { return retText(x.p[0]); }, value: function (x) { return x.p[0]; } },
+      { key: "aum", label: "Förmögenhet", hideSm: true, cell: function (x) { return bigSek(x.fi.aum); }, value: function (x) { return x.fi.aum; } }
+    ];
+    return head +
+      '<div class="grid-2">' +
+      block("Mest köpta av toppfonderna", "Sorterat på hur många av fonderna som köpte, sedan nettoköp.", table("top-buy", [stockCol, cntCol, flowC], buys.slice(0, 15), { static: true })) +
+      block("Mest sålda av toppfonderna", "&nbsp;", table("top-sell", [stockCol, cntCol, flowC], sells.slice(0, 15), { static: true })) + "</div>" +
+      block("Fonderna", "Genomsnittlig avkastning per år de senaste fem åren efter avgifter, enligt Pensionsmyndigheten (beräknad " + esc(state.perf.calculated) + "). Indexfonder är inte med.",
+        table("top-funds", fundCols, funds, { static: true }), "section-gap") +
+      '<p class="desc section-gap">Fonder som inte finns på premiepensionens fondtorg saknar avkastning hos Pensionsmyndigheten och kan därför inte vara med. ' +
+      "Historisk avkastning är ingen garanti för framtida avkastning.</p>";
+  }
+
   // ---------- Fondsparandet ----------
   // data/flows.json byggs av scripts/build-flows.ps1: månadsstatistik från Fondbolagens förening (MSEK)
   // och uppskattade nettoflöden per fond och kvartal ur FI:s fondinnehav.
@@ -3523,8 +3667,21 @@
 
   // ---------- Routing ----------
 
+  // Avdelningarna i menyraden och sidorna i varje avdelning (flikarna överst på sidan)
+  var SECTIONS = {
+    aktier: { label: "Aktier", items: [["aktier", "Alla aktier", "#/aktier"], ["agarandel", "Fondernas ägarandel", "#/agarandel"]] },
+    fonder: { label: "Fonder", items: [["fonder", "Alla fonder", "#/fonder"], ["toppfonder", "Toppfonderna", "#/toppfonder"], ["fondbolag", "Fondbolag", "#/fondbolag"],
+      ["forvaltare", "Kända förvaltare", "#/forvaltare"], ["avgifter", "Avgiftskollen", "#/avgifter"], ["jamfor", "Jämför fonder", "#/jamfor"], ["portfolj", "Min portfölj", "#/portfolj"]] },
+    signaler: { label: "Signaler", items: [["signaler", "Samlad signal", "#/signaler"], ["insyn", "Insynshandel", "#/insyn"], ["dubbelsignal", "Dubbelsignal", "#/dubbelsignal"],
+      ["blankning", "Blankning", "#/blankning"], ["uppkop", "Uppköp", "#/uppkop"]] },
+    om: { label: "Om Fondinsyn", items: [["om", "Om datan", "#/om"], ["ordlista", "Ordlista", "#/ordlista"], ["kontakt", "Kontakt", "#/kontakt"]] }
+  };
+  var PAGE_SECTION = { aktie: "aktier", agarandel: "aktier", fond: "fonder", toppfonder: "fonder", fondbolag: "fonder", forvaltare: "fonder", avgifter: "fonder",
+    jamfor: "fonder", portfolj: "fonder", insyn: "signaler", dubbelsignal: "signaler", blankning: "signaler", blankare: "signaler", uppkop: "signaler",
+    emittent: "rantor", ordlista: "om", kontakt: "om" };
+
   // Kvartalsrapporten har egna flikar för marknaden
-  var MARKET_PAGES = { oversikt: 1, aktier: 1, fonder: 1, fondbolag: 1 };
+  var MARKET_PAGES = { oversikt: 1, aktier: 1, fonder: 1, fondbolag: 1, toppfonder: 1 };
   // #/fonder/rantefonder öppnar fondlistan filtrerad på en fondtyp
   var FUND_TYPE_SLUGS = { aktiefonder: "equity", rantefonder: "rante", blandfonder: "bland", fondandelsfonder: "fof", indexfonder: "index" };
 
@@ -3573,6 +3730,8 @@
       case "rantor": html = viewRates(); break;
       case "dubbelsignal": html = viewDouble(); break;
       case "sparande": html = viewSavings(); break;
+      case "agarandel": html = viewOwnership(); break;
+      case "toppfonder": html = viewTopFunds(); break;
       case "signaler": html = viewSignals(); break;
       case "emittent": html = viewIssuer(r.arg); break;
       default: html = viewOverview();
@@ -3596,18 +3755,29 @@
     if (r.page === "fonder") renderFundTable();
     if (r.page === "rantor") renderIssuerTable();
     drawCharts();
-    var navKey = { aktie: "aktier", fond: "fonder", blankare: "blankning", fondbolag: "fonder", emittent: "rantor" }[r.page] || r.page;
+    // Sidan markeras i menyn, och dess avdelning i menyraden och flikraden
+    var navKey = { aktie: "aktier", fond: "fonder", blankare: "blankning", emittent: "rantor" }[r.page] || r.page;
+    var section = PAGE_SECTION[r.page] || navKey;
     document.querySelectorAll("[data-nav]").forEach(function (a) {
-      if (a.getAttribute("data-nav") === navKey) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+      var key = a.getAttribute("data-nav"), top = a.closest(".mainnav, .tabbar");
+      if (key === (top ? section : navKey)) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
+    // Flikar för avdelningen överst på sidan (Fonder: Alla fonder, Toppfonderna, Fondbolag ...)
+    var sec = SECTIONS[section];
+    var onList = sec && sec.items.some(function (it) { return it[0] === navKey && r.page === navKey && !r.arg; });
+    if (onList && html !== null) {
+      app.insertAdjacentHTML("afterbegin", '<nav class="subnav" aria-label="' + esc(sec.label) + '">' + sec.items.map(function (it) {
+        return '<a href="' + it[2] + '"' + (it[0] === navKey ? ' aria-current="page"' : "") + ">" + it[1] + "</a>";
+      }).join("") + "</nav>");
+    }
     // Sidor som bara ligger i menyn markerar menyknappen (på dator om sidan saknas i menyraden, på mobil i flikraden)
     var inMenu = !!document.querySelector('#moreMenu [aria-current="page"]');
     $("moreBtn").classList.toggle("active", inMenu && !document.querySelector('.mainnav [aria-current="page"]'));
     $("moreBtnM").classList.toggle("active", inMenu && !document.querySelector('.tabbar [aria-current="page"]'));
     document.body.setAttribute("data-page", r.page || "oversikt");
-    // Sidor utan brödsmulor får menygruppens namn ovanför rubriken (Marknaden, Signaler, Verktyg)
+    // Sidor utan brödsmulor och utan flikar får menygruppens namn ovanför rubriken
     var ph = app.querySelector(".page-head");
-    if (ph && !ph.querySelector(".crumbs, .kicker")) {
+    if (ph && !onList && !ph.querySelector(".crumbs, .kicker")) {
       var cur = document.querySelector('#moreMenu a[aria-current="page"]'), grp = cur && cur.closest(".mega-col");
       var gh = grp && grp.querySelector("h2");
       if (gh) ph.insertAdjacentHTML("afterbegin", '<p class="kicker">' + esc(gh.textContent) + "</p>");
