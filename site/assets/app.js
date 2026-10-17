@@ -551,24 +551,52 @@
 
   // Överst på startsidan: kvartalsrapporten i liten form, med val av kvartal och marknad
   var repPick = { q: null, market: null };
-  function reportCard(ds, cont, buys, sells) {
-    var m = quarterData().meta, t = ds.totals, net = t.buy + t.sell;
-    var pq = repPick.q || state.q, pm = repPick.market || state.market;
+  // Data för kortet: valt kvartal och vald marknad. Andra kvartal och utländska aktier laddas när de väljs.
+  function cardData(q, world) {
+    var d = state.data[q];
+    if (!d || !d.se) { need("se-" + q, function () { return loadSe(q); }); return null; }
+    if (!world) return { meta: d.meta, ds: d.se };
+    if (!d.world) {
+      need("world-" + q, function () { return getJSON("data/" + q + "-world.json").then(function (raw) { state.data[q].world = prepare(raw); }); });
+      return null;
+    }
+    return { meta: d.meta, ds: d.world };
+  }
+
+  function reportCard() {
+    var pq = repPick.q || state.q, pm = repPick.market || state.market, world = pm === "world";
     var opts = state.index.quarters.map(function (x) {
       return '<option value="' + x.id + '"' + (x.id === pq ? " selected" : "") + ">" + quarterLabel(x.id) + "</option>";
     }).join("");
     var pick = function (v, label) { return '<button type="button" class="seg-btn" data-rep-pick="' + v + '" aria-pressed="' + (pm === v) + '">' + label + "</button>"; };
+    var cd = cardData(pq, world), body;
+    if (cd) {
+      var cont = cd.ds.stocks.filter(function (s) { return s.price && !s.isNew && !s.isGone; });
+      var buys = cont.filter(function (s) { return s.flow > 0; }).sort(function (a, b) { return b.flow - a.flow; });
+      var sells = cont.filter(function (s) { return s.flow < 0; }).sort(function (a, b) { return a.flow - b.flow; });
+      var t = cd.ds.totals, net = t.buy + t.sell;
+      body = '<a class="rc-title rc-web-link" href="' + reportHref(pq) + '">' + esc(quarterHeadline(cont, buys, sells)) + "</a>" +
+        '<p class="rc-meta">Nettoköp ' + (world ? "utländska" : "svenska") + ' aktier <b class="' + cls(net) + '">' + bigSek(net, true) + "</b> · " + int(t.funds) + " fonder" +
+        (state.excludeIndex ? " utan indexfonder" : "") + " · innehaven den " + dateText(cd.meta.curr) + "</p>";
+    } else {
+      body = (failed("se-" + pq) || failed("world-" + pq)) ? '<p class="rc-meta">Rapporten kunde inte laddas.</p>' :
+        '<div class="sk sk-line w70" style="height:22px;margin:4px 0 8px"></div><div class="sk sk-line w40"></div>';
+    }
     return '<section class="rep-card"><div class="rc-main">' +
-      '<p class="kicker">Kvartalsrapport ' + quarterLabel(m.id) + "</p>" +
-      '<a class="rc-title" href="#/rapport">' + esc(quarterHeadline(cont, buys, sells)) + "</a>" +
-      '<p class="rc-meta">Nettoköp ' + marketWord() + ' aktier <b class="' + cls(net) + '">' + bigSek(net, true) + "</b> · " + int(t.funds) + " fonder" +
-      (state.excludeIndex ? " utan indexfonder" : "") + " · innehaven den " + dateText(m.curr) + "</p>" +
-      (state.q === state.index.quarters[0].id ? '<p class="rc-next">Nästa kvartal, ' + quarterLabel(nextQuarter(state.q)) + ", läggs in automatiskt samma morgon som Finansinspektionen publicerar det.</p>" : "") +
+      '<p class="kicker">Kvartalsrapport ' + quarterLabel(pq) + " · " + (world ? "utländska aktier" : "svenska aktier") + "</p>" + body +
+      (pq === state.index.quarters[0].id ? '<p class="rc-next">Nästa kvartal, ' + quarterLabel(nextQuarter(pq)) + ", läggs in automatiskt samma morgon som Finansinspektionen publicerar det.</p>" : "") +
       "</div>" +
       '<div class="rc-controls" role="group" aria-label="Välj kvartalsrapport">' +
       '<select class="select-sm" id="repQ" aria-label="Kvartal">' + opts + "</select>" +
       '<div class="seg" role="group" aria-label="Marknad i rapporten">' + pick("se", "Sverige") + pick("world", "Utland") + "</div>" +
       repGoLinks(pq, pm) + "</div></section>";
+  }
+  // Ritar om bara kortet när kvartal eller marknad väljs (resten av startsidan står kvar)
+  function refreshReportCard() {
+    var card = document.querySelector(".rep-card");
+    if (!card) return;
+    card.outerHTML = reportCard();
+    segThumbs();
   }
   function reportHref(q) { return q === state.q ? "#/rapport" : "#/rapport/" + q; }
   function nextQuarter(q) { var y = +q.slice(0, 4), n = +q.slice(5); return n === 4 ? (y + 1) + "Q1" : y + "Q" + (n + 1); }
@@ -608,10 +636,6 @@
     return '<span class="rc-go"><a class="btn btn-primary" id="repGo" href="' + (pdf ? pdfHref(q, market === "world") : reportHref(q)) + '"' +
       (pdf ? ' target="_blank" rel="noopener" data-pdf="1"' : "") + ">Läs rapporten" + (pdf ? ' <span class="btn-tag">PDF</span>' : "") + "</a>" +
       (pdf ? '<a class="rc-web" id="repWeb" href="' + reportHref(q) + '">Webbversion</a>' : "") + "</span>";
-  }
-  function updateRepGo() {
-    var box = document.querySelector(".rc-go");
-    if (box) box.outerHTML = repGoLinks(repPick.q || state.q, repPick.market || state.market);
   }
 
   // Kvartalets nettoköp som en stor siffra, en mening som sätter den i perspektiv och staplar för tre år
@@ -696,7 +720,7 @@
         : highlight("Längsta köpsvit", null, null, '<span class="muted">Laddar…</span>', "")) +
       "</div>";
 
-    return reportCard(ds, cont, buys, sells) + quickLinks(ds) + watchBlock() + signalModules() + '<div class="section-gap">' + highlights + "</div>" +
+    return reportCard() + quickLinks(ds) + watchBlock() + signalModules() + '<div class="section-gap">' + highlights + "</div>" +
       '<div class="grid-2 section-gap">' +
       block("Störst nettoköp", "Förändring i antal aktier × kurs vid kvartalsslut. " + termLink("nettokop", "Hur räknas det?"), table("ov-buy", flowCols, buys, st) + '<a class="more" href="#/aktier">Alla aktier</a>') +
       block("Störst nettosälj", "&nbsp;", table("ov-sell", flowCols, sells, st)) +
@@ -4046,12 +4070,10 @@
     var rp = e.target.closest("[data-rep-pick]");
     if (rp) {
       repPick.market = rp.getAttribute("data-rep-pick");
-      rp.parentNode.querySelectorAll("[data-rep-pick]").forEach(function (b) { b.setAttribute("aria-pressed", String(b === rp)); });
-      updateRepGo();
-      segThumbs();
+      refreshReportCard();
       return;
     }
-    if (e.target.closest("#repGo:not([data-pdf]), #repWeb") && repPick.market && repPick.market !== state.market) setMarket(repPick.market);
+    if (e.target.closest("#repGo:not([data-pdf]), #repWeb, .rc-web-link") && repPick.market && repPick.market !== state.market) setMarket(repPick.market);
     var mk = e.target.closest("[data-market]");
     if (mk) {
       setMarket(mk.getAttribute("data-market"));
@@ -4211,7 +4233,8 @@
     }
     if (id === "repQ") {
       repPick.q = e.target.value;
-      updateRepGo();
+      refreshReportCard();
+      var sel = $("repQ"); if (sel) sel.focus();
     }
     if (id === "excludeIndex") {
       state.excludeIndex = e.target.checked;
