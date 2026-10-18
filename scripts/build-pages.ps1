@@ -1527,7 +1527,15 @@ $introBuys = @($introCont | Where-Object { $_.flow -gt 0 } | Sort-Object flow -D
 $introSells = @($introCont | Where-Object { $_.flow -lt 0 } | Sort-Object flow)
 # Samma markup som reportCard() i app.js, så att sidan inte hoppar när appen tar över
 $repOpts = (@($index.quarters | ForEach-Object { '<a href="/rapport/' + (ReportSlug ([string]$_.id)) + '/">' + (QLabel ([string]$_.id)) + '</a>' })) -join " · "
-$intro = '<section class="rep-card"><div class="rc-main"><p class="kicker">Kvartalsrapport ' + $QL + '</p>' +
+$about = '<section class="about-card" aria-label="Om Fondinsyn"><div class="ac-text"><h2>Vad är Fondinsyn?</h2>' +
+  '<p>Fondinsyn visar vad svenska fonder köper och säljer. Varje kvartal rapporterar fondbolagen alla sina innehav till Finansinspektionen. ' +
+  'Vi jämför kvartalen och räknar ut vad som köpts och sålts per aktie, fond och fondbolag, och lägger till insynshandel, blankning, fondsparande och räntor. ' +
+  'Gratis och oberoende. <a href="/#/om">Så funkar det</a></p></div><dl class="ac-freq">' +
+  '<div><dt>Fondernas innehav</dt><dd>Varje kvartal</dd><span>Finansinspektionen</span></div>' +
+  '<div><dt>Insynshandel och blankning</dt><dd>Varje dag</dd><span>Finansinspektionen</span></div>' +
+  '<div><dt>Fondsparandet</dt><dd>Varje månad</dd><span>Fondbolagens förening</span></div>' +
+  '<div><dt>Räntor och avkastning</dt><dd>Dag och vecka</dd><span>Riksbanken, Pensionsmyndigheten</span></div></dl></section>'
+$intro = $about + '<section class="rep-card"><div class="rc-main"><p class="kicker">Kvartalsrapport ' + $QL + '</p>' +
   '<a class="rc-title" href="/rapport/' + (ReportSlug $Q) + '/">' + (Esc (QuarterHeadline $introCont $introBuys $introSells)) + '</a>' +
   '<p class="rc-meta">Nettoköp svenska aktier <b class="' + (SignClass $tNet) + '">' + (BigSek $tNet -Sign) + '</b> · ' + (Num0 $tFunds) + ' fonder · innehaven den ' + $asOf + '</p>' +
   '<p class="rc-meta">Alla rapporter: ' + $repOpts + '</p></div></section>'

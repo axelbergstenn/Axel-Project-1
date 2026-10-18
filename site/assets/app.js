@@ -551,6 +551,25 @@
 
   // Överst på startsidan: kvartalsrapporten i liten form, med val av kvartal och marknad
   var repPick = { q: null, market: null };
+  // Överst på startsidan: vad Fondinsyn är och hur ofta datan uppdateras. Kan döljas (sparas i webbläsaren).
+  function aboutCard() {
+    if (store("ff-hide-about")) return "";
+    var built = state.front && state.front.built ? shortStamp(state.front.built) : null;
+    var item = function (what, when, src) { return "<div><dt>" + what + "</dt><dd>" + when + "</dd><span>" + src + "</span></div>"; };
+    return '<section class="about-card" aria-label="Om Fondinsyn">' +
+      '<button type="button" class="ac-close" data-hide-about aria-label="Dölj rutan" title="Dölj">×</button>' +
+      '<div class="ac-text"><h2>Vad är Fondinsyn?</h2>' +
+      "<p>Fondinsyn visar vad svenska fonder köper och säljer. Varje kvartal rapporterar fondbolagen alla sina innehav till Finansinspektionen. " +
+      "Vi jämför kvartalen och räknar ut vad som köpts och sålts per aktie, fond och fondbolag, och lägger till insynshandel, blankning, fondsparande och räntor. " +
+      'Gratis och oberoende. <a href="#/om">Så funkar det</a></p></div>' +
+      '<dl class="ac-freq">' +
+      item("Fondernas innehav", "Varje kvartal", "Finansinspektionen") +
+      item("Insynshandel och blankning", "Varje dag", "Finansinspektionen") +
+      item("Fondsparandet", "Varje månad", "Fondbolagens förening") +
+      item("Räntor och avkastning", "Dag och vecka", "Riksbanken, Pensionsmyndigheten") +
+      "</dl>" + (built ? '<p class="ac-stamp">Senast uppdaterad ' + esc(built) + "</p>" : "") + "</section>";
+  }
+
   // Data för kortet: valt kvartal och vald marknad. Andra kvartal och utländska aktier laddas när de väljs.
   function cardData(q, world) {
     var d = state.data[q];
@@ -720,7 +739,7 @@
         : highlight("Längsta köpsvit", null, null, '<span class="muted">Laddar…</span>', "")) +
       "</div>";
 
-    return reportCard() + quickLinks(ds) + watchBlock() + signalModules() + '<div class="section-gap">' + highlights + "</div>" +
+    return aboutCard() + reportCard() + quickLinks(ds) + watchBlock() + signalModules() + '<div class="section-gap">' + highlights + "</div>" +
       '<div class="grid-2 section-gap">' +
       block("Störst nettoköp", "Förändring i antal aktier × kurs vid kvartalsslut. " + termLink("nettokop", "Hur räknas det?"), table("ov-buy", flowCols, buys, st) + '<a class="more" href="#/aktier">Alla aktier</a>') +
       block("Störst nettosälj", "&nbsp;", table("ov-sell", flowCols, sells, st)) +
@@ -4065,6 +4084,12 @@
     }
     var csv = e.target.closest("[data-csv]");
     if (csv) { downloadCsv(csv.getAttribute("data-csv")); return; }
+    if (e.target.closest("[data-hide-about]")) {
+      store("ff-hide-about", 1);
+      var ab = document.querySelector(".about-card");
+      if (ab) ab.remove();
+      return;
+    }
     var sv = e.target.closest("[data-sav-type]");
     if (sv) { savingsState.type = sv.getAttribute("data-sav-type"); var sy = window.scrollY; render(); window.scrollTo(0, sy); return; }
     var rp = e.target.closest("[data-rep-pick]");

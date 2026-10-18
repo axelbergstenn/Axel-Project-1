@@ -579,6 +579,20 @@ a.btn { color: var(--fg-soft); }
 .hero-stats div { display: flex; flex-direction: column; }
 .hero-stats dd { order: 1; }
 
+/* Vad Fondinsyn är och hur ofta datan uppdateras */
+.about-card { position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px 36px; align-items: center; padding: 20px 24px; margin-bottom: 14px; border-radius: 18px; background: var(--bg); border: 1px solid var(--border); }
+.ac-text h2 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+.ac-text p { font-size: 14px; line-height: 1.6; color: var(--fg-soft); max-width: 62ch; }
+.ac-text a { font-weight: 600; white-space: nowrap; }
+.ac-freq { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; margin: 0; padding-right: 20px; }
+.ac-freq div { display: flex; flex-direction: column; min-width: 0; padding-left: 12px; border-left: 2px solid var(--brand); }
+.ac-freq dt { font-size: 12.5px; color: var(--fg-muted); }
+.ac-freq dd { margin: 1px 0 0; font-size: 15px; font-weight: 700; }
+.ac-freq span { font-size: 11.5px; color: var(--fg-muted); }
+.ac-stamp { grid-column: 1 / -1; font-size: 12px; color: var(--fg-muted); margin-top: -4px; }
+.ac-close { position: absolute; top: 10px; right: 10px; width: 28px; height: 28px; border-radius: 50%; border: 0; background: none; color: var(--fg-muted); font-size: 18px; line-height: 1; cursor: pointer; }
+.ac-close:hover { background: var(--bg-hover); color: var(--fg); }
+
 /* Kvartalsrapporten i liten form överst på startsidan */
 .rep-card { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 18px 32px; flex-wrap: wrap; padding: 20px 24px; border-radius: 20px; background: var(--glass); box-shadow: var(--glass-shadow); }
 .rc-main { min-width: 0; flex: 1 1 420px; display: flex; flex-direction: column; gap: 6px; }
@@ -962,6 +976,7 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .hero-side { padding-left: 0; border-left: 0; padding-top: 28px; border-top: 1px solid var(--glass-line); }
   .modules { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .quick { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .about-card { grid-template-columns: minmax(0, 1fr); }
   .story-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .highlights.hl-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .highlights.hl-4 .hl:nth-child(3)::before { display: none; }
@@ -1022,6 +1037,10 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .sp-parts { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .sig-cell .sig-meter { display: none; }
   .rep-card { padding: 18px; border-radius: 18px; }
+  .about-card { padding: 16px 16px 14px; gap: 14px; }
+  .ac-text { padding-right: 24px; }
+  .ac-freq { padding-right: 0; gap: 10px 14px; }
+  .ac-freq dd { font-size: 14px; }
   .rc-title { font-size: 21px; }
   .rc-controls { width: 100%; }
   .rc-controls .seg { flex: 1 1 auto; }
