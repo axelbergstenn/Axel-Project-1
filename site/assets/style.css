@@ -606,6 +606,16 @@ a.btn { color: var(--fg-soft); }
 .rc-web { font-size: 13px; font-weight: 600; white-space: nowrap; }
 .btn-tag { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 5px; background: rgba(255, 255, 255, 0.18); }
 
+/* Bädda in och RSS på aktiesidan */
+.embed-box { background: var(--bg); border: 1px solid var(--border); border-radius: 14px; padding: 14px 18px; }
+.embed-box summary { font-weight: 650; cursor: pointer; }
+.embed-box[open] summary { margin-bottom: 8px; }
+.embed-box .desc { font-size: 13.5px; margin: 8px 0; }
+.embed-preview { max-width: 640px; margin: 4px 0 12px; }
+.embed-preview iframe { display: block; width: 100%; height: 260px; border: 0; }
+.embed-code { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.embed-code code { flex: 1 1 320px; min-width: 0; font-family: var(--mono); font-size: 12px; background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; overflow-wrap: anywhere; color: var(--fg-soft); }
+
 /* Backtest */
 .bt-tools { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; margin-bottom: 14px; font-size: 13.5px; }
 .bt-answer { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 20px 32px; align-items: center; padding: 22px 24px; margin-bottom: 24px; border-radius: 18px; background: var(--bg); border: 1px solid var(--border); }

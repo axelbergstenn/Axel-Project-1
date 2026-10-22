@@ -153,6 +153,20 @@ jobs:
         shell: pwsh
         run: ./scripts/build-pages.ps1 -WriteHome
 
+      # Datasetet som release på GitHub, en gång per kvartal (data-2026Q2 osv.)
+      - name: Publicera datasetet som release
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          q=$(python3 -c "import json; print(json.load(open('site/data/index.json'))['quarters'][0]['id'])")
+          zip="site/data/dataset/fondinsyn-dataset-$q.zip"
+          if [ -f "$zip" ] && ! gh release view "data-$q" >/dev/null 2>&1; then
+            gh release create "data-$q" "$zip" site/data/dataset/README.md --title "Fondinsyn dataset $q" --notes-file site/data/dataset/README.md
+          else
+            echo "Release data-$q finns redan eller datasetet saknas"
+          fi
+
       # Kvartalsrapporterna som PDF (Chrome skriver ut rapportsidorna). Misslyckas det länkar sajten till webbversionen.
       - name: Skriv ut kvartalsrapporterna som PDF
         continue-on-error: true

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Fondinsyn</title>
+<!--
+  Inbäddningsbar ruta. Visar fondernas köp och sälj, ägarandel, insynshandel och blankning för en aktie,
+  eller kvartalets mest köpta och mest sålda aktier. Datan kommer från data/embed.json (scripts/build-pages.ps1).
+
+    <iframe src="https://www.fondinsyn.se/embed.html?aktie=volvo-b" width="100%" height="260" style="border:0" loading="lazy" title="Fondinsyn"></iframe>
+    ?aktie=<namn i adressen eller ISIN>   ?lista=kopta | salda   ?tema=ljust | morkt
+-->
+<style>
+@font-face { font-family: "Roboto"; src: url("assets/fonts/roboto-var.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+:root { --bg: #ffffff; --fg: #0c1424; --muted: #627084; --line: #e2e6eb; --pos: #0a7a4a; --neg: #c2321c; --brand: #1d5bd6; --soft: #f4f6f8; --dot: #2f6bff; --ink: #0b1f3a; }
+@media (prefers-color-scheme: dark) { :root:not(.light) { --bg: #141415; --fg: #ececec; --muted: #909093; --line: #28282a; --pos: #45c785; --neg: #ff6f5e; --brand: #9db9f7; --soft: #1d1d1f; --dot: #5a8dff; --ink: #ececec; } }
+:root.dark { --bg: #141415; --fg: #ececec; --muted: #909093; --line: #28282a; --pos: #45c785; --neg: #ff6f5e; --brand: #9db9f7; --soft: #1d1d1f; --dot: #5a8dff; --ink: #ececec; }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: transparent; }
+:root { color-scheme: light dark; } :root.light { color-scheme: light; } :root.dark { color-scheme: dark; }
+body { font: 14px/1.45 "Roboto", -apple-system, "Segoe UI", Arial, sans-serif; color: var(--fg); -webkit-font-smoothing: antialiased; }
+.card { background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px 10px; overflow: hidden; }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.brand { display: inline-flex; align-items: center; gap: 7px; font-weight: 750; font-size: 14px; letter-spacing: -0.02em; color: var(--ink); text-decoration: none; }
+.brand svg { width: 18px; height: 18px; }
+.q { font-size: 12px; color: var(--muted); }
+h1 { margin: 0 0 8px; font-size: 19px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+@media (min-width: 560px) { .grid { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 299px) { .k small { display: none; } }
+.k { display: flex; flex-direction: column; min-width: 0; padding-left: 10px; border-left: 2px solid var(--line); }
+.k > span { font-size: 11.5px; color: var(--muted); }
+.k b { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.k small { font-size: 11.5px; line-height: 1.3; color: var(--muted); }
+.pos { color: var(--pos); } .neg { color: var(--neg); }
+ol { list-style: none; margin: 0; padding: 0; }
+li { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+li:first-child { border-top: 0; }
+li a { color: var(--fg); text-decoration: none; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+li a:hover { color: var(--brand); }
+li b { white-space: nowrap; }
+.foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 8px; margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--muted); }
+.foot a { color: var(--brand); text-decoration: none; font-weight: 600; white-space: nowrap; }
+.foot a:hover { text-decoration: underline; }
+.msg { color: var(--muted); padding: 8px 0; }
+</style>
+</head>
+<body>
+<div class="card" id="card"><div class="msg">Laddar…</div></div>
+<script>
+(function () {
+  "use strict";
+  var params = new URLSearchParams(location.search);
+  if (params.get("tema") === "morkt") document.documentElement.className = "dark";
+  if (params.get("tema") === "ljust") document.documentElement.className = "light";
+  var BASE = "https://www.fondinsyn.se";
+  var nf1 = new Intl.NumberFormat("sv-SE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  var nf0 = new Intl.NumberFormat("sv-SE", { maximumFractionDigits: 0 });
+  var card = document.getElementById("card");
+  var logo = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M17.5 2.08A14 14 0 0 1 29.92 14.5H17.5Z" fill="var(--dot)"/><path d="M29.92 17.5A14 14 0 0 1 17.5 29.92V17.5ZM14.5 29.92A14 14 0 0 1 2.08 17.5H14.5ZM2.08 14.5A14 14 0 0 1 14.5 2.08V14.5Z" fill="var(--ink)"/></svg>';
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function cls(v) { return v > 0 ? "pos" : v < 0 ? "neg" : ""; }
+  function sek(v, sign) {
+    if (v == null) return "–";
+    var a = Math.abs(v), s = sign ? (v > 0 ? "+" : v < 0 ? "−" : "") : (v < 0 ? "−" : "");
+    if (a >= 1e9) return s + nf1.format(a / 1e9) + " mdkr";
+    if (a >= 1e6) return s + nf1.format(a / 1e6) + " mkr";
+    return s + nf0.format(a / 1e3) + " tkr";
+  }
+  function pct(v, sign) { return v == null ? "–" : (sign && v > 0 ? "+" : v < 0 ? "−" : "") + nf1.format(Math.abs(v * 100)) + " %"; }
+  function head(q) {
+    return '<div class="top"><a class="brand" href="' + BASE + '/" target="_blank" rel="noopener">' + logo + "Fondinsyn</a>" + '<span class="q">' + esc(q) + "</span></div>";
+  }
+  function foot(href, text) {
+    return '<div class="foot"><span>Källa: Finansinspektionen</span><a href="' + href + '" target="_blank" rel="noopener">' + text + " →</a></div>";
+  }
+  fetch("data/embed.json", { cache: "no-cache" }).then(function (r) { return r.json(); }).then(function (d) {
+    var list = params.get("lista");
+    var rows = Object.keys(d.stocks).map(function (k) { var x = d.stocks[k]; return { isin: k, name: x[0], slug: x[1], f: x[2], flow: x[3], chg: x[4], own: x[5], ins: x[6], sh: x[7] }; });
+    if (list === "kopta" || list === "salda") {
+      var buy = list === "kopta";
+      var top = rows.filter(function (x) { return x.flow != null && (buy ? x.flow > 0 : x.flow < 0); })
+        .sort(function (a, b) { return buy ? b.flow - a.flow : a.flow - b.flow; }).slice(0, 5);
+      card.innerHTML = head(d.ql) + "<h1>Fondernas mest " + (buy ? "köpta" : "sålda") + " aktier</h1><ol>" + top.map(function (x) {
+        return '<li><a href="' + BASE + "/aktie/" + esc(x.slug) + '/" target="_blank" rel="noopener">' + esc(x.name) + '</a><b class="' + cls(x.flow) + '">' + sek(x.flow, true) + "</b></li>";
+      }).join("") + "</ol>" + foot(BASE + "/rapport/", "Hela kvartalsrapporten");
+      return;
+    }
+    var key = (params.get("aktie") || "").toLowerCase();
+    var s = rows.filter(function (x) { return x.slug === key || x.isin.toLowerCase() === key; })[0];
+    if (!s) { card.innerHTML = head(d.ql) + '<div class="msg">Aktien hittades inte. Ange namnet som det står i adressen på Fondinsyn, till exempel ?aktie=volvo-b.</div>'; return; }
+    var k = function (label, value, note) { return '<div class="k"><span>' + label + "</span><b>" + value + "</b>" + (note ? "<small>" + note + "</small>" : "") + "</div>"; };
+    card.innerHTML = head(d.ql) + "<h1>" + esc(s.name) + '</h1><div class="grid">' +
+      k("Fondernas nettoköp", '<span class="' + cls(s.flow) + '">' + sek(s.flow, true) + "</span>", s.chg != null ? "antal aktier " + pct(s.chg, true) : "") +
+      k("Fonder som äger", nf0.format(s.f), s.own != null ? "äger " + pct(s.own) + " av aktierna" : "") +
+      k("Insiders, 90 dagar", s.ins == null ? "Ingen handel" : '<span class="' + cls(s.ins) + '">' + sek(s.ins, true) + "</span>", s.ins == null ? "" : s.ins >= 0 ? "köp minus sälj" : "sälj minus köp") +
+      (s.sh != null ? k("Blankning", nf1.format(s.sh) + " %", "av aktierna") : "") +
+      "</div>" + foot(BASE + "/aktie/" + esc(s.slug) + "/", "Mer om " + esc(s.name));
+  }).catch(function () { card.innerHTML = head("") + '<div class="msg">Datan kunde inte laddas.</div>'; });
+})();
+</script>
+</body>
+</html>

@@ -1003,6 +1003,7 @@
 
     html += stockShortSection(isin);
     html += stockInsiderSection(isin);
+    if (!world) html += embedBox(isin, name);
 
     if (s) {
       var trades = s.trades;
@@ -1475,6 +1476,18 @@
     var done = function () { btn.textContent = "Länk kopierad"; setTimeout(function () { btn.textContent = "Dela"; }, 2000); };
     if (navigator.clipboard) navigator.clipboard.writeText(url).then(done, function () { window.prompt("Kopiera länken", url); });
     else window.prompt("Kopiera länken", url);
+  }
+
+  // Bädda in rutan för aktien på en annan sajt, eller prenumerera på aktiens insynshandel via RSS
+  function embedBox(isin, name) {
+    var slug = pageMap && pageMap.aktie && pageMap.aktie[isin];
+    var code = '<iframe src="https://www.fondinsyn.se/embed.html?aktie=' + (slug || isin) + '" width="100%" height="260" style="border:0" loading="lazy" title="Fondinsyn: ' + name + '"></iframe>';
+    var rss = slug && state.insider && state.insider.byIsin[isin] ? "/rss/insyn/" + slug + ".xml" : null;
+    return '<details class="embed-box section-gap"><summary>Bädda in eller prenumerera</summary>' +
+      '<p class="desc">Visa fondernas köp och sälj, ägarandel, insynshandel och blankning för ' + esc(name) + " på din blogg, sajt eller i ett forum. Rutan uppdateras automatiskt.</p>" +
+      '<div class="embed-preview" data-src="/embed.html?aktie=' + encodeURIComponent(slug || isin) + '"></div>' +
+      '<div class="embed-code"><code id="embedCode">' + esc(code) + '</code><button type="button" class="btn" data-copy-embed>Kopiera koden</button></div>' +
+      '<p class="desc">' + (rss ? '<a href="' + rss + '">RSS för insynshandel i ' + esc(name) + "</a> · " : "") + '<a href="/oppen-data/">Fler flöden, topplistor och öppen data</a></p></details>';
   }
 
   function watchBlock() {
@@ -4334,6 +4347,15 @@
   }
   syncThemeBtn();
 
+  // Förhandsvisningen av inbäddningsrutan laddas först när rutan fälls ut, i samma läge som sidan
+  document.addEventListener("toggle", function (e) {
+    var box = e.target;
+    if (!box.classList || !box.classList.contains("embed-box") || !box.open) return;
+    var pv = box.querySelector(".embed-preview");
+    if (!pv || pv.firstChild) return;
+    pv.innerHTML = '<iframe src="' + pv.getAttribute("data-src") + "&tema=" + (isDark() ? "morkt" : "ljust") + '" height="260" title="Förhandsvisning av rutan"></iframe>';
+  }, true);
+
   document.addEventListener("click", function (e) {
     if (e.target.closest && e.target.closest("#themeBtn")) { setTheme(isDark() ? "light" : "dark"); return; }
     // Hela raden i en tabell går att klicka på och öppnar raden första länk
@@ -4361,6 +4383,14 @@
       store("ff-hide-about", 1);
       var ab = document.querySelector(".about-card");
       if (ab) ab.remove();
+      return;
+    }
+    var ce = e.target.closest("[data-copy-embed]");
+    if (ce) {
+      var code = $("embedCode").textContent;
+      var ok = function () { ce.textContent = "Kopierad"; setTimeout(function () { ce.textContent = "Kopiera koden"; }, 2000); };
+      if (navigator.clipboard) navigator.clipboard.writeText(code).then(ok, function () { window.prompt("Kopiera koden", code); });
+      else window.prompt("Kopiera koden", code);
       return;
     }
     var bt = e.target.closest("[data-bt-active]");

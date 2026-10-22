@@ -283,7 +283,7 @@ function FundUrl($id) { $fi = $infoById[$id]; if ($fi) { return "/fond/$($fi.slu
 function CoUrl($co) { if ($companies.ContainsKey($co)) { return "/fondbolag/$($companies[$co].slug)/" }; return "/#/fondbolag/" + [uri]::EscapeDataString($co) }
 
 # Gamla sidor tas bort så att aktier och fonder som försvunnit inte ligger kvar
-foreach ($dir in @("aktie", "fond", "fondbolag", "aktier", "fonder", "ordlista", "rapport", "og", "data/fund", "data/hist", "data/csv", "oppen-data", "data/insyn", "data/rf", "data/re", "rantor", "emittent", "integritet", "dubbelsignal", "sparande", "signaler", "agarandel", "toppfonder", "backtest", "metod")) {
+foreach ($dir in @("aktie", "fond", "fondbolag", "aktier", "fonder", "ordlista", "rapport", "og", "data/fund", "data/hist", "data/csv", "oppen-data", "data/insyn", "data/rf", "data/re", "rantor", "emittent", "integritet", "dubbelsignal", "sparande", "signaler", "agarandel", "toppfonder", "backtest", "metod", "rss", "data/dataset")) {
   $p = Join-Path $Site $dir
   if (Test-Path $p) { Remove-Item $p -Recurse -Force }
 }
@@ -1354,6 +1354,168 @@ foreach ($x in @(@("data/index.json", "Vilka kvartal som finns"), @("data/$Q.jso
     @("data/$Q-rates.json", "Räntepapper: emittenter, kategorier, löptider och nyckeltal per fond"), @("data/rates-market.json", "Marknadsräntor från Riksbanken, en notering per vecka"))) {
   $apiRows.Add(@(('<code>/' + $x[0] + '</code>'), (Esc $x[1])))
 }
+# ---------- Inbäddning, RSS-flöden och öppet dataset ----------
+
+# Nettoköp av insiders per bolag, de senaste 90 dagarna
+$insNet = @{}
+if ($insider) {
+  foreach ($r in $insider.rows) {
+    $k = [string]$r[3]
+    if (-not $k -or $null -eq $r[11]) { continue }
+    if ($r[7] -eq "Förvärv") { $insNet[$k] = [double]$insNet[$k] + [double]$r[11] } elseif ($r[7] -eq "Avyttring") { $insNet[$k] = [double]$insNet[$k] - [double]$r[11] }
+  }
+}
+$shareCount = @{}
+try { if (Test-Path (Join-Path $DataDir "shares.json")) { foreach ($pr in (ReadJson "shares.json").shares.PSObject.Properties) { $shareCount[$pr.Name] = [double]$pr.Value[0] } } } catch { }
+$shortPct = @{}
+try { foreach ($a in (ReadJson "shorts.json").aggregate) { if ($a[1]) { $shortPct[[string]$a[1]] = [double]$a[2] } } } catch { }
+
+# 1. data/embed.json: nyckeltal per svensk aktie för den inbäddningsbara rutan (site/embed.html)
+#    [namn, slug, fonder, nettoköp kr, förändring antal aktier, ägarandel, insiders netto 90 d kr, blankning %]
+$embParts = foreach ($s in $pageStocks) {
+  $own = if ($shareCount[$s.isin]) { ([math]::Min([double]1, [double]$s.h2 / $shareCount[$s.isin])).ToString("0.####", $Inv) } else { "null" }
+  $fl = if ($null -ne $s.netFlow -and $s.price) { [math]::Round([double]$s.flow).ToString($Inv) } else { "null" }
+  $ch = if ($null -ne $s.chg) { ([double]$s.chg).ToString("0.####", $Inv) } else { "null" }
+  $iv = if ($insNet.ContainsKey($s.isin)) { [math]::Round($insNet[$s.isin]).ToString($Inv) } else { "null" }
+  $sp = if ($shortPct.ContainsKey($s.isin)) { $shortPct[$s.isin].ToString("0.##", $Inv) } else { "null" }
+  (J $s.isin) + ":[" + (J $s.name) + "," + (J $s.slug) + "," + $s.f2 + "," + $fl + "," + $ch + "," + $own + "," + $iv + "," + $sp + "]"
+}
+Save "data/embed.json" ('{"q":' + (J $Q) + ',"ql":' + (J $QL) + ',"built":' + (J (Get-Date -Format "yyyy-MM-dd")) + ',"stocks":{' + (@($embParts) -join ",") + "}}")
+Write-Host "  inbäddning: $(@($embParts).Count) aktier"
+
+# 2. RSS-flöden: kvartalsrapporter, större insynshandel och insynshandel per aktie
+function XmlEsc($t) { return ([string]$t).Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace('"', "&quot;") }
+function RssDate($d) { try { return ([datetime]::ParseExact([string]$d, "yyyy-MM-dd", $Inv)).ToString("ddd, dd MMM yyyy 07:00:00 '+0000'", $Inv) } catch { return "" } }
+# $items: lista med @{ title; link; desc; date; guid }
+function SaveRss($rel, $title, $link, $desc, $items) {
+  $sb = New-Object System.Text.StringBuilder
+  [void]$sb.Append('<?xml version="1.0" encoding="UTF-8"?>' + "`n" + '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel>')
+  [void]$sb.Append("<title>" + (XmlEsc $title) + "</title><link>" + (XmlEsc ($BaseUrl + $link)) + "</link><description>" + (XmlEsc $desc) + "</description><language>sv-se</language>")
+  [void]$sb.Append('<atom:link href="' + (XmlEsc "$BaseUrl/$rel") + '" rel="self" type="application/rss+xml"/>')
+  foreach ($it in $items) {
+    [void]$sb.Append("<item><title>" + (XmlEsc $it.title) + "</title><link>" + (XmlEsc ($BaseUrl + $it.link)) + "</link><description>" + (XmlEsc $it.desc) + "</description>")
+    [void]$sb.Append('<guid isPermaLink="false">' + (XmlEsc $it.guid) + "</guid><pubDate>" + (RssDate $it.date) + "</pubDate></item>")
+  }
+  [void]$sb.Append("</channel></rss>")
+  Save $rel $sb.ToString()
+}
+$qEndOf = @{ "1" = "03-31"; "2" = "06-30"; "3" = "09-30"; "4" = "12-31" }
+$repItems = foreach ($r in $reportList) {
+  @{ title = "Kvartalsrapport $($r.label): $($r.headline)"; link = "/rapport/$($r.slug)/"; desc = $r.desc
+     date = ([string]$r.q).Substring(0, 4) + "-" + $qEndOf[([string]$r.q).Substring(5)]; guid = "rapport-$($r.q)" }
+}
+SaveRss "rss/rapporter.xml" "Fondinsyn – kvartalsrapporter" "/rapport/" "Vad svenska fonder köpte och sålde, varje kvartal." @($repItems)
+
+$slugOf = @{}; foreach ($s in $pageStocks) { $slugOf[$s.isin] = $s.slug }
+function InsItem($r) {
+  $kind = if ($r[7] -eq "Förvärv") { "köpte" } elseif ($r[7] -eq "Avyttring") { "sålde" } else { [string]$r[7] }
+  $who = ([string]$r[4] -replace '\s+', ' ').Trim()
+  $amt = if ($null -ne $r[11]) { BigSek ([double]$r[11]) } else { "–" }
+  $link = if ($slugOf.ContainsKey([string]$r[3])) { "/aktie/" + $slugOf[[string]$r[3]] + "/" } else { "/#/insyn" }
+  return @{ title = "$($r[2]): $who $kind för $amt"; link = $link
+    desc = "$who ($(([string]$r[5]) -replace '\s+', ' ')) $kind aktier i $($r[2]) för $amt. Affärsdag $($r[0]), publicerad $($r[1]). Källa: Finansinspektionens insynsregister."
+    date = [string]$r[1]; guid = "insyn-" + [string]$r[3] + "-" + $who + "-" + [string]$r[0] + "-" + [string]$r[8] }
+}
+if ($insider) {
+  $big = @($insider.rows | Where-Object { $null -ne $_[11] -and [double]$_[11] -ge 500000 -and ($_[7] -eq "Förvärv" -or $_[7] -eq "Avyttring") } | Sort-Object { [string]$_[1] } -Descending | Select-Object -First 100)
+  SaveRss "rss/insyn.xml" "Fondinsyn – insynshandel" "/#/insyn" "Insiders köp och sälj för minst 500 000 kr i svenska bolag, från Finansinspektionens insynsregister." @($big | ForEach-Object { InsItem $_ })
+  $byIsin = @{}
+  foreach ($r in $insider.rows) { $k = [string]$r[3]; if ($slugOf.ContainsKey($k)) { if (-not $byIsin.ContainsKey($k)) { $byIsin[$k] = New-Object System.Collections.Generic.List[object] }; $byIsin[$k].Add($r) } }
+  foreach ($k in $byIsin.Keys) {
+    $rows = @($byIsin[$k] | Sort-Object { [string]$_[1] } -Descending | Select-Object -First 50)
+    $nm = [string]$rows[0][2]
+    SaveRss "rss/insyn/$($slugOf[$k]).xml" "Fondinsyn – insynshandel i $nm" "/aktie/$($slugOf[$k])/" "Insiders köp och sälj i $nm, från Finansinspektionens insynsregister." @($rows | ForEach-Object { InsItem $_ })
+  }
+  Write-Host "  rss: rapporter, insyn och $($byIsin.Count) aktier"
+}
+
+# 3. Öppet dataset (data/dataset/): hela historiken per aktie och kvartal, fondsparandet per månad och en beskrivning.
+#    Standard-CSV (komma, punkt som decimaltecken, UTF-8) så att den fungerar i Python, R och på Kaggle.
+function CsvField($v) { if ($null -eq $v) { return "" }; $t = [string]$v; if ($t -match '[",\n]') { return '"' + $t.Replace('"', '""') + '"' }; return $t }
+$dsDir = Join-Path $Site "data/dataset"
+New-Item -ItemType Directory -Force $dsDir | Out-Null
+$dsLines = New-Object System.Collections.Generic.List[string]
+$dsLines.Add("market,isin,name,sector,country,quarter,funds,holdings_msek,net_buy_msek,net_buy_active_msek,price_return")
+$dsRows = 0
+foreach ($part in @("se", "world")) {
+  $hh = $null; try { $hh = ReadJson "history-$part.json" } catch { }
+  if (-not $hh) { continue }
+  $dsQuarters = @($hh.quarters)
+  foreach ($pr in $hh.stocks.PSObject.Properties) {
+    $v = $pr.Value
+    # Textfälten citeras vid behov en gång per aktie. Tal skrivs med punkt (PowerShell använder invariant format vid +).
+    $pre = $part + "," + $pr.Name + "," + (CsvField $v[0]) + "," + (CsvField $v[1]) + "," + (CsvField $v[2]) + ","
+    foreach ($r in $v[3]) {
+      $ret = if ($r.Count -gt 5) { $r[5] } else { $null }
+      $dsLines.Add($pre + $dsQuarters[[int]$r[0]] + "," + $r[1] + "," + $r[2] + "," + $r[3] + "," + $r[4] + "," + $ret)
+      $dsRows++
+    }
+  }
+}
+[System.IO.File]::WriteAllText((Join-Path $dsDir "stock_quarters.csv"), ($dsLines -join "`n") + "`n", (New-Object System.Text.UTF8Encoding $false))
+$flLines = New-Object System.Collections.Generic.List[string]
+$flLines.Add("month,group,category,net_flow_msek,assets_msek")
+try {
+  $fd = ReadJson "flows.json"
+  $fm = @($fd.months)
+  foreach ($grp in @(@("fund_type", $fd.types), @("equity_focus", $fd.focus))) {
+    foreach ($pr in $grp[1].PSObject.Properties) {
+      $vals = @($pr.Value)
+      for ($i = 0; $i -lt $fm.Count; $i++) { if ($null -ne $vals[$i]) { $flLines.Add(((@($fm[$i], $grp[0], $pr.Name, $vals[$i][0], $vals[$i][1]) | ForEach-Object { CsvField $_ }) -join ",")) } }
+    }
+  }
+} catch { }
+[System.IO.File]::WriteAllText((Join-Path $dsDir "fund_flows_monthly.csv"), ($flLines -join "`n") + "`n", (New-Object System.Text.UTF8Encoding $false))
+$firstQ = if ($hist) { [string]$hist.quarters[0] } else { $Q }
+$readme = @"
+# Fondinsyn dataset – Swedish mutual fund holdings and flows
+
+What Swedish mutual funds own, buy and sell, quarter by quarter since $firstQ, built from the holdings every Swedish fund
+company reports to Finansinspektionen (the Swedish FSA). Maintained by Fondinsyn ($BaseUrl) and updated automatically.
+Latest quarter: $QL. Generated $(Get-Date -Format "yyyy-MM-dd").
+
+## Files
+
+**stock_quarters.csv** – one row per stock and quarter ($dsRows rows).
+
+| Column | Description |
+|---|---|
+| market | se = Swedish stocks, world = foreign stocks (foreign stocks with smaller fund holdings are left out) |
+| isin, name, sector, country | Stock identity. Sector is GICS as reported by the funds |
+| quarter | Quarter, e.g. 2026Q2 (holdings at quarter end) |
+| funds | Number of Swedish funds that own the stock |
+| holdings_msek | Total value of the funds' holdings, million SEK |
+| net_buy_msek | Net buying during the quarter: change in shares x quarter-end price, summed over funds that reported both quarters, split adjusted |
+| net_buy_active_msek | Same, excluding index funds |
+| price_return | Price change since the previous quarter (median of the funds' reported prices, split adjusted, excluding dividends). Empty when unreliable, e.g. at a change of share class |
+
+Net buying is empty for share classes that appear or disappear (listings, ISIN changes at splits, takeovers).
+
+**fund_flows_monthly.csv** – savers' net flows into Swedish funds per month from the Swedish Investment Fund Association
+(Fondbolagens förening), by fund type (fund_type) and by investment focus for equity funds (equity_focus), million SEK.
+
+## Method
+
+See the method report: $BaseUrl/metod/ (in Swedish). Key points: prices are the median of reported prices, splits are
+detected from the share-count ratios across funds, and quarters where most funds stop holding a share class are excluded
+from price returns.
+
+## Sources and licence
+
+Source data: Finansinspektionen (fund holdings) and Fondbolagens förening (fund flows), published as open data.
+Fondinsyn's compilation may be used freely with attribution: "Fondinsyn ($BaseUrl), source: Finansinspektionen" (CC BY 4.0).
+Nothing here is investment advice.
+"@
+[System.IO.File]::WriteAllText((Join-Path $dsDir "README.md"), $readme, (New-Object System.Text.UTF8Encoding $false))
+$zipName = "fondinsyn-dataset-$Q.zip"
+$zipPath = Join-Path $dsDir $zipName
+if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+Compress-Archive -Path (Join-Path $dsDir "stock_quarters.csv"), (Join-Path $dsDir "fund_flows_monthly.csv"), (Join-Path $dsDir "README.md") -DestinationPath $zipPath
+# Samma fil med fast namn, för tjänster som hämtar senaste versionen automatiskt (t.ex. Kaggle)
+Copy-Item $zipPath (Join-Path $dsDir "fondinsyn-dataset-latest.zip") -Force
+$zipKb = [math]::Round((Get-Item $zipPath).Length / 1024)
+Write-Host "  dataset: $dsRows rader, $zipKb kB"
+
 $odContent = '<div class="page-head"><h1>Data och API</h1></div>' +
   '<p class="lead">Allt på Fondinsyn bygger på öppna data från Finansinspektionen och Pensionsmyndigheten. Här ser du var datan kommer ifrån, hur ofta den uppdateras, och hur du laddar ner den.</p>' +
   (Block "Källor och uppdatering" (Table @("Data", "Källa", "Uppdateras", "Senast") $srcRows) "section-gap") +
@@ -1362,7 +1524,20 @@ $odContent = '<div class="page-head"><h1>Data och API</h1></div>' +
   '<p class="desc">CSV med semikolon och decimalkomma, ' + $QL + ". Öppnas direkt i svenska Excel och Google Kalkylark.</p>" +
   (Block "JSON för utvecklare" (Table @("Adress", "Innehåll") $apiRows) "section-gap") +
   '<p class="desc">Filerna ligger på https://www.fondinsyn.se och kan hämtas fritt utan nyckel, även från andra webbplatser. Formatet kan ändras. Ange gärna Fondinsyn och Finansinspektionen som källa.</p>' +
-  (Block "Villkor" "<p>Uppgifterna kommer från myndigheternas öppna register och får användas fritt. Fondinsyns uträkningar får också användas om du anger källan. Inget här är investeringsrådgivning.</p>" "section-gap")
+  (Block "Öppet dataset för analys" ('<p>Hela historiken per aktie och kvartal sedan ' + (QLabel $firstQ) + ' (' + (Num0 $dsRows) + ' rader: fonder, innehav, nettoköp och kursförändring) och spararnas fondflöden per månad. ' +
+    'Standard-CSV för Python, R, Excel och Kaggle, med beskrivning av varje kolumn. Uppdateras automatiskt, och varje nytt kvartal publiceras också som en release på GitHub.</p>' +
+    '<p><a class="btn" href="/data/dataset/' + $zipName + '">Ladda ner datasetet (' + $zipKb + ' kB)</a> <a href="/data/dataset/README.md">Beskrivning (README)</a> · ' +
+    '<a href="https://github.com/axelbergstenn/fondinsyn/releases">Alla versioner på GitHub</a></p>') "section-gap") +
+  (Block "RSS-flöden" ('<p>Prenumerera i valfri RSS-läsare, utan konto:</p><ul>' +
+    '<li><a href="/rss/rapporter.xml">Kvartalsrapporter</a>: en notis när ett nytt kvartal har kommit.</li>' +
+    '<li><a href="/rss/insyn.xml">Insynshandel</a>: insiders köp och sälj för minst 500 000 kr.</li>' +
+    '<li>Insynshandel i en viss aktie: på varje aktiesida, till exempel <code>/rss/insyn/volvo-b.xml</code>.</li></ul>') "section-gap") +
+  (Block "Bädda in på din sajt" ('<p>Visa fondernas köp och sälj, ägarandel, insynshandel och blankning för en aktie på din blogg eller i ditt forum. ' +
+    'Gå till aktiens sida och tryck på Bädda in, eller använd koden nedan med aktiens namn i adressen.</p>' +
+    '<p class="md-formula">&lt;iframe src="' + $BaseUrl + '/embed.html?aktie=volvo-b" width="100%" height="260" style="border:0" loading="lazy" title="Fondinsyn"&gt;&lt;/iframe&gt;</p>' +
+    '<p>Kvartalets mest köpta eller sålda aktier: byt adressen mot <code>embed.html?lista=kopta</code> eller <code>?lista=salda</code> och höjden mot 300. ' +
+    'Rutan följer besökarens ljusa eller mörka läge, eller lägg till <code>&amp;tema=ljust</code> eller <code>&amp;tema=morkt</code>.</p>') "section-gap") +
+  (Block "Villkor" "<p>Uppgifterna kommer från myndigheternas öppna register och får användas fritt. Fondinsyns uträkningar får också användas om du anger källan (CC BY 4.0). Inget här är investeringsrådgivning.</p>" "section-gap")
 # ---------- Dubbelsignal: /dubbelsignal/ (samma regler som viewDouble i app.js) ----------
 if ($insider) {
   $insBy = @{}
