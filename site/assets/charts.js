@@ -364,5 +364,227 @@
     });
   }
 
-  window.FFCharts = { columns: columns, line: line, scatter: scatter, lines: lines };
+  // Minsta kvadrat-linje och korrelation för punkter { x, y }
+  function regression(points) {
+    var n = points.length, sx = 0, sy = 0, sxx = 0, sxy = 0, syy = 0;
+    points.forEach(function (p) { sx += p.x; sy += p.y; sxx += p.x * p.x; sxy += p.x * p.y; syy += p.y * p.y; });
+    var vx = n * sxx - sx * sx, vy = n * syy - sy * sy;
+    if (n < 3 || !vx) return null;
+    var b = (n * sxy - sx * sy) / vx;
+    return { a: (sy - b * sx) / n, b: b, r: vy > 0 ? (n * sxy - sx * sy) / Math.sqrt(vx * vy) : 0, n: n };
+  }
+
+  // Punktdiagram med valfri storlek per punkt, trendlinje och etiketter i kvadranterna.
+  // points: [{ x, y, size, cls, label }]. opts: xFmt, yFmt (axeltext), xLabel, yLabel, trend, quad { tl, tr, bl, br, x, y },
+  // labels (antal största punkter som får namn), tip(p), onClick(p)
+  function xy(container, points, opts) {
+    opts = opts || {};
+    var ctx = setup(container, opts.height || 380);
+    if (!points.length) return;
+    var xFmt = opts.xFmt || fmtTick, yFmt = opts.yFmt || fmtTick;
+    var ext = function (key, pad) {
+      var vals = points.map(function (p) { return p[key]; });
+      var lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals), d = (hi - lo) * pad || 1;
+      return [lo - d, hi + d];
+    };
+    var dx = opts.xDomain || ext("x", 0.04), dy = opts.yDomain || ext("y", 0.06);
+    var xs = niceTicks(dx[0], dx[1], ctx.w < 520 ? 4 : 6), ys = niceTicks(dy[0], dy[1], 5);
+    var yw = 0; ys.ticks.forEach(function (t) { yw = Math.max(yw, yFmt(t).length); });
+    var m = { t: 26, r: 16, b: 44, l: Math.max(34, 14 + yw * 6.6) };
+    var ih = ctx.h - m.t - m.b, iw = ctx.w - m.l - m.r;
+    var x = function (v) { return m.l + (Math.max(xs.min, Math.min(xs.max, v)) - xs.min) / (xs.max - xs.min) * iw; };
+    var y = function (v) { return m.t + (ys.max - Math.max(ys.min, Math.min(ys.max, v))) / (ys.max - ys.min) * ih; };
+
+    var g = el("g", {}, ctx.svg);
+    ys.ticks.forEach(function (t) {
+      var yy = Math.round(y(t)) + 0.5;
+      el("line", { x1: m.l, x2: ctx.w - m.r, y1: yy, y2: yy, "class": t === 0 ? "c-zero" : "c-grid" }, g);
+      text(g, m.l - 8, yy + 4, yFmt(t), "c-axis", "end");
+    });
+    xs.ticks.forEach(function (t) {
+      var xx = Math.round(x(t)) + 0.5;
+      el("line", { x1: xx, x2: xx, y1: m.t, y2: ctx.h - m.b, "class": t === 0 ? "c-zero" : "c-grid" }, g);
+      text(g, xx, ctx.h - m.b + 16, xFmt(t), "c-axis", "middle");
+    });
+    if (opts.xLabel) text(ctx.svg, m.l + iw / 2, ctx.h - 6, opts.xLabel, "c-axis-title", "middle");
+    if (opts.yLabel) text(ctx.svg, 4, 14, opts.yLabel, "c-axis-title");
+
+    // Kvadranternas namn i hörnen
+    if (opts.quad) {
+      var q = opts.quad;
+      if (q.tl) text(ctx.svg, m.l + 8, m.t + 14, q.tl, "c-quad");
+      if (q.tr) text(ctx.svg, ctx.w - m.r - 8, m.t + 14, q.tr, "c-quad", "end");
+      if (q.bl) text(ctx.svg, m.l + 8, ctx.h - m.b - 8, q.bl, "c-quad");
+      if (q.br) text(ctx.svg, ctx.w - m.r - 8, ctx.h - m.b - 8, q.br, "c-quad", "end");
+    }
+
+    // Trendlinjen ritas bara inom diagrammet
+    var reg = opts.trend ? regression(points) : null;
+    if (reg) {
+      var x0 = xs.min, x1 = xs.max, ya = reg.a + reg.b * x0, yb = reg.a + reg.b * x1;
+      el("line", { x1: x(x0), y1: y(ya), x2: x(x1), y2: y(yb), "class": "c-trend" }, ctx.svg);
+    }
+
+    // Stora punkter först så att små hamnar ovanpå. Punkterna tonas in från vänster till höger.
+    // Storleken räknas mot den 95:e percentilen, så att en jätte (AP7) inte gör alla andra till prickar
+    var sizes = points.map(function (p) { return p.size || 0; }).sort(function (a, b) { return a - b; });
+    var maxS = Math.max(1e-9, sizes[Math.floor(0.95 * (sizes.length - 1))]);
+    points.forEach(function (p) { p._r = p.size != null ? 2.5 + 9 * Math.sqrt(Math.min(1, p.size / maxS)) : 4.5; p._x = x(p.x); p._y = y(p.y); });
+    var order = points.slice().sort(function (a, b) { return b._r - a._r; });
+    var dots = el("g", { "class": "c-pts" + (ctx.fresh ? " pop" : "") }, ctx.svg);
+    order.forEach(function (p) {
+      var a = { cx: p._x.toFixed(1), cy: p._y.toFixed(1), r: p._r.toFixed(1), "class": "c-pt " + (p.cls || "c-brand") };
+      if (ctx.fresh) a.style = "animation-delay:" + Math.round((p._x - m.l) / iw * 500) + "ms";
+      p._el = el("circle", a, dots);
+    });
+    // Namn på de viktigaste punkterna (opts.labelBy, annars de största). En etikett som skulle krocka med en
+    // annan eller hamna utanför diagrammet hoppas över.
+    if (opts.labels) {
+      var placed = [], score = opts.labelBy || function (p) { return p.size || 0; };
+      points.filter(function (p) { return p.label; }).sort(function (a, b) { return score(b) - score(a); }).some(function (p) {
+        var w = p.label.length * 6.4 + 4, h = 14;
+        var tries = [{ x: p._x + p._r + 4, anchor: "start" }, { x: p._x - p._r - 4 - w, anchor: "end" }];
+        for (var i = 0; i < tries.length; i++) {
+          var bx = tries[i].x, by = p._y - h / 2;
+          if (bx < m.l || bx + w > ctx.w - m.r || by < m.t || by + h > ctx.h - m.b) continue;
+          var clash = placed.some(function (b) { return bx < b.x + b.w && bx + w > b.x && by < b.y + b.h && by + h > b.y; });
+          if (clash) continue;
+          placed.push({ x: bx, y: by, w: w, h: h });
+          text(ctx.svg, tries[i].anchor === "start" ? bx : bx + w, p._y + 4, p.label, "c-ptlabel", tries[i].anchor);
+          break;
+        }
+        return placed.length >= opts.labels;
+      });
+    }
+    var ring = el("circle", { r: 9, "class": "c-ring", visibility: "hidden" }, ctx.svg);
+
+    var current = null;
+    var hit = el("rect", { x: 0, y: 0, width: ctx.w, height: ctx.h, fill: "transparent" }, ctx.svg);
+    hit.addEventListener("pointermove", function (e) {
+      var r = ctx.svg.getBoundingClientRect();
+      var px = e.clientX - r.left, py = e.clientY - r.top, best = null, bd = 22 * 22;
+      points.forEach(function (p) {
+        var dd = (p._x - px) * (p._x - px) + (p._y - py) * (p._y - py) - p._r * p._r;
+        if (dd < bd) { bd = dd; best = p; }
+      });
+      if (best !== current) {
+        if (current) current._el.classList.remove("on");
+        if (best) best._el.classList.add("on");
+      }
+      current = best;
+      dots.classList.toggle("hovering", !!best);
+      hit.style.cursor = best && opts.onClick ? "pointer" : "default";
+      if (!best) { ring.setAttribute("visibility", "hidden"); hideTip(ctx); return; }
+      ring.setAttribute("cx", best._x); ring.setAttribute("cy", best._y); ring.setAttribute("r", best._r + 4); ring.setAttribute("visibility", "visible");
+      showTip(ctx, opts.tip(best), best._x, best._y);
+    });
+    hit.addEventListener("pointerleave", function () {
+      if (current) current._el.classList.remove("on");
+      current = null; dots.classList.remove("hovering"); ring.setAttribute("visibility", "hidden"); hideTip(ctx);
+    });
+    hit.addEventListener("click", function () { if (current && opts.onClick) opts.onClick(current); });
+    return reg;
+  }
+
+  // Fördelning: histogram och normalfördelningskurvor med samma medelvärde och standardavvikelse som datan.
+  // series: [{ values, cls, label, hist, curve, dash }]. Med opts.share visas andel i procent i stället för antal,
+  // så att serier av olika storlek kan jämföras. opts: bins, xFmt, xLabel, yLabel, domain, tip(bin, rows)
+  function stats(values) {
+    var n = values.length, mean = values.reduce(function (a, b) { return a + b; }, 0) / n;
+    var sd = Math.sqrt(values.reduce(function (a, b) { return a + (b - mean) * (b - mean); }, 0) / Math.max(1, n - 1));
+    return { n: n, mean: mean, sd: sd };
+  }
+  function dist(container, series, opts) {
+    opts = opts || {};
+    var ctx = setup(container, opts.height || 300);
+    var all = [];
+    series.forEach(function (s) { s.st = stats(s.values); all = all.concat(s.values); });
+    if (!all.length) return;
+    var xFmt = opts.xFmt || fmtTick;
+    var lo = opts.domain ? opts.domain[0] : Math.min.apply(null, all), hi = opts.domain ? opts.domain[1] : Math.max.apply(null, all);
+    var xs = niceTicks(lo, hi, ctx.w < 520 ? 5 : 8);
+    var nb = opts.bins || 20, bw = (xs.max - xs.min) / nb;
+    // Andel (eller antal) per intervall, värden utanför axeln räknas till ytterintervallen
+    series.forEach(function (s) {
+      s.counts = []; for (var i = 0; i < nb; i++) s.counts.push(0);
+      s.values.forEach(function (v) { var i = Math.floor((v - xs.min) / bw); s.counts[Math.max(0, Math.min(nb - 1, i))]++; });
+      s.k = opts.share ? 100 / s.st.n : 1;
+    });
+    var pdf = function (s, v) { var z = (v - s.st.mean) / s.st.sd; return Math.exp(-0.5 * z * z) / (s.st.sd * Math.sqrt(2 * Math.PI)); };
+    var curveAt = function (s, v) { return s.st.sd > 0 ? pdf(s, v) * s.st.n * bw * s.k : 0; };
+    var top = 0;
+    series.forEach(function (s) {
+      if (s.hist) s.counts.forEach(function (c) { top = Math.max(top, c * s.k); });
+      if (s.curve && s.st.sd > 0) top = Math.max(top, curveAt(s, s.st.mean));
+    });
+    var ys = niceTicks(0, top * 1.08, 4);
+    var m = { t: 26, r: 16, b: 44, l: axisWidth(ys, opts.share ? " %" : "") };
+    var ih = ctx.h - m.t - m.b, iw = ctx.w - m.l - m.r;
+    var x = function (v) { return m.l + (v - xs.min) / (xs.max - xs.min) * iw; };
+    var y = function (v) { return m.t + (ys.max - v) / (ys.max - ys.min) * ih; };
+
+    var g = el("g", {}, ctx.svg);
+    ys.ticks.forEach(function (t) {
+      var yy = Math.round(y(t)) + 0.5;
+      el("line", { x1: m.l, x2: ctx.w - m.r, y1: yy, y2: yy, "class": t === 0 ? "c-zero" : "c-grid" }, g);
+      text(g, m.l - 8, yy + 4, fmtTick(t) + (opts.share ? " %" : ""), "c-axis", "end");
+    });
+    xs.ticks.forEach(function (t) { text(g, x(t), ctx.h - m.b + 16, xFmt(t), "c-axis", "middle"); });
+    if (opts.xLabel) text(ctx.svg, m.l + iw / 2, ctx.h - 6, opts.xLabel, "c-axis-title", "middle");
+    if (opts.yLabel) text(ctx.svg, 4, 14, opts.yLabel, "c-axis-title");
+
+    // Staplarna, med 2px mellanrum
+    var bars = el("g", { "class": "c-bars" + (ctx.fresh ? " grow" : "") }, ctx.svg), barEls = [];
+    series.forEach(function (s) {
+      if (!s.hist) return;
+      s.counts.forEach(function (c, i) {
+        var x0 = x(xs.min + i * bw) + 1, w = Math.max(1, x(xs.min + (i + 1) * bw) - x(xs.min + i * bw) - 2);
+        var d = barPath(x0, y(0), y(c * s.k), w);
+        var a = { d: d || "M0,0", "class": "c-bar c-hist" };
+        if (ctx.fresh) a.style = "animation-delay:" + Math.round(i * 400 / nb) + "ms";
+        barEls[i] = el("path", a, bars);
+      });
+    });
+    // Nollan
+    if (xs.min < 0 && xs.max > 0) el("line", { x1: x(0), x2: x(0), y1: m.t, y2: ctx.h - m.b, "class": "c-zero" }, ctx.svg);
+
+    // Kurvorna, med tonad yta under, och en linje vid medelvärdet
+    series.forEach(function (s) {
+      if (!s.curve || !(s.st.sd > 0)) return;
+      var d = "", steps = 160;
+      for (var i = 0; i <= steps; i++) { var v = xs.min + (xs.max - xs.min) * i / steps; d += (i ? "L" : "M") + x(v).toFixed(1) + "," + y(curveAt(s, v)).toFixed(1); }
+      el("path", { d: d + "L" + x(xs.max) + "," + y(0) + "L" + x(xs.min) + "," + y(0) + "Z", "class": "c-curve-fill " + (s.cls || "c-brand") }, ctx.svg);
+      var ca = { d: d, "class": "c-curve " + (s.cls || "c-brand") + (s.dash ? " dash" : "") };
+      if (ctx.fresh && !s.dash) { ca["class"] += " draw"; ca.pathLength = 1; }
+      el("path", ca, ctx.svg);
+      var mx = x(s.st.mean);
+      el("line", { x1: mx, x2: mx, y1: y(0), y2: y(curveAt(s, s.st.mean)), "class": "c-mean " + (s.cls || "c-brand") }, ctx.svg);
+    });
+    // Medelvärdenas etiketter, utan att de krockar
+    var labels = series.filter(function (s) { return s.curve && s.label; }).map(function (s) {
+      return { s: s, x: x(s.st.mean), y: y(curveAt(s, s.st.mean)) - 8 };
+    }).sort(function (a, b) { return a.y - b.y; });
+    for (var k = 1; k < labels.length; k++) if (Math.abs(labels[k].x - labels[k - 1].x) < 120 && labels[k].y - labels[k - 1].y < 15) labels[k].y = labels[k - 1].y - 15;
+    labels.forEach(function (l) {
+      var anchor = l.x > ctx.w - m.r - 80 ? "end" : l.x < m.l + 80 ? "start" : "middle";
+      text(ctx.svg, l.x, Math.max(12, l.y), l.s.label, "c-ptlabel", anchor);
+    });
+
+    // Hårkors per intervall med andelarna för alla serier
+    var band = el("rect", { y: m.t, height: ih, "class": "c-hover", visibility: "hidden" }, ctx.svg);
+    ctx.svg.insertBefore(band, bars);
+    var hit = el("rect", { x: m.l, y: 0, width: iw, height: ctx.h, fill: "transparent" }, ctx.svg);
+    hit.addEventListener("pointermove", function (e) {
+      var r = ctx.svg.getBoundingClientRect();
+      var i = Math.max(0, Math.min(nb - 1, Math.floor((e.clientX - r.left - m.l) / iw * nb)));
+      var a = xs.min + i * bw, b = a + bw;
+      band.setAttribute("x", x(a)); band.setAttribute("width", Math.max(1, x(b) - x(a))); band.setAttribute("visibility", "visible");
+      var rows = series.map(function (s) { return { s: s, count: s.counts[i], share: s.counts[i] / s.st.n * 100 }; });
+      showTip(ctx, opts.tip ? opts.tip({ from: a, to: b }, rows) : xFmt(a) + " till " + xFmt(b), x(a + bw / 2), m.t + 40);
+    });
+    hit.addEventListener("pointerleave", function () { band.setAttribute("visibility", "hidden"); hideTip(ctx); });
+    return series.map(function (s) { return s.st; });
+  }
+
+  window.FFCharts = { columns: columns, line: line, scatter: scatter, lines: lines, xy: xy, dist: dist, regression: regression, stats: stats };
 })();

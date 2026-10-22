@@ -143,8 +143,11 @@
 
   // ---------- Data ----------
 
+  // Filer som sidhuvudet redan har börjat hämta (window.__pre, se index.html) används en gång
   function getJSON(url) {
-    return fetch(url, { cache: "no-cache" }).then(function (r) {
+    var pre = window.__pre && window.__pre[url];
+    if (pre) delete window.__pre[url];
+    return (pre || fetch(url, { cache: "no-cache" })).then(function (r) {
       if (!r.ok) throw new Error(url + ": " + r.status);
       return r.json();
     });
@@ -1051,7 +1054,7 @@
       '<input class="input" type="search" id="fundSearch" aria-label="Filtrera fonderna" placeholder="Sök fond eller fondbolag" value="' + esc(fundFilter.q) + '" autocomplete="off">' +
       '<select class="select-sm" id="fundType" aria-label="Typ av fond">' + typeOpts + "</select>" +
       '<select class="select-sm" id="fundCo" aria-label="Fondbolag"><option value="">Alla fondbolag</option>' + coOpts + "</select>" +
-      '<span class="count" id="fundCount"></span></div><div id="fundTable"></div>';
+      '<span class="count" id="fundCount"></span></div><div id="fundTable"></div>' + fundRiskBlock();
   }
 
   // Blandfonder mäts mot blandade index och hör inte hemma i jämförelsen av aktiefonder
@@ -1420,6 +1423,7 @@
           onClick: function (p) { location.hash = fundHref(p.f); }
         });
       }) + "</div></section>" +
+      feeReturnBlock(funds, hasPerf) +
       '<section class="block section-gap"><div class="block-head"><h2>' + (feeFilter.list === "closet" ? "Indexnära fonder med hög avgift" : "Alla aktiefonder") + "</h2>" +
       '<div class="seg" role="group" aria-label="Lista">' + seg("list", "closet", "Indexnära", feeFilter.list) + seg("list", "all", "Alla", feeFilter.list) + "</div></div>" +
       table("fees-" + feeFilter.list, cols, listRows, { csv: true, sort: { col: "cost", dir: -1 }, empty: "Inga fonder i urvalet." }) + "</section>" +
@@ -1427,6 +1431,31 @@
       "<p><b>Aktiv risk</b> (tracking error) mäter hur mycket fondens avkastning har avvikit från jämförelseindex de senaste 24 månaderna. En indexfond ligger nära 0 %. En vanlig tumregel är att en fond under 3 % i praktiken följer index ganska nära.</p>" +
       "<p><b>Avgift</b> är den högsta fasta förvaltningsavgiften bland fondens andelsklasser, vilket oftast är den som privatpersoner betalar. Prestationsbaserade avgifter ingår inte.</p>" +
       "<p>Låg aktiv risk är inte fel i sig, men då bör avgiften vara låg. Siffrorna rapporteras av fondbolagen till Finansinspektionen. Endast aktiefonder (minst 80 % aktier, inga bland- eller generationsfonder) med över 100 mkr i förmögenhet visas.</p></section>";
+  }
+
+  // Avgift mot avkastning: ger en dyrare fond bättre avkastning? Trendlinjen är en vanlig regression över fonderna.
+  function feeReturnBlock(funds, hasPerf) {
+    if (!hasPerf) return "";
+    var pts = funds.map(function (f) { var p = perfOf(f.id); return p && p[3] != null ? { x: f.feeMax, y: p[3], size: f.aum, cls: "c-" + f.cat, f: f, label: shortCo(f.name) } : null; }).filter(Boolean);
+    if (pts.length < 20) return "";
+    var reg = FFCharts.regression(pts);
+    var slope = reg.b, verdict = Math.abs(reg.r) < 0.15 ? "Det finns nästan inget samband" : slope < 0 ? "Dyrare fonder har i snitt gått sämre" : "Dyrare fonder har i snitt gått bättre";
+    return '<section class="block section-gap"><div class="block-head"><h2>Avgift mot avkastning</h2><span class="note">' + int(pts.length) + " fonder med femårshistorik</span></div>" +
+      '<div class="legend">' + catLabel("closet") + catLabel("active") + catLabel("index") + '<span class="legend-item"><i class="ln dash" style="color:var(--fg-soft)"></i>Trend</span></div>' +
+      '<div class="chart-card">' + chart(function (node) {
+        FFCharts.xy(node, pts, {
+          height: node.clientWidth < 500 ? 320 : 400, trend: true, labels: node.clientWidth < 500 ? 0 : 4,
+          xDomain: [0, Math.max.apply(null, pts.map(function (p) { return p.x; })) * 1.04],
+          xFmt: function (v) { return nf1.format(v) + " %"; }, yFmt: function (v) { return fixMinus(nf0.format(v)) + " %"; },
+          xLabel: "Avgift per år", yLabel: "Avkastning per år, 5 år",
+          tip: function (p) {
+            return "<b>" + esc(p.f.name) + "</b><br>" + esc(p.f.co) + "<br>Avgift " + feeText(p.f) + " · " + (p.y > 0 ? "+" : "") + fixMinus(nf0.format(p.y)) + " % per år<br>" + bigSek(p.f.aum);
+          },
+          onClick: function (p) { location.hash = fundHref(p.f); }
+        });
+      }) + '<p class="chart-note"><b>' + verdict + ".</b> Trendlinjen lutar " + (slope < 0 ? "nedåt" : "uppåt") + ": varje procentenhet högre avgift har gått ihop med " +
+      fixMinus(nf1.format(Math.abs(slope))) + " procentenheter " + (slope < 0 ? "lägre" : "högre") + " avkastning per år (korrelation " + fixMinus(nf2.format(reg.r)) + "). " +
+      "Punkternas storlek är fondförmögenheten. Avkastningen kommer från Pensionsmyndigheten och är räknad efter premiepensionens rabatterade avgift, så utanför premiepensionen drar den ordinarie avgiften ännu mer. Ett samband är inte ett bevis.</p></div></section>";
   }
 
   function catLabel(cat, small) {
@@ -2404,6 +2433,35 @@
       .sort(function (a, b) { return b.p[3] - a.p[3]; }).slice(0, TOP_N);
   }
 
+  // Risk mot avkastning för alla aktiefonder med femårshistorik hos Pensionsmyndigheten (fondlistan)
+  function fundRiskBlock() {
+    if (!needPerf()) return "";
+    var pts = fundList().map(function (fi) {
+      var p = perfOf(fi.id), cat = fundCategory(fi);
+      if (!p || fi.sd == null || p[3] == null || (cat !== "index" && cat !== "active" && cat !== "closet")) return null;
+      return { x: fi.sd, y: p[3], size: fi.aum, cls: "c-" + cat, fi: fi, p: p, label: fi.name };
+    }).filter(Boolean);
+    if (pts.length < 15) return "";
+    var reg = FFCharts.regression(pts);
+    return '<section class="block section-gap"><div class="block-head"><h2>Risk mot avkastning</h2><span class="note">' + int(pts.length) + " aktiefonder med femårshistorik</span></div>" +
+      '<div class="legend">' + catLabel("active") + catLabel("closet") + catLabel("index") + "</div>" +
+      '<div class="chart-card">' + chart(function (node) {
+        FFCharts.xy(node, pts, {
+          height: node.clientWidth < 500 ? 320 : 420, labels: node.clientWidth < 500 ? 3 : 6,
+          labelBy: function (p) { return p.y; },
+          xFmt: function (v) { return nf0.format(v) + " %"; }, yFmt: function (v) { return fixMinus(nf0.format(v)) + " %"; },
+          xLabel: "Risk: standardavvikelse, 24 månader", yLabel: "Avkastning per år, 5 år",
+          quad: { tl: "Mer avkastning, lägre risk", br: "Mindre avkastning, högre risk" },
+          tip: function (p) {
+            return "<b>" + esc(p.fi.name) + "</b><br>" + esc(p.fi.co) + " · " + esc(p.p[7] || "") + "<br>" + (p.y > 0 ? "+" : "") + fixMinus(nf0.format(p.y)) + " % per år · risk " + nf1.format(p.x) + " %<br>Avgift " + feeText(p.fi) + " · " + bigSek(p.fi.aum);
+          },
+          onClick: function (p) { location.hash = fundHref(p.fi); }
+        });
+      }) + '<p class="chart-note">Varje punkt är en aktiefond, storleken är fondförmögenheten. Högre risk har i snitt gett ' + (reg && reg.b > 0 ? "högre" : "lägre") +
+      " avkastning (korrelation " + fixMinus(nf2.format(reg ? reg.r : 0)) + "), men spridningen är stor: fonder med samma risk skiljer sig flera procentenheter per år. " +
+      "Avkastningen kommer från Pensionsmyndigheten, risken från Finansinspektionen. Fonder utanför premiepensionen saknas.</p></div></section>";
+  }
+
   function viewTopFunds() {
     var world = state.market === "world";
     document.title = "Toppfonderna – vad fonderna med bäst avkastning köper – Fondinsyn";
@@ -2479,7 +2537,7 @@
       rows.forEach(function (r) { by[r[0]] = r; });
       return { isin: k, name: h.stocks[k][0], by: by };
     });
-    var periods = [];
+    var periods = [], retsTop = [], retsBottom = [];
     for (var q = 1; q + BT_LAG < n; q++) {
       var t = q + BT_LAG; // avkastningen i rad t gäller kvartalet som slutar i t
       var cand = [];
@@ -2498,6 +2556,9 @@
         var part = cand.slice(Math.floor(g * cand.length / BT_GROUPS), Math.floor((g + 1) * cand.length / BT_GROUPS));
         groups.push({ ret: part.reduce(function (a, c) { return a + c.ret; }, 0) / part.length, n: part.length,
           top: part.slice().sort(function (a, b) { return b.sig - a.sig; }).slice(0, 5) });
+        // Varje akties kvartalsavkastning i ytterkvintilerna, för fördelningsdiagrammet
+        if (g === BT_GROUPS - 1) part.forEach(function (c) { retsTop.push(c.ret); });
+        if (g === 0) part.forEach(function (c) { retsBottom.push(c.ret); });
       }
       var all = cand.reduce(function (a, c) { return a + c.ret; }, 0) / cand.length;
       periods.push({ signal: Q[q], held: Q[t], groups: groups, all: all, n: cand.length });
@@ -2513,7 +2574,7 @@
     var mE = excess.reduce(function (a, b) { return a + b; }, 0) / N;
     var sdE = Math.sqrt(excess.reduce(function (a, b) { return a + (b - mE) * (b - mE); }, 0) / (N - 1));
     return {
-      periods: periods, N: N,
+      periods: periods, N: N, spreads: spread, retsTop: retsTop, retsBottom: retsBottom,
       groupMean: periods.length ? periods[0].groups.map(function (_, g) { return mean(function (p) { return p.groups[g].ret; }); }) : [],
       allMean: mean(function (p) { return p.all; }),
       cagrTop: cagr(function (p) { return p.groups[BT_GROUPS - 1].ret; }),
@@ -2607,6 +2668,7 @@
           return '<li><span class="rk-n">' + (i + 1) + '</span><span class="rk-main">' + (st ? '<a href="' + stockHref(st) + '">' + esc(c.st.name) + "</a>" : '<span class="nm-plain">' + esc(c.st.name) + "</span>") +
             '<span class="rk-sub">nettoköp ' + pctS(c.sig, 0) + " av innehavet</span></span><span></span>" + '<span class="rk-v ' + cls(c.ret) + '">' + pctS(c.ret) + "</span></li>";
         }).join("") + "</ol>") + "</div>" +
+      backtestDistributions(b) +
       block("Kvartal för kvartal", "", table("bt-periods", cols, rows, { csv: true, limit: 8, expand: true }), "section-gap") +
       '<section class="block section-gap text-page"><div class="block-head"><h2>Så är testet gjort</h2></div>' +
       "<p><b>Signal.</b> Fondernas nettoköp av aktien under kvartalet, i procent av hur mycket fonderna ägde kvartalet innan. Bara svenska aktier där fonderna ägde minst " + BT_MIN_VALUE + " mkr är med.</p>" +
@@ -2617,6 +2679,106 @@
       "<p><b>Begränsningar.</b> Aktier som försvinner från börsen under mätkvartalet (uppköp, konkurs) saknar kurs och faller bort. Perioden är kort, sju år, och historisk avkastning säger inget säkert om framtiden. Detta är ett test av en idé, inte en investeringsrekommendation.</p>" +
       '<p><a href="#/metod">Läs hela metodrapporten</a></p></section>';
   }
+  // Rangkorrelation (Spearman): tål enstaka extremvärden bättre än vanlig korrelation
+  function rankCorr(xs, ys) {
+    var rank = function (v) {
+      var idx = v.map(function (x, i) { return i; }).sort(function (a, b) { return v[a] - v[b]; }), r = [];
+      for (var i = 0; i < idx.length;) {
+        var j = i; while (j + 1 < idx.length && v[idx[j + 1]] === v[idx[i]]) j++;
+        for (var k = i; k <= j; k++) r[idx[k]] = (i + j) / 2;
+        i = j + 1;
+      }
+      return r;
+    };
+    var ry = rank(ys), pts = rank(xs).map(function (rx, i) { return { x: rx, y: ry[i] }; });
+    var reg = FFCharts.regression(pts);
+    return reg ? reg.r : 0;
+  }
+
+  // Kvartalets kursutveckling mot fondernas nettoköp per aktie: köpte fonderna aktierna som gått upp (momentum)
+  // eller dem som gått ner? Bara aktier där fonderna ägde minst 100 mkr kvartalet innan.
+  function chaseData(ds) {
+    var qi = state.history.qIndex[state.q];
+    if (qi == null || !qi) return null;
+    var pts = [];
+    ds.stocks.forEach(function (s) {
+      var h = histFor(s.isin);
+      if (!h) return;
+      var cur = h.byQ[qi], prev = h.byQ[qi - 1];
+      if (!cur || !prev || prev[2] < 100 || cur[3] == null || cur[5] == null) return;
+      pts.push({ x: cur[5] * 100, y: cur[3] / prev[2] * 100, size: prev[2], cls: cur[3] >= 0 ? "c-pos" : "c-neg", s: s, flow: cur[3], label: s.name });
+    });
+    if (pts.length < 30) return null;
+    // Axlarna går till 2:a och 98:e percentilen, extremvärden ritas vid kanten
+    var pctl = function (v, p) { var a = v.slice().sort(function (x, y) { return x - y; }); return a[Math.floor(p * (a.length - 1))]; };
+    var xsv = pts.map(function (p) { return p.x; }), ysv = pts.map(function (p) { return p.y; });
+    var xd = [Math.min(-5, pctl(xsv, 0.02)), Math.max(5, pctl(xsv, 0.98))], yd = [Math.min(-5, pctl(ysv, 0.02)), Math.max(5, pctl(ysv, 0.98))];
+    var rho = rankCorr(xsv, ysv);
+    var winners = pts.filter(function (p) { return p.x > 0; }), losers = pts.filter(function (p) { return p.x <= 0; });
+    var share = function (list) { return list.length ? list.filter(function (p) { return p.y > 0; }).length / list.length : 0; };
+    var verdict = Math.abs(rho) < 0.1 ? "Nej, inte tydligt: fonderna köpte vinnare och förlorare ungefär lika mycket."
+      : rho > 0 ? "Ja, i viss mån. Fonderna köpte oftare aktierna som hade gått upp."
+      : "Nej, snarare tvärtom. Fonderna köpte oftare aktierna som hade gått ner.";
+    var pct = function (v) { return (v > 0 ? "+" : "") + fixMinus(nf0.format(v)) + " %"; };
+    return {
+      text: verdict + " Av aktierna som steg under kvartalet nettoköptes " + nf0.format(share(winners) * 100) + " %, av dem som föll " + nf0.format(share(losers) * 100) +
+        " % (rangkorrelation " + fixMinus(nf2.format(rho)) + ").",
+      html: '<div class="chart-card"><div class="legend"><span class="legend-item"><i class="dot c-pos"></i>Nettoköpt</span><span class="legend-item"><i class="dot c-neg"></i>Nettosåld</span></div>' +
+        chart(function (node) {
+          FFCharts.xy(node, pts, {
+            height: node.clientWidth < 500 ? 320 : 420, xDomain: xd, yDomain: yd, labels: node.clientWidth < 500 ? 3 : 7,
+            // Namn på de aktier som sticker ut mest: stora innehav långt från mitten
+            labelBy: function (p) { return Math.sqrt(p.size) * (Math.abs(p.x) / (xd[1] - xd[0]) + Math.abs(p.y) / (yd[1] - yd[0])); },
+            xFmt: function (v) { return pct(v); }, yFmt: function (v) { return pct(v); },
+            xLabel: "Kursutveckling under " + quarterLabel(state.q), yLabel: "Nettoköp i % av innehavet",
+            quad: { tr: "Köpte vinnare", tl: "Köpte förlorare", br: "Sålde vinnare", bl: "Sålde förlorare" },
+            tip: function (p) {
+              return "<b>" + esc(p.s.name) + "</b><br>Kurs " + pct(p.x) + " under kvartalet<br>Nettoköp " + bigSek(p.flow * 1e6, true) + " (" + pct(p.y) + " av innehavet)";
+            },
+            onClick: function (p) { location.hash = stockHref(p.s); }
+          });
+        }) + '<p class="chart-note">Varje punkt är en aktie där fonderna ägde minst 100 mkr kvartalet innan, storleken är innehavet. Kursen är medianen av fondernas rapporterade kurser, utan utdelningar. Enstaka extremvärden ritas vid kanten.</p></div>'
+    };
+  }
+
+  // Två fördelningar: skillnaden mellan grupperna kvartal för kvartal, och varje akties kvartalsavkastning i ytterkvintilerna.
+  // Kurvorna är normalfördelningar med samma medelvärde och standardavvikelse som utfallen.
+  function backtestDistributions(b) {
+    var pct = function (v) { return (v > 0 ? "+" : "") + fixMinus(nf1.format(v)) + " %"; };
+    var tick = function (v) { return fixMinus(nf0.format(v)) + " %"; };
+    var spreads = b.spreads.map(function (v) { return v * 100; });
+    var top = b.retsTop.map(function (v) { return v * 100; }), bottom = b.retsBottom.map(function (v) { return v * 100; });
+    var sS = FFCharts.stats(spreads), sT = FFCharts.stats(top), sB = FFCharts.stats(bottom);
+    var below = spreads.filter(function (v) { return v < 0; }).length;
+    var lim = Math.max(10, Math.ceil(Math.max.apply(null, spreads.map(Math.abs)) / 5) * 5);
+    return '<div class="grid-2 section-gap">' +
+      block("Skillnaden kvartal för kvartal", "Mest köpta minus mest sålda. Staplarna är kvartalen, kurvan en normalfördelning med samma snitt och spridning.",
+        '<div class="chart-card">' + chart(function (node) {
+          FFCharts.dist(node, [{ values: spreads, hist: true, curve: true, cls: "c-brand", label: "Snitt " + pct(sS.mean) }], {
+            height: 280, bins: Math.min(24, Math.round(2 * lim / 2.5)), domain: [-lim, lim], xFmt: tick, yLabel: "Antal kvartal",
+            tip: function (bin, rows) { return "<b>" + tick(bin.from) + " till " + tick(bin.to) + "</b><br>" + rows[0].count + " kvartal"; }
+          });
+        }) + '<p class="chart-note">Snitt <b>' + pct(sS.mean) + "</b> per kvartal, standardavvikelse <b>" + nf1.format(sS.sd) + " %</b>. " +
+        below + " av " + sS.n + " kvartal hamnade under noll, alltså gick de mest sålda bättre.</p></div>") +
+      block("Spridningen inom grupperna", "Varje akties avkastning kvartalet efter signalen, i de två yttersta grupperna.",
+        '<div class="chart-card"><div class="legend"><span class="legend-item"><i class="ln pos"></i>Mest köpta</span><span class="legend-item"><i class="ln dash neg"></i>Mest sålda</span></div>' +
+        chart(function (node) {
+          FFCharts.dist(node, [
+            { values: top, curve: true, cls: "c-pos", label: "Köpta " + pct(sT.mean) },
+            { values: bottom, curve: true, dash: true, cls: "c-neg", label: "Sålda " + pct(sB.mean) }
+          ], {
+            height: 280, bins: 24, domain: [-60, 60], share: true, xFmt: tick, yLabel: "Andel av aktierna",
+            tip: function (bin, rows) {
+              return "<b>" + tick(bin.from) + " till " + tick(bin.to) + "</b>" + rows.map(function (r, i) {
+                return '<div class="tip-row"><span>' + (i ? "Mest sålda" : "Mest köpta") + "</span><b>" + nf1.format(r.share) + " %</b></div>";
+              }).join("");
+            }
+          });
+        }) + '<p class="chart-note">Kurvorna är normalfördelningar med samma snitt och spridning som de ' + int(sT.n + sB.n) + " utfallen. Spridningen inom en grupp (<b>±" +
+        nf0.format((sT.sd + sB.sd) / 2) + " %</b> per kvartal) är många gånger större än skillnaden mellan grupperna. Därför är en enskild akties utveckling svår att förutse ur fondernas köp.</p></div>") +
+      "</div>";
+  }
+
   // ---------- Metodrapport ----------
   // Beskriver hur datan samlas in och räknas. Siffrorna (antal fonder, kvartal, backtestets resultat) räknas när sidan visas.
   // Skrivs också ut som PDF av scripts/build-pdf.sh (site/metod/fondinsyn-metodrapport.pdf).
@@ -3425,6 +3587,8 @@
         (cNeg.length ? " Mest sålde fonderna aktier från " + sentenceList(cNeg.slice(0, 2), function (x) { return esc(countryName(x.s)); }) + "." : "") + " De tolv länder där fonderna flyttade mest pengar.",
         divBars(top.map(function (x) { return { label: countryName(x.s), v: x.v }; }))));
     }
+    var chase = hasHist ? chaseData(ds) : null;
+    if (chase) out.push(repSection(++n, "Köpte fonderna vinnarna?", chase.text, chase.html));
 
     // Kortare noteringar
     var notes = [];

@@ -677,6 +677,28 @@ function LdScripts($crumbs, $extra) {
   return (@($lds | ForEach-Object { '<script type="application/ld+json">' + $_.Replace("</", "<\/") + "</script>" }) -join "`n  ")
 }
 
+# Datafilerna som sidan behöver, utöver index.json, front.json och kvartalet. Sidhuvudet börjar hämta dem direkt
+# (se skriptet i site/index.html) så att de inte väntar på app.js eller på varandra.
+function PreList($route) {
+  $r = [string]$route
+  $files = switch -regex ($r) {
+    '^$' { @("data/history-se.json", "data/reports-pdf.json") }
+    '^aktie/(.+)$' {
+      $isin = $Matches[1]
+      @("data/hist/$isin.json", "data/pages.json", "data/shares.json", "data/insider.json", "data/offers.json", "data/shorts.json") +
+        @($(if ($insynArchive -and $insynArchive.ContainsKey($isin)) { "data/insyn/$isin.json" }))
+    }
+    '^fond/(.+)$' { @("data/fund/$($Matches[1]).json", "data/pages.json", "data/flows.json", "data/perf.json", "data/profiles.json", "data/$Q-rates.json") }
+    '^rapport$' { @("data/history-se.json", "data/reports-pdf.json", "data/offers.json") }
+    '^rapport/(\d{4}Q\d)$' { @("data/history-se.json", "data/reports-pdf.json", "data/offers.json") + @($(if ($Matches[1] -ne $Q) { "data/$($Matches[1]).json" })) }
+    '^rapport/(\d{4}Q\d)/utland$' { @("data/history-world.json", "data/reports-pdf.json", "data/$($Matches[1])-world.json") + @($(if ($Matches[1] -ne $Q) { "data/$($Matches[1]).json" })) }
+    '^(rantor|emittent)' { @("data/$Q-rates.json", "data/rates-market.json") }
+    '^sparande' { @("data/flows.json") }
+    default { @() }
+  }
+  return ((@($files | Where-Object { $_ }) | ForEach-Object { ", " + (J $_) }) -join "")
+}
+
 # $rel: "aktie/volvo-b/" (sparas som index.html) eller ett filnamn som "404.html"
 function Page($rel, $route, $title, $desc, $image, $content, $Crumbs, $Ld, [switch]$NoIndex, [switch]$Keep) {
   $url = $BaseUrl + "/" + $(if ($rel.EndsWith("/")) { $rel } else { "" })
@@ -692,6 +714,7 @@ function Page($rel, $route, $title, $desc, $image, $content, $Crumbs, $Ld, [swit
   $t = $t.Replace($tag.canon, '<link rel="canonical" href="' + (Esc $url) + '">')
   if ($route) { $t = $t.Replace($tag.body, '<body data-route="' + (Esc $route) + '"' + $(if ($Keep) { " data-keep" } else { "" }) + '>') }
   $t = $t.Replace($tag.main, '<main id="app" class="container" tabindex="-1">' + $content + "</main>")
+  $t = $t.Replace('"__LATEST__"', (J $Q)).Replace('/*PRE*/', (PreList $route))
   $ldHtml = LdScripts $Crumbs $Ld
   if ($ldHtml) { $t = $t.Replace("</head>", "  " + $ldHtml + "`n</head>") }
   if ($rel -eq "" -or $rel.EndsWith("/")) { Save ($rel + "index.html") $t } else { Save $rel $t }

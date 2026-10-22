@@ -787,6 +787,33 @@ a.btn { color: var(--fg-soft); }
 .c-ring { fill: none; stroke: var(--fg); stroke-width: 1.5; }
 .c-zone { fill: var(--zone); }
 .c-zone-label { fill: var(--warn); font-size: 12px; font-weight: 600; }
+
+/* Punktdiagram (FFCharts.xy) och fördelningar (FFCharts.dist) */
+.c-brand { fill: var(--brand); }
+:root[data-theme="dark"] .c-brand { fill: var(--brand-ink); }
+.c-pts .c-pt { fill-opacity: 0.8; transition: fill-opacity 0.2s, opacity 0.2s; }
+.c-pts.hovering .c-pt { opacity: 0.35; }
+.c-pts.hovering .c-pt.on { opacity: 1; fill-opacity: 1; }
+.pop .c-pt { transform-box: fill-box; transform-origin: center; animation: pt-pop 0.5s var(--spring) both; }
+@keyframes pt-pop { from { opacity: 0; transform: scale(0.2); } to { opacity: 1; transform: none; } }
+.c-trend { stroke: var(--fg-soft); stroke-width: 1.5; stroke-dasharray: 6 5; animation: fade-in-plain 0.6s 0.4s both; }
+.c-quad { fill: var(--fg-muted); font-size: 11.5px; font-weight: 600; letter-spacing: 0.01em; }
+.c-ptlabel { fill: var(--fg); font-size: 11.5px; font-weight: 650; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
+.c-hist { fill: var(--dot-index); }
+.c-curve { stroke-width: 2.25; stroke-linejoin: round; stroke: var(--brand); }
+.c-curve, :root[data-theme="dark"] .c-curve { fill: none; }
+.c-curve.dash { stroke-dasharray: 7 5; }
+.c-curve-fill { stroke: none; fill-opacity: 0.1; }
+.c-mean { stroke-width: 1.5; stroke: var(--brand); stroke-dasharray: 2 3; }
+.c-curve.c-pos, .c-mean.c-pos { stroke: var(--bar-pos); }
+.c-curve.c-neg, .c-mean.c-neg { stroke: var(--bar-neg); }
+:root[data-theme="dark"] .c-curve.c-brand, :root[data-theme="dark"] .c-mean.c-brand { stroke: var(--brand-ink); }
+.legend .ln { display: inline-block; width: 18px; height: 0; border-top: 2.5px solid currentColor; vertical-align: middle; margin-right: 6px; }
+.legend .ln.dash { border-top-style: dashed; }
+.legend .ln.pos { color: var(--bar-pos); } .legend .ln.neg { color: var(--bar-neg); }
+.legend i.c-pos { background: var(--bar-pos); } .legend i.c-neg { background: var(--bar-neg); } .legend i.c-brand { background: var(--brand); }
+.chart-note { font-size: 13px; color: var(--fg-muted); margin: 10px 2px 2px; line-height: 1.55; }
+.chart-note b { color: var(--fg); font-weight: 650; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--fg-muted); margin-bottom: 10px; }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; }
 .legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
