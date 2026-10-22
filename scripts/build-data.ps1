@@ -114,7 +114,7 @@ $QuarterCache = @{}
 function Read-Quarter($release) {
   if ($QuarterCache.ContainsKey($release.Id)) { return $QuarterCache[$release.Id] }
   Write-Host "  Läser $($release.Id)"
-  $funds = @{}; $names = @{}; $sect = @{}; $country = @{}; $price = @{}; $date = $null
+  $funds = @{}; $names = @{}; $sect = @{}; $country = @{}; $price = @{}; $prices = @{}; $date = $null
   $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path (Get-Zip $release)).Path)
   try {
     foreach ($entry in $zip.Entries) {
@@ -142,7 +142,10 @@ function Read-Quarter($release) {
 
         if ($holdings.ContainsKey($isin)) { $holdings[$isin] += $n } else { $holdings[$isin] = $n }
         $mv = Num $i.'Marknadsvärde_instrument'
-        if ($mv -and $mv -gt 0) { $price[$isin] = $mv / $n; $equity += $mv }
+        if ($mv -and $mv -gt 0) {
+          if (-not $prices.ContainsKey($isin)) { $prices[$isin] = New-Object System.Collections.Generic.List[double] }
+          $prices[$isin].Add($mv / $n); $equity += $mv
+        }
         Tally $names $isin $nm
         $code = [string]$i.Bransch.'Branschkod_instrument'
         if ($code -ne "0") { Tally $sect $isin $code }
@@ -175,6 +178,12 @@ function Read-Quarter($release) {
       }
     }
   } finally { $zip.Dispose() }
+  # Kursen är medianen av fondernas rapporterade kurser (marknadsvärde / antal), så att ett felrapporterat
+  # innehav hos en enskild fond inte slår igenom
+  foreach ($isin in $prices.Keys) {
+    $l = $prices[$isin]; $l.Sort()
+    $price[$isin] = if ($l.Count % 2) { $l[($l.Count - 1) / 2] } else { ($l[$l.Count / 2 - 1] + $l[$l.Count / 2]) / 2 }
+  }
   $q = @{ id = $release.Id; funds = $funds; names = $names; sect = $sect; country = $country; price = $price; date = $date }
   $QuarterCache[$release.Id] = $q
   return $q
@@ -214,6 +223,26 @@ function Get-SplitFactors($P, $C) {
       $s = @($best | Sort-Object)
       $factor[$isin] = $s[[int][math]::Floor($s.Count / 2)]
     }
+  }
+  # Splittar där fonderna också handlat samma kvartal: de flesta fonder har fått ungefär k gånger fler aktier
+  # samtidigt som kursen fallit till ungefär 1/k (eller tvärtom vid sammanläggning). Kvoten avrundas till en vanlig splitkvot.
+  foreach ($isin in $ratios.Keys) {
+    if ($factor.ContainsKey($isin)) { continue }
+    $list = $ratios[$isin]
+    if ($list.Count -lt 3) { continue }
+    $s = @($list | Sort-Object); $med = [double]$s[[int][math]::Floor($s.Count / 2)]
+    if ($med -lt 1.8 -and $med -gt 0.55) { continue }
+    $p1 = $P.price[$isin]; $p2 = $C.price[$isin]
+    if (-not $p1 -or -not $p2) { continue }
+    $inv = [double]$p1 / [double]$p2
+    if ([math]::Abs([math]::Log($inv / $med)) -gt [math]::Log(1.3)) { continue }
+    $best = $null
+    foreach ($k in @(2, 3, 4, 5, 6, 8, 10, 15, 20, 25, 50, 100, 200)) {
+      foreach ($cand in @([double]$k, (1.0 / $k))) {
+        if ($null -eq $best -or [math]::Abs([math]::Log($inv / $cand)) -lt [math]::Abs([math]::Log($inv / $best))) { $best = $cand }
+      }
+    }
+    if ([math]::Abs([math]::Log($inv / $best)) -lt [math]::Log(1.15)) { $factor[$isin] = $best }
   }
   return $factor
 }
@@ -314,7 +343,7 @@ function Build-History($releases, $file) {
   $ordered = @($releases | Sort-Object Year, Q)
   Write-Host "Bygger historik för $($ordered.Count) kvartal ($($ordered[0].Id)–$($ordered[-1].Id))"
   $series = @{}; $peak = @{}; $metaOf = @{}
-  $prev = $null
+  $prev = $null; $prevCount = $null; $prevValue = $null
   for ($qi = 0; $qi -lt $ordered.Count; $qi++) {
     $C = Read-Quarter $ordered[$qi]
     $factor = if ($prev) { Get-SplitFactors $prev $C } else { @{} }
@@ -348,7 +377,22 @@ function Build-History($releases, $file) {
       $v = [double]$value[$isin]
       $fl = if ($prev) { N ($flow[$isin] / 1e6) "0.#" } else { "null" }
       $fa = if ($prev) { N ($flowA[$isin] / 1e6) "0.#" } else { "null" }
-      $series[$isin].Add("[" + $qi + "," + [int]$count[$isin] + "," + (N ($v / 1e6) "0.#") + "," + $fl + "," + $fa + "]")
+      # Nytt eller försvunnet aktieslag (notering, byte av ISIN vid split, uppköp): nästan inget innehav ena kvartalet.
+      # Det räknas inte som köp eller sälj, samma regel som i kvartalsfilerna.
+      if ($prevValue) {
+        $pv = [double]$prevValue[$isin]
+        if ($pv -lt 0.02 * $v -or $v -lt 0.02 * $pv) { $fl = "null"; $fa = "null" }
+      }
+      # Kursförändring sedan förra kvartalet, splitjusterad (används av backtestet). Saknas kurs något av kvartalen blir den null.
+      $ret = "null"
+      # Rasar antalet fonder som äger aktien med mer än 70 % är det oftast ett byte av ISIN (split med nytt aktieslag),
+      # en avnotering eller en fusion. Kursen bygger då på några få kvarglömda rapporter och räknas inte.
+      $collapsed = $prevCount -and $prevCount[$isin] -and [int]$count[$isin] -lt 0.3 * [int]$prevCount[$isin]
+      if ($prev -and -not $collapsed -and $C.price[$isin] -and $prev.price[$isin]) {
+        $fac = if ($factor[$isin]) { [double]$factor[$isin] } else { 1.0 }
+        $ret = N ([double]$C.price[$isin] * $fac / [double]$prev.price[$isin] - 1) "0.####"
+      }
+      $series[$isin].Add("[" + $qi + "," + [int]$count[$isin] + "," + (N ($v / 1e6) "0.#") + "," + $fl + "," + $fa + "," + $ret + "]")
       if ($v -gt [double]$peak[$isin]) { $peak[$isin] = $v }
     }
     # Spara metadata (namn, sektor, land) från senaste kvartalet aktien förekom
@@ -358,10 +402,12 @@ function Build-History($releases, $file) {
     }
     if ($prev) { $QuarterCache.Remove($prev.id) }
     $prev = $C
+    $prevCount = $count
+    $prevValue = $value
   }
 
   # Två filer: svenska och utländska aktier, så att sajten bara laddar det den behöver
-  $head = '{"v":' + $FormatVersion + ',"built":' + (J (Get-Date -Format "yyyy-MM-dd")) + ',"quarters":[' + ((@($ordered | ForEach-Object { J $_.Id })) -join ",") + ']' +
+  $head = '{"v":' + $FormatVersion + ',"ret":3,"built":' + (J (Get-Date -Format "yyyy-MM-dd")) + ',"quarters":[' + ((@($ordered | ForEach-Object { J $_.Id })) -join ",") + ']' +
     ',"src":[' + ((@($ordered | ForEach-Object { J $_.File })) -join ",") + '],"stocks":{'
   foreach ($part in @("se", "world")) {
     $sb = New-Object System.Text.StringBuilder
@@ -560,7 +606,7 @@ for ($k = 0; $k -lt [math]::Min($History, $releases.Count - 1); $k++) {
 $histReleases = if ($HistoryQuarters -gt 0) { @($releases | Select-Object -First $HistoryQuarters) } else { $releases }
 $histFile = Join-Path $OutDir "history-se.json"
 $histSrc = '"src":[' + ((@($histReleases | Sort-Object Year, Q | ForEach-Object { J $_.File })) -join ",") + ']'
-$histCurrent = (Test-Path $histFile) -and ([System.IO.File]::ReadAllText($histFile).Contains($histSrc)) -and ([System.IO.File]::ReadAllText($histFile).StartsWith('{"v":' + $FormatVersion + ','))
+$histCurrent = (Test-Path $histFile) -and ([System.IO.File]::ReadAllText($histFile).Contains($histSrc)) -and ([System.IO.File]::ReadAllText($histFile).StartsWith('{"v":' + $FormatVersion + ',"ret":3,'))
 if ($Force -or -not $histCurrent) {
   Build-History $histReleases $histFile
   $built++

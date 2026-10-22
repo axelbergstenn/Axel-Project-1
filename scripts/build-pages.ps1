@@ -283,7 +283,7 @@ function FundUrl($id) { $fi = $infoById[$id]; if ($fi) { return "/fond/$($fi.slu
 function CoUrl($co) { if ($companies.ContainsKey($co)) { return "/fondbolag/$($companies[$co].slug)/" }; return "/#/fondbolag/" + [uri]::EscapeDataString($co) }
 
 # Gamla sidor tas bort så att aktier och fonder som försvunnit inte ligger kvar
-foreach ($dir in @("aktie", "fond", "fondbolag", "aktier", "fonder", "ordlista", "rapport", "og", "data/fund", "data/hist", "data/csv", "oppen-data", "data/insyn", "data/rf", "data/re", "rantor", "emittent", "integritet", "dubbelsignal", "sparande", "signaler", "agarandel", "toppfonder")) {
+foreach ($dir in @("aktie", "fond", "fondbolag", "aktier", "fonder", "ordlista", "rapport", "og", "data/fund", "data/hist", "data/csv", "oppen-data", "data/insyn", "data/rf", "data/re", "rantor", "emittent", "integritet", "dubbelsignal", "sparande", "signaler", "agarandel", "toppfonder", "backtest", "metod")) {
   $p = Join-Path $Site $dir
   if (Test-Path $p) { Remove-Item $p -Recurse -Force }
 }
@@ -1448,6 +1448,18 @@ $content = '<div class="page-head"><h1>Toppfonderna</h1><p class="meta lead">De 
 Page "toppfonder/" "toppfonder" "Toppfonderna – vad fonderna med bäst avkastning köper | Fondinsyn" `
   "Vilka aktier de svenska fonderna med bäst avkastning de senaste fem åren köpte och sålde under $QL." `
   $defaultImg $content -Crumbs @("Toppfonderna", "toppfonder/")
+
+# ---------- Backtest och metodrapport (räknas i appen, här står en sammanfattning för sökmotorer) ----------
+$content = '<div class="page-head"><h1>Lönar det sig att följa fonderna?</h1><p class="meta lead">Ett backtest på historisk data sedan 2019: går de svenska aktier som fonderna köper mest bättre än de som de säljer? ' +
+  'Bara med information som fanns när den behövdes.</p></div><p class="desc">' + (A "/#/backtest" "Se resultatet") + '</p>'
+Page "backtest/" "backtest" "Lönar det sig att följa fonderna? Backtest | Fondinsyn" `
+  "Backtest sedan 2019: går de svenska aktier som fonderna köper mest bättre än de som fonderna säljer? Metod, resultat och begränsningar." `
+  $defaultImg $content -Crumbs @("Backtest", "backtest/")
+$content = '<div class="page-head"><h1>Metodrapport</h1><p class="meta lead">Hur Fondinsyn samlar in och räknar sin data: källor, nettoköp, splitjustering, fondflöden, ägarandel, signaler och backtest.</p></div>' +
+  '<p class="desc">' + (A "/#/metod" "Läs metodrapporten") + '</p>'
+Page "metod/" "metod" "Metodrapport – så räknar Fondinsyn | Fondinsyn" `
+  "Källor, definitioner och begränsningar bakom Fondinsyn: hur fondernas nettoköp, ägarandel, fondflöden och signaler räknas ur Finansinspektionens data." `
+  $defaultImg $content -Crumbs @("Metodrapport", "metod/")
 
 # ---------- Integritet och villkor: /integritet/ ----------
 $privacy = '<div class="page-head"><h1>Integritet och villkor</h1><p class="meta">Senast uppdaterad 15 oktober 2026</p></div>' +

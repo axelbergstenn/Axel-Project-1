@@ -645,9 +645,10 @@
   function reportSlug(q) { return q.slice(0, 4) + "-q" + q.slice(5); }
   function pdfName(q, world) { return reportSlug(q) + (world ? "-utland" : ""); }
   function pdfHref(q, world) { return "/rapport/" + reportSlug(q) + "/fondinsyn-" + pdfName(q, world) + ".pdf"; }
-  function hasPdf(q, world) {
+  function hasPdf(q, world) { return hasPdfName(pdfName(q, world)); }
+  function hasPdfName(name) {
     if (!need("pdfs", function () { return getJSON("data/reports-pdf.json").then(function (d) { state.pdfs = d; }, function () { state.pdfs = []; }); })) return false;
-    return (state.pdfs || []).indexOf(pdfName(q, world)) >= 0;
+    return (state.pdfs || []).indexOf(name) >= 0;
   }
   // "Läs rapporten" öppnar PDF:en i en ny flik när den finns, annars webbversionen
   function repGoLinks(q, market) {
@@ -2403,6 +2404,276 @@
       "Historisk avkastning är ingen garanti för framtida avkastning.</p>";
   }
 
+  // ---------- Backtest: lönar det sig att följa fonderna? ----------
+  // Bygger på history-se.json: per aktie och kvartal [kvartal, fonder, innehav mkr, nettoköp mkr, nettoköp aktiva fonder mkr,
+  // kursförändring sedan förra kvartalet]. Kursförändringen räknas i scripts/build-data.ps1 ur medianen av fondernas
+  // rapporterade kurser och är splitjusterad men utan utdelningar.
+  //
+  // Varje kvartal q delas aktierna in i fem lika stora grupper efter nettoköpet under q i procent av innehavet vid
+  // kvartalet innan. Datan antas bli känd senast ett kvartal efter q, så gruppernas avkastning mäts under kvartalet
+  // därefter (q + 2). Grupperna har lika vikt per aktie och byts varje kvartal.
+
+  var BT_MIN_VALUE = 100;     // mkr: fonderna ägde minst så här mycket i aktien kvartalet innan
+  var BT_GROUPS = 5;
+  var BT_LAG = 2;             // signal från kvartal q, känd under q + 1, avkastningen mäts under q + 2
+  var BT_CLIP = [-0.9, 3];    // enstaka kvartalsavkastningar utanför detta ses som datafel och kapas
+  var btState = { active: false };
+
+  function quarterEnd(q) { return q.slice(0, 4) + ["", "-03-31", "-06-30", "-09-30", "-12-31"][+q.slice(5)]; }
+
+  function computeBacktest(activeOnly) {
+    var h = state.history, Q = h.quarters, n = Q.length;
+    var stocks = Object.keys(h.stocks).filter(function (k) { return k.slice(0, 2) === "SE"; }).map(function (k) {
+      var rows = h.stocks[k][3], by = {};
+      rows.forEach(function (r) { by[r[0]] = r; });
+      return { isin: k, name: h.stocks[k][0], by: by };
+    });
+    var periods = [];
+    for (var q = 1; q + BT_LAG < n; q++) {
+      var t = q + BT_LAG; // avkastningen i rad t gäller kvartalet som slutar i t
+      var cand = [];
+      stocks.forEach(function (st) {
+        var prev = st.by[q - 1], cur = st.by[q], fut = st.by[t];
+        if (!prev || !cur || !fut || prev[2] < BT_MIN_VALUE) return;
+        var flow = activeOnly ? cur[4] : cur[3];
+        var ret = fut[5];
+        if (flow == null || ret == null) return;
+        cand.push({ st: st, sig: flow / prev[2], ret: Math.max(BT_CLIP[0], Math.min(BT_CLIP[1], ret)) });
+      });
+      if (cand.length < BT_GROUPS * 8) continue;
+      cand.sort(function (a, b) { return a.sig - b.sig; });
+      var groups = [];
+      for (var g = 0; g < BT_GROUPS; g++) {
+        var part = cand.slice(Math.floor(g * cand.length / BT_GROUPS), Math.floor((g + 1) * cand.length / BT_GROUPS));
+        groups.push({ ret: part.reduce(function (a, c) { return a + c.ret; }, 0) / part.length, n: part.length,
+          top: part.slice().sort(function (a, b) { return b.sig - a.sig; }).slice(0, 5) });
+      }
+      var all = cand.reduce(function (a, c) { return a + c.ret; }, 0) / cand.length;
+      periods.push({ signal: Q[q], held: Q[t], groups: groups, all: all, n: cand.length });
+    }
+    // Sammanfattning
+    var N = periods.length;
+    var mean = function (f) { return periods.reduce(function (a, p) { return a + f(p); }, 0) / N; };
+    var cagr = function (f) { var v = periods.reduce(function (a, p) { return a * (1 + f(p)); }, 1); return Math.pow(v, 4 / N) - 1; };
+    var spread = periods.map(function (p) { return p.groups[BT_GROUPS - 1].ret - p.groups[0].ret; });
+    var mS = spread.reduce(function (a, b) { return a + b; }, 0) / N;
+    var sd = Math.sqrt(spread.reduce(function (a, b) { return a + (b - mS) * (b - mS); }, 0) / (N - 1));
+    var excess = periods.map(function (p) { return p.groups[BT_GROUPS - 1].ret - p.all; });
+    var mE = excess.reduce(function (a, b) { return a + b; }, 0) / N;
+    var sdE = Math.sqrt(excess.reduce(function (a, b) { return a + (b - mE) * (b - mE); }, 0) / (N - 1));
+    return {
+      periods: periods, N: N,
+      groupMean: periods.length ? periods[0].groups.map(function (_, g) { return mean(function (p) { return p.groups[g].ret; }); }) : [],
+      allMean: mean(function (p) { return p.all; }),
+      cagrTop: cagr(function (p) { return p.groups[BT_GROUPS - 1].ret; }),
+      cagrBottom: cagr(function (p) { return p.groups[0].ret; }),
+      cagrAll: cagr(function (p) { return p.all; }),
+      spread: mS, tSpread: sd ? mS / (sd / Math.sqrt(N)) : 0,
+      excess: mE, tExcess: sdE ? mE / (sdE / Math.sqrt(N)) : 0,
+      hit: spread.filter(function (x) { return x > 0; }).length / N,
+      hitAll: excess.filter(function (x) { return x > 0; }).length / N,
+      avgN: mean(function (p) { return p.n; })
+    };
+  }
+
+  function pctS(v, d) { return (v > 0 ? "+" : v < 0 ? "−" : "") + (d === 0 ? nf0 : nf1).format(Math.abs(v * 100)) + " %"; }
+
+  function backtestVerdict(b) {
+    var t = Math.abs(b.tSpread);
+    var dir = b.spread > 0 ? "bättre" : "sämre";
+    var sure = t >= 2 ? "Skillnaden är statistiskt säkerställd (t-värde " + nf1.format(b.tSpread) + ")." :
+      t >= 1.5 ? "Skillnaden är svagt statistiskt säkerställd (t-värde " + nf1.format(b.tSpread) + "), så den kan delvis vara slump." :
+      "Skillnaden är inte statistiskt säkerställd (t-värde " + nf1.format(b.tSpread) + "), så den kan lika gärna vara slump.";
+    var gm = b.groupMean, best = gm.indexOf(Math.max.apply(null, gm)), worst = gm.indexOf(Math.min.apply(null, gm));
+    var where = best === 0 ? " Det är de aktier fonderna sålt mest som gått bäst efteråt, vilket kan tyda på att kurserna ofta studsar tillbaka efter tunga försäljningar." :
+      best === gm.length - 1 && worst === 0 ? " Ju mer fonderna köpt, desto bättre har aktierna gått efteråt." : "";
+    return "De aktier fonderna köpte mest gick i snitt " + pctS(Math.abs(b.spread)).replace(/^[+−]/, "") + " " + dir + " per kvartal än de fonderna sålde mest, " +
+      "räknat kvartalet efter att datan blivit offentlig. " + sure + where;
+  }
+
+  function viewBacktest() {
+    document.title = "Lönar det sig att följa fonderna? Backtest – Fondinsyn";
+    var head = '<div class="page-head"><h1>Lönar det sig att följa fonderna?</h1><p class="meta lead">Ett test på historisk data: går de svenska aktier som fonderna ' +
+      "köper mest bättre än de som de säljer? Sedan 2019, kvartal för kvartal, och bara med information som fanns när den behövdes.</p></div>";
+    if (!needHistory("se")) return head + (failed("history-se") ? errorBlock() : loadingBlock("Laddar historik…"));
+    var probe = state.history.stocks[Object.keys(state.history.stocks)[0]][3][1];
+    if (!probe || probe.length < 6) return head + '<div class="notice">Kurshistoriken byggs om och finns på plats efter nästa uppdatering.</div>';
+    var b = computeBacktest(btState.active);
+    if (!b.N) return head + '<div class="notice">För lite data för att räkna.</div>';
+    var G = BT_GROUPS, first = b.periods[0], last = b.periods[b.N - 1];
+    var seg = function (v, label) { return '<button type="button" class="seg-btn" data-bt-active="' + v + '" aria-pressed="' + (btState.active === v) + '">' + label + "</button>"; };
+
+    // Indexserier för diagrammet (start 100)
+    var mk = function (f) {
+      // Första punkten är slutet av kvartalet före det första mätkvartalet
+      var v = 100, pts = [{ d: quarterEnd(prevQuarterId(first.held)), v: 100 }];
+      b.periods.forEach(function (p) { v *= 1 + f(p); pts.push({ d: quarterEnd(p.held), v: Math.round(v * 10) / 10 }); });
+      return pts;
+    };
+    var series = [
+      { label: "Mest köpta", cls: "s3", points: mk(function (p) { return p.groups[G - 1].ret; }) },
+      { label: "Alla aktier", cls: "s1", points: mk(function (p) { return p.all; }) },
+      { label: "Mest sålda", cls: "s2", points: mk(function (p) { return p.groups[0].ret; }) }
+    ];
+    var groupNames = ["Mest sålda", "Sålda", "Mitten", "Köpta", "Mest köpta"];
+    var maxAbs = Math.max.apply(null, b.groupMean.map(Math.abs).concat([b.allMean, 0.001]));
+    var bars = '<ul class="divbars bt-groups">' + b.groupMean.map(function (v, g) {
+      var w = Math.abs(v) / maxAbs * 50;
+      return '<li style="--d:' + (g * 40) + 'ms"><span class="db-label">' + (g + 1) + ". " + groupNames[g] + '</span><span class="db-track"><i class="' + (v >= 0 ? "pos" : "neg") +
+        '" style="width:' + w.toFixed(1) + "%;" + (v >= 0 ? "left:50%" : "right:50%") + '"></i></span><span class="db-val ' + cls(v) + '">' + pctS(v) + "</span></li>";
+    }).join("") + "</ul>";
+    var rows = b.periods.slice().reverse();
+    var cols = [
+      { key: "held", label: "Mätkvartal", align: "l", cls: "name", cell: function (p) { return '<span class="nm-plain">' + quarterLabel(p.held) + '</span><span class="sub">signal från ' + quarterLabel(p.signal) + ", " + p.n + " aktier</span>"; } },
+      { key: "top", label: "Mest köpta", cell: function (p) { return '<span class="' + cls(p.groups[G - 1].ret) + '">' + pctS(p.groups[G - 1].ret) + "</span>"; }, csv: function (p) { return p.groups[G - 1].ret.toFixed(4); } },
+      { key: "all", label: "Alla", cell: function (p) { return '<span class="' + cls(p.all) + '">' + pctS(p.all) + "</span>"; }, csv: function (p) { return p.all.toFixed(4); } },
+      { key: "bot", label: "Mest sålda", cell: function (p) { return '<span class="' + cls(p.groups[0].ret) + '">' + pctS(p.groups[0].ret) + "</span>"; }, csv: function (p) { return p.groups[0].ret.toFixed(4); } },
+      { key: "spr", label: "Skillnad", hideSm: true, cell: function (p) { var d = p.groups[G - 1].ret - p.groups[0].ret; return '<span class="' + cls(d) + '">' + pctS(d) + "</span>"; } }
+    ];
+    var lastTop = last.groups[G - 1].top;
+    return head +
+      '<div class="bt-tools"><div class="seg" role="group" aria-label="Vilka fonders köp">' + seg(false, "Alla fonder") + seg(true, "Bara aktiva fonder") + "</div>" +
+      '<span class="muted">' + (btState.active ? "Indexfondernas köp räknas bort, de följer mest in- och utflöden." : "Alla fonders nettoköp, även indexfondernas.") + "</span></div>" +
+      '<section class="bt-answer"><div class="bt-answer-text"><p class="kicker">Slutsats</p><p class="bt-verdict">' + backtestVerdict(b) + "</p></div>" +
+      '<div class="bt-duel"><div><span>Mest köpta</span><b class="' + cls(b.cagrTop) + '">' + pctS(b.cagrTop) + '</b><small>per år</small></div>' +
+      '<div class="bt-vs">mot</div><div><span>Mest sålda</span><b class="' + cls(b.cagrBottom) + '">' + pctS(b.cagrBottom) + "</b><small>per år</small></div></div></section>" +
+      '<dl class="figures">' +
+      fig("Alla aktier, per år", '<span class="' + cls(b.cagrAll) + '">' + pctS(b.cagrAll) + "</span>", "lika vikt, jämförelse") +
+      fig("Mest köpta slog mest sålda", nf0.format(b.hit * 100) + " %", "av kvartalen") +
+      fig("t-värde", nf1.format(b.tSpread), Math.abs(b.tSpread) >= 2 ? "statistiskt säkerställt" : "inte säkerställt (under 2)") +
+      fig("Period", b.N + " kvartal", quarterLabel(first.held) + "–" + quarterLabel(last.held) + ", " + nf0.format(b.avgN) + " aktier per kvartal") + "</dl>" +
+      block("Utveckling för 100 kronor", "Grupperna köps i slutet av varje kvartal och byts kvartalet efter. Kursutveckling utan utdelningar, före avgifter och courtage.",
+        '<div class="chart-card">' + chart(function (node) {
+          FFCharts.lines(node, series, { height: 300, format: function (v) { return nf0.format(v); }, tip: function (rws) {
+            return "<b>" + dateText(rws[0].p.d) + "</b>" + rws.map(function (r) { return '<div class="tip-row"><span><i class="dot ' + r.s.cls + '"></i>' + r.s.label + "</span><b>" + nf0.format(r.p.v) + "</b></div>"; }).join("");
+          } });
+        }) + '<div class="legend">' + series.map(function (x) { return '<span class="legend-item"><i class="dot ' + x.cls + '"></i>' + x.label + "</span>"; }).join("") + "</div></div>") +
+      '<div class="grid-2 section-gap">' +
+      block("Snitt per kvartal och grupp", "Från aktierna fonderna sålde mest (1) till dem de köpte mest (5). Alla aktier: " + pctS(b.allMean) + " per kvartal.", bars) +
+      block("Mest köpta i senaste signalen", "Signal från " + quarterLabel(last.signal) + ", mätt " + quarterLabel(last.held) + ".",
+        '<ol class="rank-list">' + lastTop.map(function (c, i) {
+          var st = quarterData().se.byIsin[c.st.isin];
+          return '<li><span class="rk-n">' + (i + 1) + '</span><span class="rk-main">' + (st ? '<a href="' + stockHref(st) + '">' + esc(c.st.name) + "</a>" : '<span class="nm-plain">' + esc(c.st.name) + "</span>") +
+            '<span class="rk-sub">nettoköp ' + pctS(c.sig, 0) + " av innehavet</span></span><span></span>" + '<span class="rk-v ' + cls(c.ret) + '">' + pctS(c.ret) + "</span></li>";
+        }).join("") + "</ol>") + "</div>" +
+      block("Kvartal för kvartal", "", table("bt-periods", cols, rows, { csv: true, limit: 8, expand: true }), "section-gap") +
+      '<section class="block section-gap text-page"><div class="block-head"><h2>Så är testet gjort</h2></div>' +
+      "<p><b>Signal.</b> Fondernas nettoköp av aktien under kvartalet, i procent av hur mycket fonderna ägde kvartalet innan. Bara svenska aktier där fonderna ägde minst " + BT_MIN_VALUE + " mkr är med.</p>" +
+      "<p><b>Grupper.</b> Varje kvartal delas aktierna in i fem lika stora grupper efter signalen. Varje aktie väger lika mycket i sin grupp.</p>" +
+      "<p><b>Ingen framtidsinformation.</b> Fondernas innehav blir offentliga först en tid efter kvartalets slut. Testet räknar därför med att datan är känd ett kvartal senare och mäter avkastningen kvartalet efter det.</p>" +
+      "<p><b>Kurser.</b> Kvartalskurserna kommer ur fondernas egna rapporter till Finansinspektionen (medianen av fondernas kurser) och är justerade för splittar. Utdelningar ingår inte, och inte heller avgifter, courtage eller skatt. " +
+      "Kvartal där antalet fonder som äger aktien rasar med mer än 70 % räknas inte, eftersom det oftast är ett byte av aktieslag, en avnotering eller en fusion. Enstaka kvartalsavkastningar under −90 % eller över +300 % kapas.</p>" +
+      "<p><b>Begränsningar.</b> Aktier som försvinner från börsen under mätkvartalet (uppköp, konkurs) saknar kurs och faller bort. Perioden är kort, sju år, och historisk avkastning säger inget säkert om framtiden. Detta är ett test av en idé, inte en investeringsrekommendation.</p>" +
+      '<p><a href="#/metod">Läs hela metodrapporten</a></p></section>';
+  }
+  // ---------- Metodrapport ----------
+  // Beskriver hur datan samlas in och räknas. Siffrorna (antal fonder, kvartal, backtestets resultat) räknas när sidan visas.
+  // Skrivs också ut som PDF av scripts/build-pdf.sh (site/metod/fondinsyn-metodrapport.pdf).
+
+  function viewMethod() {
+    document.title = "Metodrapport – så räknar Fondinsyn – Fondinsyn";
+    var d = quarterData(), m = d.meta, idx = state.index.quarters;
+    var hasHist = needHistory("se");
+    var probe = hasHist && state.history.stocks[Object.keys(state.history.stocks)[0]][3][1];
+    var bt = hasHist && probe && probe.length >= 6 ? computeBacktest(false) : null;
+    var btA = bt ? computeBacktest(true) : null;
+    var nFunds = Object.keys(d.fi).length;
+    var sec = function (n, title, body) { return '<section class="md-sec"><h2><span class="md-n">' + n + "</span>" + title + "</h2>" + body + "</section>"; };
+    var pdf = hasPdfName("metodrapport");
+    var printHead = '<div class="print-only print-head"><b>Fondinsyn</b><span>Metodrapport</span><span>www.fondinsyn.se</span></div>';
+    var btText = bt ?
+      "<p>Resultat " + quarterLabel(bt.periods[0].held) + "–" + quarterLabel(bt.periods[bt.N - 1].held) + " (" + bt.N + " kvartal, i snitt " + nf0.format(bt.avgN) + " aktier per kvartal):</p>" +
+      '<table class="md-table"><thead><tr><th class="l">Grupp</th><th>Snitt per kvartal</th><th>Per år</th></tr></thead><tbody>' +
+      "<tr><td class=\"l\">Mest köpta (grupp 5)</td><td>" + pctS(bt.groupMean[BT_GROUPS - 1]) + "</td><td>" + pctS(bt.cagrTop) + "</td></tr>" +
+      "<tr><td class=\"l\">Alla aktier</td><td>" + pctS(bt.allMean) + "</td><td>" + pctS(bt.cagrAll) + "</td></tr>" +
+      "<tr><td class=\"l\">Mest sålda (grupp 1)</td><td>" + pctS(bt.groupMean[0]) + "</td><td>" + pctS(bt.cagrBottom) + "</td></tr></tbody></table>" +
+      "<p>" + backtestVerdict(bt) + " De mest köpta slog de mest sålda " + nf0.format(bt.hit * 100) + " % av kvartalen. " +
+      "Med bara de aktivt förvaltade fondernas köp som signal blev skillnaden " + pctS(btA.spread) + " per kvartal (t-värde " + nf1.format(btA.tSpread) + ").</p>" :
+      "<p>Resultaten visas när kurshistoriken har laddats.</p>";
+    return '<article class="text-page method">' + printHead +
+      '<div class="page-head"><h1>Metodrapport</h1><p class="meta lead">Hur Fondinsyn samlar in och räknar sin data: källor, definitioner, uppskattningar och begränsningar. ' +
+      "Uppdaterad " + dateText(new Date().toISOString().slice(0, 10)) + ".</p>" +
+      (pdf ? '<div class="actions-row"><a class="btn" href="/metod/fondinsyn-metodrapport.pdf" target="_blank" rel="noopener">Ladda ner som PDF</a></div>' : "") + "</div>" +
+
+      sec(1, "Sammanfattning",
+        "<p>Fondinsyn visar vad svenska fonder äger, köper och säljer. Grunden är de innehavsrapporter som fondbolagen varje kvartal lämnar till Finansinspektionen (FI). " +
+        "Genom att jämföra två kvartal fond för fond räknas nettoköp och nettosälj ut per aktie, fond och fondbolag. Ovanpå det läggs insynshandel, blankning, uppköp, " +
+        "räntor, fondsparande och avkastning från andra öppna källor.</p>" +
+        "<p>Just nu omfattar datan " + idx.length + " jämförda kvartal i detalj och historik sedan " + (hasHist ? quarterLabel(state.history.quarters[0]) : "2018") + ". Senaste kvartalet, " +
+        quarterLabel(m.id) + ", innehåller " + int(nFunds) + " fonder och " + int(d.se.stocks.length) + " svenska aktier. Allt hämtas och räknas automatiskt varje morgon.</p>") +
+
+      sec(2, "Källor",
+        '<table class="md-table"><thead><tr><th class="l">Källa</th><th class="l">Innehåll</th><th class="l">Uppdateras</th></tr></thead><tbody>' +
+        [["Finansinspektionen, fondinnehav", "Varje fonds alla innehav, fondförmögenhet, avgifter, aktiv risk", "Kvartalsvis"],
+         ["Finansinspektionen, insynsregistret", "Insiders köp och sälj i sina bolag", "Dagligen"],
+         ["Finansinspektionen, blankningsregistret", "Korta positioner över 0,5 % och summa per bolag", "Dagligen"],
+         ["Finansinspektionen, prospektregistret", "Erbjudandehandlingar vid uppköp", "Dagligen"],
+         ["Riksbanken", "Styrränta, stats- och bostadsobligationsräntor", "Dagligen"],
+         ["Pensionsmyndigheten", "Avkastning för fonderna på premiepensionens fondtorg", "Veckovis"],
+         ["Fondbolagens förening", "Insättningar och uttag per fondtyp och inriktning", "Månadsvis"],
+         ["Nasdaq", "Antal aktier per aktieslag (för ägarandel)", "Månadsvis per bolag"]].map(function (r) {
+          return '<tr><td class="l">' + r[0] + '</td><td class="l">' + r[1] + '</td><td class="l">' + r[2] + "</td></tr>";
+        }).join("") + "</tbody></table>") +
+
+      sec(3, "Från innehavsrapport till aktiedata",
+        "<p>FI publicerar en fil per kvartal med en XML-rapport per fond. Som aktier räknas innehav med tillgångsslaget överlåtbart värdepapper, ett ISIN och ett antal. " +
+        "Innehav som rapporteras med nominellt belopp, eller vars namn visar att det är en obligation, räknas som räntepapper och hanteras för sig.</p>" +
+        "<p><b>Kurs.</b> Kursen för en aktie är medianen av fondernas rapporterade kurser (marknadsvärde delat med antal). Medianen gör att ett felrapporterat innehav hos en enskild fond inte påverkar.</p>" +
+        "<p><b>Sektor och land</b> tas från fondernas rapporter (branschkod enligt GICS och emittentens land). Vid olika uppgifter gäller den vanligaste.</p>" +
+        "<p><b>Splittar.</b> Vid en split ändras alla fonders antal aktier med samma kvot. Kvoten nytt antal delat med gammalt räknas för varje fond som ägt aktien båda kvartalen. " +
+        "Om minst tre fonder, och minst 15 % av dem, har exakt samma kvot långt från 1 tolkas det som en split, och förra kvartalets antal räknas om. " +
+        "Har fonderna också handlat samma kvartal används medianen av kvoterna: har de flesta fått ungefär k gånger fler aktier samtidigt som kursen fallit till ungefär 1/k, räknas det som en split med närmaste vanliga kvot.</p>" +
+        "<p><b>Byte av aktieslag.</b> Vid en del splittar får aktien ett nytt ISIN. Då ser det gamla aktieslaget ut att säljas och det nya att köpas. Nya aktieslag räknas inte som köp, " +
+        "och kvartal där antalet fonder som äger en aktie rasar med mer än 70 % används inte i kursberäkningar.</p>") +
+
+      sec(4, "Nettoköp",
+        "<p>Nettoköpet i en aktie är förändringen i antal aktier gånger kursen vid kvartalets slut, summerat över alla fonder som rapporterade både förra och detta kvartal:</p>" +
+        '<p class="md-formula">Nettoköp = Σ (antal<sub>nu</sub> − antal<sub>förra</sub> × splitkvot) × kurs<sub>nu</sub></p>' +
+        "<p>Fonder som är nya eller har försvunnit (start, nedläggning, fusion) räknas inte, eftersom deras förändring inte är köp eller sälj. " +
+        "Aktier som ingen fond ägde förra kvartalet (nynoteringar, avknoppningar) eller som ingen äger längre (uppköp, avnoteringar) räknas inte heller som köp eller sälj.</p>" +
+        "<p><b>Indexfonder</b> känns igen på namnet (index, OMX, passiv, tracker, ETF, Zero, Access och liknande). Med valet utan indexfonder räknas deras affärer bort, " +
+        "eftersom de mest följer in- och utflöden och inte är egna val.</p>") +
+
+      sec(5, "Fondernas ägarandel",
+        "<p>Ägarandelen är fondernas sammanlagda antal aktier delat med antalet aktier i aktieslaget enligt Nasdaq. Den gäller svenska bolag på Nasdaq Stockholm och First North. " +
+        "Fonder som inte rapporterar till FI, till exempel utländska fonder, räknas inte med, så den verkliga fondägda andelen är högre.</p>") +
+
+      sec(6, "Fondflöden",
+        "<p><b>Per fondtyp</b> används Fondbolagens förenings månadsstatistik över insättningar och uttag direkt.</p>" +
+        "<p><b>Per fond</b> finns inga öppna flöden, så de uppskattas ur FI-datan:</p>" +
+        '<p class="md-formula">Flöde ≈ förmögenhet<sub>nu</sub> − förmögenhet<sub>förra</sub> − Σ antal<sub>förra</sub> × (kurs<sub>nu</sub> − kurs<sub>förra</sub>)</p>' +
+        "<p>Det som blir kvar när kursrörelserna på fondens aktier räknats bort är i huvudsak spararnas insättningar minus uttag. Utdelningar som fonden fått och fusioner med andra fonder " +
+        "räknas också dit, så det andra kvartalet, när de flesta bolag delar ut, ser för positivt ut. Som kontroll gav metoden −18 mdkr för aktiefonderna första kvartalet 2026, " +
+        "mot −16 mdkr enligt Fondbolagens förening.</p>") +
+
+      sec(7, "Signaler",
+        "<p><b>Insynshandel</b> är köp och sälj som insiders anmält till FI, med belopp omräknade till kronor. Köp minus sälj summeras per bolag över 90 dagar.</p>" +
+        "<p><b>Dubbelsignal</b> är aktier där fonderna nettoköpt för minst 1 mkr under kvartalet och insiders köpt för minst 500 000 kr mer än de sålt, eller motsvarande för sälj.</p>" +
+        "<p><b>Samlad signal</b> väger ihop tre delar till ett tal mellan −100 och +100: fondernas affärer (40 %, hälften andelen fonder som ökade mot minskade, hälften förändringen i antal aktier), " +
+        "insidernas köp minus sälj (40 %, fullt utslag vid 5 mkr) och blankningens förändring på 30 dagar (20 %, fullt utslag vid en procentenhet).</p>") +
+
+      sec(8, "Backtest: lönar det sig att följa fonderna?",
+        "<p>Testet undersöker om fondernas köp säger något om aktiernas kommande utveckling. Varje kvartal delas svenska aktier där fonderna ägde minst " + BT_MIN_VALUE +
+        " mkr in i fem lika stora grupper efter nettoköpet i procent av innehavet. Eftersom innehaven blir kända först en tid efter kvartalets slut mäts gruppernas kursutveckling " +
+        "kvartalet efter det, så att ingen information används innan den fanns. Varje aktie väger lika mycket, utdelningar och kostnader ingår inte, kvartal med byte av aktieslag " +
+        "eller avnotering räknas inte och enstaka kvartalsavkastningar under −90 % eller över +300 % kapas.</p>" + btText +
+        '<p><a href="#/backtest">Se backtestet med diagram och alla kvartal</a></p>') +
+
+      sec(9, "Begränsningar",
+        "<ul><li>Innehaven gäller kvartalets sista dag. Affärer under kvartalet syns bara som nettot mellan två kvartal.</li>" +
+        "<li>Bara fonder som rapporterar till Finansinspektionen ingår, inte utländska fonder, pensionsbolag eller andra institutioner.</li>" +
+        "<li>Fondbolagen rapporterar själva. Felaktiga uppgifter rättas inte, men medianer och kontroller begränsar effekten.</li>" +
+        "<li>Uppskattningarna av fondflöden och ägarandel är just uppskattningar och redovisas som det.</li>" +
+        "<li>Inget på Fondinsyn är investeringsrådgivning.</li></ul>") +
+
+      sec(10, "Kvalitet och teknik",
+        "<p>Allt hämtas och räknas automatiskt varje morgon. Innan något publiceras kontrolleras datan (antal fonder, aktier och kvartal ska vara rimliga), och stoppas publiceringen om något ser fel ut. " +
+        "Sajten är statisk och kräver inget konto. Datan finns att ladda ner som CSV och JSON, se <a href=\"/oppen-data/\">Data och API</a>.</p>") +
+      '<div class="print-only print-foot">Fondinsyn (www.fondinsyn.se). Metodrapport skapad ' + dateText(new Date().toISOString().slice(0, 10)) + ". Inte investeringsrådgivning.</div>" +
+      "</article>";
+  }
+  function prevQuarterId(q) { var y = +q.slice(0, 4), n = +q.slice(5); return n === 1 ? (y - 1) + "Q4" : y + "Q" + (n - 1); }
+
   // ---------- Fondsparandet ----------
   // data/flows.json byggs av scripts/build-flows.ps1: månadsstatistik från Fondbolagens förening (MSEK)
   // och uppskattade nettoflöden per fond och kvartal ur FI:s fondinnehav.
@@ -3716,12 +3987,12 @@
     fonder: { label: "Fonder", items: [["fonder", "Alla fonder", "#/fonder"], ["toppfonder", "Toppfonderna", "#/toppfonder"], ["fondbolag", "Fondbolag", "#/fondbolag"],
       ["forvaltare", "Kända förvaltare", "#/forvaltare"], ["avgifter", "Avgiftskollen", "#/avgifter"], ["jamfor", "Jämför fonder", "#/jamfor"], ["portfolj", "Min portfölj", "#/portfolj"]] },
     signaler: { label: "Signaler", items: [["signaler", "Samlad signal", "#/signaler"], ["insyn", "Insynshandel", "#/insyn"], ["dubbelsignal", "Dubbelsignal", "#/dubbelsignal"],
-      ["blankning", "Blankning", "#/blankning"], ["uppkop", "Uppköp", "#/uppkop"]] },
-    om: { label: "Om Fondinsyn", items: [["om", "Om datan", "#/om"], ["ordlista", "Ordlista", "#/ordlista"], ["kontakt", "Kontakt", "#/kontakt"]] }
+      ["blankning", "Blankning", "#/blankning"], ["uppkop", "Uppköp", "#/uppkop"], ["backtest", "Följ fonderna?", "#/backtest"]] },
+    om: { label: "Om Fondinsyn", items: [["om", "Om datan", "#/om"], ["metod", "Metodrapport", "#/metod"], ["ordlista", "Ordlista", "#/ordlista"], ["kontakt", "Kontakt", "#/kontakt"]] }
   };
   var PAGE_SECTION = { aktie: "aktier", agarandel: "aktier", fond: "fonder", toppfonder: "fonder", fondbolag: "fonder", forvaltare: "fonder", avgifter: "fonder",
     jamfor: "fonder", portfolj: "fonder", insyn: "signaler", dubbelsignal: "signaler", blankning: "signaler", blankare: "signaler", uppkop: "signaler",
-    emittent: "rantor", ordlista: "om", kontakt: "om" };
+    emittent: "rantor", ordlista: "om", kontakt: "om", backtest: "signaler", metod: "om" };
 
   // Kvartalsrapporten har egna flikar för marknaden
   var MARKET_PAGES = { oversikt: 1, aktier: 1, fonder: 1, fondbolag: 1, toppfonder: 1 };
@@ -3775,6 +4046,8 @@
       case "sparande": html = viewSavings(); break;
       case "agarandel": html = viewOwnership(); break;
       case "toppfonder": html = viewTopFunds(); break;
+      case "backtest": html = viewBacktest(); break;
+      case "metod": html = viewMethod(); break;
       case "signaler": html = viewSignals(); break;
       case "emittent": html = viewIssuer(r.arg); break;
       default: html = viewOverview();
@@ -4090,6 +4363,8 @@
       if (ab) ab.remove();
       return;
     }
+    var bt = e.target.closest("[data-bt-active]");
+    if (bt) { btState.active = bt.getAttribute("data-bt-active") === "true"; var by = window.scrollY; render(); window.scrollTo(0, by); return; }
     var sv = e.target.closest("[data-sav-type]");
     if (sv) { savingsState.type = sv.getAttribute("data-sav-type"); var sy = window.scrollY; render(); window.scrollTo(0, sy); return; }
     var rp = e.target.closest("[data-rep-pick]");

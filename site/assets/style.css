@@ -606,6 +606,32 @@ a.btn { color: var(--fg-soft); }
 .rc-web { font-size: 13px; font-weight: 600; white-space: nowrap; }
 .btn-tag { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 5px; background: rgba(255, 255, 255, 0.18); }
 
+/* Backtest */
+.bt-tools { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; margin-bottom: 14px; font-size: 13.5px; }
+.bt-answer { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 20px 32px; align-items: center; padding: 22px 24px; margin-bottom: 24px; border-radius: 18px; background: var(--bg); border: 1px solid var(--border); }
+.bt-answer .kicker { margin-bottom: 6px; }
+.bt-verdict { font-size: 16.5px; line-height: 1.6; font-weight: 500; color: var(--fg); max-width: 70ch; }
+.bt-duel { display: flex; align-items: center; justify-content: center; gap: 16px; padding-left: 24px; border-left: 1px solid var(--border); }
+.bt-duel div:not(.bt-vs) { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.bt-duel span { font-size: 12.5px; color: var(--fg-muted); font-weight: 600; }
+.bt-duel b { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.bt-duel small { font-size: 12px; color: var(--fg-muted); }
+.bt-vs { font-size: 13px; color: var(--fg-muted); }
+
+/* Metodrapport */
+.method { max-width: 860px; }
+.md-sec { margin-top: 30px; }
+.md-sec h2 { display: flex; align-items: baseline; gap: 12px; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; padding-top: 16px; border-top: 1px solid var(--border); margin-bottom: 10px; }
+.md-n { font-size: 13px; font-weight: 700; color: var(--brand-ink); font-variant-numeric: tabular-nums; }
+.method p, .method li { font-size: 15px; line-height: 1.7; color: var(--fg-soft); }
+.method p + p { margin-top: 10px; }
+.method ul { padding-left: 20px; margin: 6px 0; display: flex; flex-direction: column; gap: 4px; }
+.md-formula { font-family: var(--mono); font-size: 13.5px !important; background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; color: var(--fg) !important; overflow-wrap: anywhere; }
+.md-table { width: 100%; border-collapse: collapse; margin: 8px 0 4px; font-size: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.md-table th, .md-table td { white-space: normal; padding: 9px 12px; text-align: right; }
+.md-table th { background: var(--bg-subtle); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--fg-muted); text-align: right; }
+.md-table .l { text-align: left; }
+
 /* Genvägar till avdelningarna på startsidan */
 .quick { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
 .ql { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 14px 16px 15px; border-radius: 14px; background: var(--bg); border: 1px solid var(--border); color: var(--fg); transition: border-color 0.2s, background 0.2s; }
@@ -977,6 +1003,8 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .modules { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .quick { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .about-card { grid-template-columns: minmax(0, 1fr); }
+  .bt-answer { grid-template-columns: minmax(0, 1fr); }
+  .bt-duel { padding-left: 0; border-left: 0; padding-top: 16px; border-top: 1px solid var(--border); }
   .story-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .highlights.hl-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .highlights.hl-4 .hl:nth-child(3)::before { display: none; }
@@ -1038,6 +1066,9 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .sig-cell .sig-meter { display: none; }
   .rep-card { padding: 18px; border-radius: 18px; }
   .about-card { padding: 16px 16px 14px; gap: 14px; }
+  .bt-answer { padding: 18px; }
+  .bt-verdict { font-size: 15px; }
+  .bt-duel b { font-size: 26px; }
   .ac-text { padding-right: 24px; }
   .ac-freq { padding-right: 0; gap: 10px 14px; }
   .ac-freq dd { font-size: 14px; }
@@ -1203,7 +1234,7 @@ html.pdf *, html.pdf *::before, html.pdf *::after { animation: none !important; 
   html, body { background: #fff !important; }
   body { padding: 0 !important; font-size: 13px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body::before, .ticker, .topbar, .subbar, .site-footer, .tabbar, .skip-link, .mega, .sheet-backdrop, .search-modal, .toast,
-  .rep-tools, .rep-share, .newsletter, .hero-links, .crumbs, .more, .csv-btn, .more-rows, .chart-tip { display: none !important; }
+  .rep-tools, .rep-share, .newsletter, .hero-links, .crumbs, .more, .csv-btn, .more-rows, .chart-tip, .subnav { display: none !important; }
   main, .container { padding: 0 !important; max-width: none; min-height: 0; }
   .print-only { display: block; }
   .print-head { display: flex !important; justify-content: space-between; align-items: baseline; gap: 12px; padding-bottom: 8px; margin-bottom: 18px; border-bottom: 1.5px solid #0c1424; font-size: 11px; color: #627084; }
@@ -1249,4 +1280,12 @@ html.pdf *, html.pdf *::before, html.pdf *::after { animation: none !important; 
   .story p { font-size: 11.5px; line-height: 1.5; }
   .chart-card, .module, .panel { box-shadow: none; break-inside: avoid; }
   .chart svg { max-width: 100%; height: auto; }
+  .method { max-width: none; }
+  .md-sec { break-inside: auto; margin-top: 18px; }
+  .md-sec h2 { break-after: avoid; font-size: 15px; padding-top: 10px; }
+  .method p, .method li { font-size: 11.5px; line-height: 1.55; }
+  .md-table { font-size: 10.5px; break-inside: avoid; }
+  .md-formula { font-size: 10.5px !important; }
+  .method .actions-row, .method .page-head .actions-row { display: none; }
+  .bt-answer { border: 1px solid #e2e6eb; }
 }

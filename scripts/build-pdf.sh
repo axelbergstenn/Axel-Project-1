@@ -54,5 +54,15 @@ for dir in "$SITE"/rapport/*/; do
   done
 done
 
+# Metodrapporten
+if [ -f "$SITE/metod/index.html" ]; then
+  out="$SITE/metod/fondinsyn-metodrapport.pdf"
+  timeout 120 "$CHROME" --headless=new --no-sandbox --disable-gpu --hide-scrollbars \
+    --window-size=760,1100 --virtual-time-budget=30000 --run-all-compositor-stages-before-draw \
+    --no-pdf-header-footer --print-to-pdf-no-header --print-to-pdf="$out" "http://localhost:$PORT/metod/?pdf=1" >/dev/null 2>&1
+  size=$(stat -c %s "$out" 2>/dev/null || echo 0)
+  if [ "$size" -gt 20000 ]; then done_list+=("\"metodrapport\""); echo "  metodrapport: $((size / 1024)) kB"; else echo "  metodrapport: misslyckades"; rm -f "$out"; fi
+fi
+
 (IFS=,; echo "[${done_list[*]:-}]") > "$SITE/data/reports-pdf.json"
 echo "PDF:er: ${#done_list[@]}"
