@@ -1054,7 +1054,7 @@
       '<input class="input" type="search" id="fundSearch" aria-label="Filtrera fonderna" placeholder="Sök fond eller fondbolag" value="' + esc(fundFilter.q) + '" autocomplete="off">' +
       '<select class="select-sm" id="fundType" aria-label="Typ av fond">' + typeOpts + "</select>" +
       '<select class="select-sm" id="fundCo" aria-label="Fondbolag"><option value="">Alla fondbolag</option>' + coOpts + "</select>" +
-      '<span class="count" id="fundCount"></span></div><div id="fundTable"></div>' + fundRiskBlock();
+      '<span class="count" id="fundCount"></span></div><div id="fundTable"></div>';
   }
 
   // Blandfonder mäts mot blandade index och hör inte hemma i jämförelsen av aktiefonder
@@ -2017,7 +2017,7 @@
           items.push({ kind: "Blankare", label: h.name, sub: h.positions.length + " aktier blankade", href: holderHref(h.name) });
         });
       }
-      var pages = [["Räntor", "#/rantor"], ["Dubbelsignal", "#/dubbelsignal"], ["Räntefonder", "#/fonder/rantefonder"], ["Fondbolag", "#/fondbolag"],["Ordlista och vanliga frågor", "#/ordlista"], ["Blankning", "#/blankning"], ["Blankare", "#/blankare"], ["Kvartalsrapport", "#/rapport"], ["Uppköp", "#/uppkop"], ["Avgiftskollen", "#/avgifter"], ["Kända förvaltare", "#/forvaltare"], ["Min fondportfölj", "#/portfolj"], ["Jämför fonder", "#/jamfor"], ["Om datan", "#/om"], ["Kontakt", "#/kontakt"]];
+      var pages = [["Räntor", "#/rantor"], ["Dubbelsignal", "#/dubbelsignal"], ["Räntefonder", "#/fonder/rantefonder"], ["Fondbolag", "#/fondbolag"],["Ordlista och vanliga frågor", "#/ordlista"], ["Blankning", "#/blankning"], ["Blankare", "#/blankare"], ["Kvartalsrapport", "#/rapport"], ["Uppköp", "#/uppkop"], ["Avgiftskollen", "#/avgifter"], ["Risk och avkastning", "#/risk"], ["Kända förvaltare", "#/forvaltare"], ["Min fondportfölj", "#/portfolj"], ["Jämför fonder", "#/jamfor"], ["Om datan", "#/om"], ["Kontakt", "#/kontakt"]];
       pages.forEach(function (pg) { if (scoreMatch(pg[0], q) >= 0) items.push({ kind: "Sidor", label: pg[0], sub: "", href: pg[1] }); });
       // Inga exakta träffar: sök igen med stavfel tillåtna
       if (!items.length && !search.fuzzy) { search.fuzzy = true; try { runSearch(); } finally { search.fuzzy = false; } return; }
@@ -2434,17 +2434,28 @@
       .sort(function (a, b) { return b.p[3] - a.p[3]; }).slice(0, TOP_N);
   }
 
-  // Risk mot avkastning för alla aktiefonder med femårshistorik hos Pensionsmyndigheten (fondlistan)
-  function fundRiskBlock() {
-    if (!needPerf()) return "";
+  // Risk och avkastning: alla aktiefonder med femårshistorik hos Pensionsmyndigheten på en karta, och i en tabell
+  function viewRisk() {
+    document.title = "Risk och avkastning – Fondinsyn";
+    var head = '<div class="page-head"><h1>Risk och avkastning</h1><p class="meta lead">Alla aktiefonder med fem års historik på en karta: hur mycket fondens värde svänger, ' +
+      "och vad den har gett per år. Bäst är mycket avkastning med låg risk, uppe till vänster.</p></div>";
+    if (!needPerf()) return head + (failed("perf") ? errorBlock() : loadingBlock());
     var pts = fundList().map(function (fi) {
       var p = perfOf(fi.id), cat = fundCategory(fi);
       if (!p || fi.sd == null || p[3] == null || (cat !== "index" && cat !== "active" && cat !== "closet")) return null;
       return { x: fi.sd, y: p[3], size: fi.aum, cls: "c-" + cat, fi: fi, p: p };
     }).filter(Boolean);
-    if (pts.length < 15) return "";
+    if (pts.length < 15) return head + '<div class="notice">Det finns för få fonder med avkastning just nu.</div>';
     var reg = FFCharts.regression(pts);
-    return '<section class="block section-gap"><div class="block-head"><h2>Risk mot avkastning</h2><span class="note">' + int(pts.length) + " aktiefonder med femårshistorik</span></div>" +
+    // Avkastning per procentenhet risk: ett enkelt mått på hur mycket fonden gett för svängningarna
+    var cols = [
+      { key: "name", label: "Fond", align: "l", cls: "name", value: function (p) { return p.fi.name; }, cell: function (p) { return nameCell(fundHref(p.fi), p.fi.name, esc(p.fi.co) + " · " + esc(p.p[7] || "")); } },
+      { key: "y", label: "Per år, 5 år", cell: function (p) { return retText(p.y); }, value: function (p) { return p.y; } },
+      { key: "x", label: "Risk", cell: function (p) { return nf1.format(p.x) + " %"; }, value: function (p) { return p.x; } },
+      { key: "ratio", label: "Avkastning per risk", hideSm: true, cell: function (p) { return fixMinus(nf2.format(p.y / p.x)); }, value: function (p) { return p.y / p.x; } },
+      { key: "fee", label: "Avgift", hideSm: true, cell: function (p) { return feeText(p.fi); }, value: function (p) { return p.fi.feeMax; } }
+    ];
+    return head + '<section class="block"><div class="block-head"><h2>Fondkartan</h2><span class="note">' + int(pts.length) + " aktiefonder med femårshistorik</span></div>" +
       '<div class="legend">' + catLabel("active") + catLabel("closet") + catLabel("index") + "</div>" +
       '<div class="chart-card"><p class="chart-howto">Varje prick är en aktiefond. <b>Till höger</b> svänger fondens värde mer, alltså högre risk. ' +
       "<b>Högre upp</b> har fonden gett bättre avkastning. Bäst är uppe till vänster. Peka på en prick för att se vilken fond det är.</p>" + chart(function (node) {
@@ -2460,7 +2471,10 @@
         });
       }) + '<p class="chart-note">Varje punkt är en aktiefond, storleken är fondförmögenheten. Högre risk har i snitt gett ' + (reg && reg.b > 0 ? "högre" : "lägre") +
       " avkastning (korrelation " + fixMinus(nf2.format(reg ? reg.r : 0)) + "), men spridningen är stor: fonder med samma risk skiljer sig flera procentenheter per år. " +
-      "Avkastningen kommer från Pensionsmyndigheten, risken från Finansinspektionen. Fonder utanför premiepensionen saknas.</p></div></section>";
+      "Avkastningen kommer från Pensionsmyndigheten, risken från Finansinspektionen. Fonder utanför premiepensionen saknas.</p></div></section>" +
+      block("Alla fonder på kartan", "Sorterat på avkastning per risk: avkastningen per år delat med risken. Högre är bättre. Tryck på en rubrik för att sortera om.",
+        table("risk-funds", cols, pts, { sort: { col: "ratio", dir: -1 }, limit: 15, expand: true, csv: true }), "section-gap") +
+      '<p class="desc section-gap">Historisk avkastning är ingen garanti för framtida avkastning. Risken är standardavvikelsen för fondens avkastning de senaste 24 månaderna.</p>';
   }
 
   function viewTopFunds() {
@@ -4222,15 +4236,15 @@
   // Avdelningarna i menyraden och sidorna i varje avdelning (flikarna överst på sidan)
   var SECTIONS = {
     aktier: { label: "Aktier", items: [["aktier", "Alla aktier", "#/aktier"], ["agarandel", "Fondernas ägarandel", "#/agarandel"]] },
-    fonder: { label: "Fonder", items: [["fonder", "Alla fonder", "#/fonder"], ["toppfonder", "Toppfonderna", "#/toppfonder"], ["fondbolag", "Fondbolag", "#/fondbolag"],
+    fonder: { label: "Fonder", items: [["fonder", "Alla fonder", "#/fonder"], ["toppfonder", "Toppfonderna", "#/toppfonder"], ["risk", "Risk och avkastning", "#/risk"], ["backtest", "Följ fonderna?", "#/backtest"], ["fondbolag", "Fondbolag", "#/fondbolag"],
       ["forvaltare", "Kända förvaltare", "#/forvaltare"], ["avgifter", "Avgiftskollen", "#/avgifter"], ["jamfor", "Jämför fonder", "#/jamfor"], ["portfolj", "Min portfölj", "#/portfolj"]] },
     signaler: { label: "Signaler", items: [["signaler", "Samlad signal", "#/signaler"], ["insyn", "Insynshandel", "#/insyn"], ["dubbelsignal", "Dubbelsignal", "#/dubbelsignal"],
-      ["blankning", "Blankning", "#/blankning"], ["uppkop", "Uppköp", "#/uppkop"], ["backtest", "Följ fonderna?", "#/backtest"]] },
+      ["blankning", "Blankning", "#/blankning"], ["uppkop", "Uppköp", "#/uppkop"]] },
     om: { label: "Om Fondinsyn", items: [["om", "Om datan", "#/om"], ["metod", "Metodrapport", "#/metod"], ["ordlista", "Ordlista", "#/ordlista"], ["kontakt", "Kontakt", "#/kontakt"]] }
   };
-  var PAGE_SECTION = { aktie: "aktier", agarandel: "aktier", fond: "fonder", toppfonder: "fonder", fondbolag: "fonder", forvaltare: "fonder", avgifter: "fonder",
+  var PAGE_SECTION = { aktie: "aktier", agarandel: "aktier", fond: "fonder", toppfonder: "fonder", risk: "fonder", fondbolag: "fonder", forvaltare: "fonder", avgifter: "fonder",
     jamfor: "fonder", portfolj: "fonder", insyn: "signaler", dubbelsignal: "signaler", blankning: "signaler", blankare: "signaler", uppkop: "signaler",
-    emittent: "rantor", ordlista: "om", kontakt: "om", backtest: "signaler", metod: "om" };
+    emittent: "rantor", ordlista: "om", kontakt: "om", backtest: "fonder", metod: "om" };
 
   // Kvartalsrapporten har egna flikar för marknaden
   var MARKET_PAGES = { oversikt: 1, aktier: 1, fonder: 1, fondbolag: 1, toppfonder: 1 };
@@ -4285,6 +4299,7 @@
       case "sparande": html = viewSavings(); break;
       case "agarandel": html = viewOwnership(); break;
       case "toppfonder": html = viewTopFunds(); break;
+      case "risk": html = viewRisk(); break;
       case "backtest": html = viewBacktest(); break;
       case "metod": html = viewMethod(); break;
       case "signaler": html = viewSignals(); break;
