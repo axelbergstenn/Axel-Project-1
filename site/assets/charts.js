@@ -374,9 +374,11 @@
     return { a: (sy - b * sx) / n, b: b, r: vy > 0 ? (n * sxy - sx * sy) / Math.sqrt(vx * vy) : 0, n: n };
   }
 
-  // Punktdiagram med valfri storlek per punkt, trendlinje och etiketter i kvadranterna.
-  // points: [{ x, y, size, cls, label }]. opts: xFmt, yFmt (axeltext), xLabel, yLabel, trend, quad { tl, tr, bl, br, x, y },
-  // labels (antal största punkter som får namn), tip(p), onClick(p)
+  // Punktdiagram med valfri storlek per punkt, trendlinje och etiketter i kvadranterna. Namnen står inte i diagrammet
+  // utan visas när man pekar på en punkt (på mobilen: första trycket visar, andra öppnar).
+  // points: [{ x, y, size, cls }]. opts: xFmt, yFmt (axeltext), xLabel, yLabel, trend, quad { tl, tr, bl, br },
+  // bands { above, below } (tonad bakgrund över och under noll med text), xHint [vänster, höger] (riktningen i klartext),
+  // tip(p), onClick(p)
   function xy(container, points, opts) {
     opts = opts || {};
     var ctx = setup(container, opts.height || 380);
@@ -406,8 +408,22 @@
       el("line", { x1: xx, x2: xx, y1: m.t, y2: ctx.h - m.b, "class": t === 0 ? "c-zero" : "c-grid" }, g);
       text(g, xx, ctx.h - m.b + 16, xFmt(t), "c-axis", "middle");
     });
-    if (opts.xLabel) text(ctx.svg, m.l + iw / 2, ctx.h - 6, opts.xLabel, "c-axis-title", "middle");
+    // Axlarnas namn, och vad riktningarna betyder i klartext ("← Kursen föll", "Kursen steg →")
+    if (opts.xHint) {
+      text(ctx.svg, m.l, ctx.h - 6, opts.xHint[0], "c-hint");
+      text(ctx.svg, ctx.w - m.r, ctx.h - 6, opts.xHint[1], "c-hint", "end");
+    }
+    if (opts.xLabel && !(opts.xHint && iw < 520)) text(ctx.svg, m.l + iw / 2, ctx.h - 6, opts.xLabel, "c-axis-title", "middle");
     if (opts.yLabel) text(ctx.svg, 4, 14, opts.yLabel, "c-axis-title");
+
+    // Tonad bakgrund över och under nollan, med vad den betyder ("Fonderna köpte"), under rutnätet
+    if (opts.bands && ys.min < 0 && ys.max > 0) {
+      var y0 = y(0);
+      g.insertBefore(el("rect", { x: m.l, y: y0, width: iw, height: ctx.h - m.b - y0, "class": "c-band-neg" }, null), g.firstChild);
+      g.insertBefore(el("rect", { x: m.l, y: m.t, width: iw, height: y0 - m.t, "class": "c-band-pos" }, null), g.firstChild);
+      if (opts.bands.above) text(ctx.svg, m.l + 10, m.t + 18, opts.bands.above, "c-band-label pos");
+      if (opts.bands.below) text(ctx.svg, m.l + 10, ctx.h - m.b - 10, opts.bands.below, "c-band-label neg");
+    }
 
     // Kvadranternas namn i hörnen
     if (opts.quad) {
@@ -437,36 +453,20 @@
       if (ctx.fresh) a.style = "animation-delay:" + Math.round((p._x - m.l) / iw * 500) + "ms";
       p._el = el("circle", a, dots);
     });
-    // Namn på de viktigaste punkterna (opts.labelBy, annars de största). En etikett som skulle krocka med en
-    // annan eller hamna utanför diagrammet hoppas över.
-    if (opts.labels) {
-      var placed = [], score = opts.labelBy || function (p) { return p.size || 0; };
-      points.filter(function (p) { return p.label; }).sort(function (a, b) { return score(b) - score(a); }).some(function (p) {
-        var w = p.label.length * 6.4 + 4, h = 14;
-        var tries = [{ x: p._x + p._r + 4, anchor: "start" }, { x: p._x - p._r - 4 - w, anchor: "end" }];
-        for (var i = 0; i < tries.length; i++) {
-          var bx = tries[i].x, by = p._y - h / 2;
-          if (bx < m.l || bx + w > ctx.w - m.r || by < m.t || by + h > ctx.h - m.b) continue;
-          var clash = placed.some(function (b) { return bx < b.x + b.w && bx + w > b.x && by < b.y + b.h && by + h > b.y; });
-          if (clash) continue;
-          placed.push({ x: bx, y: by, w: w, h: h });
-          text(ctx.svg, tries[i].anchor === "start" ? bx : bx + w, p._y + 4, p.label, "c-ptlabel", tries[i].anchor);
-          break;
-        }
-        return placed.length >= opts.labels;
-      });
-    }
     var ring = el("circle", { r: 9, "class": "c-ring", visibility: "hidden" }, ctx.svg);
 
-    var current = null;
+    var current = null, tapped = null, lastType = "mouse";
     var hit = el("rect", { x: 0, y: 0, width: ctx.w, height: ctx.h, fill: "transparent" }, ctx.svg);
-    hit.addEventListener("pointermove", function (e) {
+    function pick(e) {
       var r = ctx.svg.getBoundingClientRect();
       var px = e.clientX - r.left, py = e.clientY - r.top, best = null, bd = 22 * 22;
       points.forEach(function (p) {
         var dd = (p._x - px) * (p._x - px) + (p._y - py) * (p._y - py) - p._r * p._r;
         if (dd < bd) { bd = dd; best = p; }
       });
+      return best;
+    }
+    function focusOn(best) {
       if (best !== current) {
         if (current) current._el.classList.remove("on");
         if (best) best._el.classList.add("on");
@@ -477,12 +477,20 @@
       if (!best) { ring.setAttribute("visibility", "hidden"); hideTip(ctx); return; }
       ring.setAttribute("cx", best._x); ring.setAttribute("cy", best._y); ring.setAttribute("r", best._r + 4); ring.setAttribute("visibility", "visible");
       showTip(ctx, opts.tip(best), best._x, best._y);
+    }
+    // Safari ger inte klicket någon pekartyp, så den sparas när fingret eller musen trycks ner
+    hit.addEventListener("pointerdown", function (e) { lastType = e.pointerType || "mouse"; });
+    hit.addEventListener("pointermove", function (e) { if (e.pointerType !== "touch") focusOn(pick(e)); });
+    hit.addEventListener("pointerleave", function (e) { if (e.pointerType !== "touch") { tapped = null; focusOn(null); } });
+    // Med mus öppnar ett klick punkten direkt. Med fingret visar första trycket namnet och andra trycket öppnar.
+    hit.addEventListener("click", function (e) {
+      var touch = lastType === "touch" || lastType === "pen";
+      var p = pick(e);
+      if (!touch) { if (p && opts.onClick) opts.onClick(p); return; }
+      if (p && p === tapped && opts.onClick) { opts.onClick(p); return; }
+      tapped = p;
+      focusOn(p);
     });
-    hit.addEventListener("pointerleave", function () {
-      if (current) current._el.classList.remove("on");
-      current = null; dots.classList.remove("hovering"); ring.setAttribute("visibility", "hidden"); hideTip(ctx);
-    });
-    hit.addEventListener("click", function () { if (current && opts.onClick) opts.onClick(current); });
     return reg;
   }
 

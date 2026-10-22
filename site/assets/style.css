@@ -798,6 +798,11 @@ a.btn { color: var(--fg-soft); }
 @keyframes pt-pop { from { opacity: 0; transform: scale(0.2); } to { opacity: 1; transform: none; } }
 .c-trend { stroke: var(--fg-soft); stroke-width: 1.5; stroke-dasharray: 6 5; animation: fade-in-plain 0.6s 0.4s both; }
 .c-quad { fill: var(--fg-muted); font-size: 11.5px; font-weight: 600; letter-spacing: 0.01em; }
+.c-band-pos { fill: var(--bar-pos); fill-opacity: 0.06; }
+.c-band-neg { fill: var(--bar-neg); fill-opacity: 0.06; }
+.c-band-label { font-size: 12.5px; font-weight: 700; }
+.c-band-label.pos { fill: var(--pos); } .c-band-label.neg { fill: var(--neg); }
+.c-hint { fill: var(--fg-soft); font-size: 12px; font-weight: 600; }
 .c-ptlabel { fill: var(--fg); font-size: 11.5px; font-weight: 650; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
 .c-hist { fill: var(--dot-index); }
 .c-curve { stroke-width: 2.25; stroke-linejoin: round; stroke: var(--brand); }
@@ -812,6 +817,13 @@ a.btn { color: var(--fg-soft); }
 .legend .ln.dash { border-top-style: dashed; }
 .legend .ln.pos { color: var(--bar-pos); } .legend .ln.neg { color: var(--bar-neg); }
 .legend i.c-pos { background: var(--bar-pos); } .legend i.c-neg { background: var(--bar-neg); } .legend i.c-brand { background: var(--brand); }
+.chart-howto { font-size: 13.5px; line-height: 1.55; color: var(--fg-soft); margin: 0 2px 12px; }
+.chart-howto b { color: var(--fg); font-weight: 650; }
+.chart-examples { margin: 14px 2px 0; padding-top: 12px; border-top: 1px solid var(--border-muted); }
+.chart-examples h3 { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-muted); margin: 0 0 6px; }
+.chart-examples ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px 24px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.chart-examples li { font-size: 13.5px; line-height: 1.5; color: var(--fg-soft); }
+.chart-examples a { font-weight: 650; }
 .chart-note { font-size: 13px; color: var(--fg-muted); margin: 10px 2px 2px; line-height: 1.55; }
 .chart-note b { color: var(--fg); font-weight: 650; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--fg-muted); margin-bottom: 10px; }

@@ -1436,15 +1436,16 @@
   // Avgift mot avkastning: ger en dyrare fond bättre avkastning? Trendlinjen är en vanlig regression över fonderna.
   function feeReturnBlock(funds, hasPerf) {
     if (!hasPerf) return "";
-    var pts = funds.map(function (f) { var p = perfOf(f.id); return p && p[3] != null ? { x: f.feeMax, y: p[3], size: f.aum, cls: "c-" + f.cat, f: f, label: shortCo(f.name) } : null; }).filter(Boolean);
+    var pts = funds.map(function (f) { var p = perfOf(f.id); return p && p[3] != null ? { x: f.feeMax, y: p[3], size: f.aum, cls: "c-" + f.cat, f: f } : null; }).filter(Boolean);
     if (pts.length < 20) return "";
     var reg = FFCharts.regression(pts);
     var slope = reg.b, verdict = Math.abs(reg.r) < 0.15 ? "Det finns nästan inget samband" : slope < 0 ? "Dyrare fonder har i snitt gått sämre" : "Dyrare fonder har i snitt gått bättre";
     return '<section class="block section-gap"><div class="block-head"><h2>Avgift mot avkastning</h2><span class="note">' + int(pts.length) + " fonder med femårshistorik</span></div>" +
       '<div class="legend">' + catLabel("closet") + catLabel("active") + catLabel("index") + '<span class="legend-item"><i class="ln dash" style="color:var(--fg-soft)"></i>Trend</span></div>' +
-      '<div class="chart-card">' + chart(function (node) {
+      '<div class="chart-card"><p class="chart-howto">Varje prick är en fond. <b>Till höger</b> är avgiften högre, <b>högre upp</b> har fonden gått bättre. ' +
+      "Den streckade linjen visar hur det ser ut i genomsnitt. Peka på en prick för att se vilken fond det är.</p>" + chart(function (node) {
         FFCharts.xy(node, pts, {
-          height: node.clientWidth < 500 ? 320 : 400, trend: true, labels: node.clientWidth < 500 ? 0 : 4,
+          height: node.clientWidth < 500 ? 320 : 400, trend: true, xHint: ["← Billigare", "Dyrare →"],
           xDomain: [0, Math.max.apply(null, pts.map(function (p) { return p.x; })) * 1.04],
           xFmt: function (v) { return nf1.format(v) + " %"; }, yFmt: function (v) { return fixMinus(nf0.format(v)) + " %"; },
           xLabel: "Avgift per år", yLabel: "Avkastning per år, 5 år",
@@ -2439,16 +2440,16 @@
     var pts = fundList().map(function (fi) {
       var p = perfOf(fi.id), cat = fundCategory(fi);
       if (!p || fi.sd == null || p[3] == null || (cat !== "index" && cat !== "active" && cat !== "closet")) return null;
-      return { x: fi.sd, y: p[3], size: fi.aum, cls: "c-" + cat, fi: fi, p: p, label: fi.name };
+      return { x: fi.sd, y: p[3], size: fi.aum, cls: "c-" + cat, fi: fi, p: p };
     }).filter(Boolean);
     if (pts.length < 15) return "";
     var reg = FFCharts.regression(pts);
     return '<section class="block section-gap"><div class="block-head"><h2>Risk mot avkastning</h2><span class="note">' + int(pts.length) + " aktiefonder med femårshistorik</span></div>" +
       '<div class="legend">' + catLabel("active") + catLabel("closet") + catLabel("index") + "</div>" +
-      '<div class="chart-card">' + chart(function (node) {
+      '<div class="chart-card"><p class="chart-howto">Varje prick är en aktiefond. <b>Till höger</b> svänger fondens värde mer, alltså högre risk. ' +
+      "<b>Högre upp</b> har fonden gett bättre avkastning. Bäst är uppe till vänster. Peka på en prick för att se vilken fond det är.</p>" + chart(function (node) {
         FFCharts.xy(node, pts, {
-          height: node.clientWidth < 500 ? 320 : 420, labels: node.clientWidth < 500 ? 3 : 6,
-          labelBy: function (p) { return p.y; },
+          height: node.clientWidth < 500 ? 320 : 420, xHint: ["← Lugnare", "Svänger mer →"],
           xFmt: function (v) { return nf0.format(v) + " %"; }, yFmt: function (v) { return fixMinus(nf0.format(v)) + " %"; },
           xLabel: "Risk: standardavvikelse, 24 månader", yLabel: "Avkastning per år, 5 år",
           quad: { tl: "Mer avkastning, lägre risk", br: "Mindre avkastning, högre risk" },
@@ -2706,7 +2707,7 @@
       if (!h) return;
       var cur = h.byQ[qi], prev = h.byQ[qi - 1];
       if (!cur || !prev || prev[2] < 100 || cur[3] == null || cur[5] == null) return;
-      pts.push({ x: cur[5] * 100, y: cur[3] / prev[2] * 100, size: prev[2], cls: cur[3] >= 0 ? "c-pos" : "c-neg", s: s, flow: cur[3], label: s.name });
+      pts.push({ x: cur[5] * 100, y: cur[3] / prev[2] * 100, size: prev[2], cls: cur[3] >= 0 ? "c-pos" : "c-neg", s: s, flow: cur[3] });
     });
     if (pts.length < 30) return null;
     // Axlarna går till 2:a och 98:e percentilen, extremvärden ritas vid kanten
@@ -2720,24 +2721,33 @@
       : rho > 0 ? "Ja, i viss mån. Fonderna köpte oftare aktierna som hade gått upp."
       : "Nej, snarare tvärtom. Fonderna köpte oftare aktierna som hade gått ner.";
     var pct = function (v) { return (v > 0 ? "+" : "") + fixMinus(nf0.format(v)) + " %"; };
+    // Några exempel i ord: stora innehav som ligger långt från mitten
+    var clip = function (v, d) { return Math.min(Math.abs(v), Math.max(-d[0], d[1])); };
+    var standout = function (p) { return Math.sqrt(p.size) * (clip(p.x, xd) / (xd[1] - xd[0]) + clip(p.y, yd) / (yd[1] - yd[0])); };
+    var examples = pts.slice().sort(function (a, b) { return standout(b) - standout(a); }).slice(0, 4).map(function (p) {
+      return '<li><a href="' + stockHref(p.s) + '">' + esc(p.s.name) + "</a>: kursen " + (p.x >= 0 ? "steg " : "föll ") + nf0.format(Math.abs(p.x)) + " % och fonderna " +
+        (p.flow >= 0 ? '<span class="pos">köpte</span>' : '<span class="neg">sålde</span>') + " för " + bigSek(Math.abs(p.flow) * 1e6) + ".</li>";
+    }).join("");
     return {
       text: verdict + " Av aktierna som steg under kvartalet nettoköptes " + nf0.format(share(winners) * 100) + " %, av dem som föll " + nf0.format(share(losers) * 100) +
         " % (rangkorrelation " + fixMinus(nf2.format(rho)) + ").",
-      html: '<div class="chart-card"><div class="legend"><span class="legend-item"><i class="dot c-pos"></i>Nettoköpt</span><span class="legend-item"><i class="dot c-neg"></i>Nettosåld</span></div>' +
+      html: '<div class="chart-card"><p class="chart-howto">Varje prick är en aktie. <b>Högt upp</b> köpte fonderna, <b>långt ner</b> sålde de. ' +
+        "<b>Till höger</b> steg kursen under kvartalet, <b>till vänster</b> föll den. Stora prickar är aktier som fonderna äger mycket av. Peka på en prick för att se vilken aktie det är.</p>" +
+        '<div class="legend"><span class="legend-item"><i class="dot c-pos"></i>Fonderna köpte</span><span class="legend-item"><i class="dot c-neg"></i>Fonderna sålde</span></div>' +
         chart(function (node) {
           FFCharts.xy(node, pts, {
-            height: node.clientWidth < 500 ? 320 : 420, xDomain: xd, yDomain: yd, labels: node.clientWidth < 500 ? 3 : 7,
-            // Namn på de aktier som sticker ut mest: stora innehav långt från mitten
-            labelBy: function (p) { return Math.sqrt(p.size) * (Math.abs(p.x) / (xd[1] - xd[0]) + Math.abs(p.y) / (yd[1] - yd[0])); },
+            height: node.clientWidth < 500 ? 320 : 420, xDomain: xd, yDomain: yd,
             xFmt: function (v) { return pct(v); }, yFmt: function (v) { return pct(v); },
-            xLabel: "Kursutveckling under " + quarterLabel(state.q), yLabel: "Nettoköp i % av innehavet",
-            quad: { tr: "Köpte vinnare", tl: "Köpte förlorare", br: "Sålde vinnare", bl: "Sålde förlorare" },
+            xLabel: "Kursens förändring under " + quarterLabel(state.q), yLabel: "Köpt eller sålt, i % av fondernas innehav",
+            bands: { above: "Fonderna köpte", below: "Fonderna sålde" }, xHint: ["← Kursen föll", "Kursen steg →"],
             tip: function (p) {
-              return "<b>" + esc(p.s.name) + "</b><br>Kurs " + pct(p.x) + " under kvartalet<br>Nettoköp " + bigSek(p.flow * 1e6, true) + " (" + pct(p.y) + " av innehavet)";
+              return "<b>" + esc(p.s.name) + "</b><br>Kursen " + (p.x >= 0 ? "steg " : "föll ") + nf0.format(Math.abs(p.x)) + " %<br>Fonderna " + (p.flow >= 0 ? "köpte" : "sålde") +
+                " för " + bigSek(Math.abs(p.flow) * 1e6) + "<br>" + nf0.format(Math.abs(p.y)) + " % av vad de ägde";
             },
             onClick: function (p) { location.hash = stockHref(p.s); }
           });
-        }) + '<p class="chart-note">Varje punkt är en aktie där fonderna ägde minst 100 mkr kvartalet innan, storleken är innehavet. Kursen är medianen av fondernas rapporterade kurser, utan utdelningar. Enstaka extremvärden ritas vid kanten.</p></div>'
+        }) + '<div class="chart-examples"><h3>Exempel ur diagrammet</h3><ul>' + examples + "</ul></div>" +
+        '<p class="chart-note">Med är aktier där fonderna ägde minst 100 mkr kvartalet innan. Kursen är medianen av fondernas rapporterade kurser, utan utdelningar. Enstaka extremvärden ritas vid kanten.</p></div>'
     };
   }
 
