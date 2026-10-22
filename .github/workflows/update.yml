@@ -144,6 +144,7 @@ jobs:
         run: |
           v=$(git rev-parse --short HEAD)
           sed -i "s/__VERSION__/$v/g" site/index.html site/assets/app.js
+          sed -i "s/__YEAR__/$(date +%Y)/g" site/index.html
           echo "$v" > site/version.txt
 
       # En fast sida per aktie, fond och fondbolag för sökmotorer, delningsbilder, sitemap och robots.txt.

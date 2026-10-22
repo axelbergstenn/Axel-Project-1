@@ -31,7 +31,7 @@ $ProgressPreference = "SilentlyContinue"
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-$FormatVersion = 6
+$FormatVersion = 7
 $Inv = [System.Globalization.CultureInfo]::InvariantCulture
 $Utf8 = New-Object System.Text.UTF8Encoding $false
 
@@ -258,13 +258,58 @@ function Slug($s) {
   $t = ([string]$s).ToLowerInvariant().Replace("å", "a").Replace("ä", "a").Replace("ö", "o").Replace("ø", "o").Replace("æ", "ae").Replace("é", "e").Replace("ü", "u")
   return (($t -replace '[^a-z0-9]+', '-').Trim('-'))
 }
+$SwedishPlaces = @{
+  "Malmo" = "Malmö"; "Goteborg" = "Göteborg"; "Gothenburg" = "Göteborg"; "Norrkoping" = "Norrköping"; "Linkoping" = "Linköping"; "Jonkoping" = "Jönköping"
+  "Orebro" = "Örebro"; "Vasteras" = "Västerås"; "Umea" = "Umeå"; "Lulea" = "Luleå"; "Gavle" = "Gävle"; "Boras" = "Borås"; "Vaxjo" = "Växjö"
+  "Ostersund" = "Östersund"; "Skelleftea" = "Skellefteå"; "Sodertalje" = "Södertälje"; "Taby" = "Täby"; "Lidingo" = "Lidingö"; "Jarfalla" = "Järfälla"
+  "Varmdo" = "Värmdö"; "Hassleholm" = "Hässleholm"; "Angelholm" = "Ängelholm"; "Molndal" = "Mölndal"; "Ornskoldsvik" = "Örnsköldsvik"
+  "Skane" = "Skåne"; "Vastra Gotaland" = "Västra Götaland"; "Ostergotland" = "Östergötland"; "Varmland" = "Värmland"; "Vasterbotten" = "Västerbotten"
+  "Jamtland" = "Jämtland"; "Harjedalen" = "Härjedalen"; "Sormland" = "Sörmland"; "Vastmanland" = "Västmanland"; "Gavleborg" = "Gävleborg"; "Vasternorrland" = "Västernorrland"
+  "Trollhattan" = "Trollhättan"; "Nykoping" = "Nyköping"; "Borlange" = "Borlänge"; "Tyreso" = "Tyresö"; "Osteraker" = "Österåker"; "Ekero" = "Ekerö"
+  "Nynashamn" = "Nynäshamn"; "Norrtalje" = "Norrtälje"; "Enkoping" = "Enköping"; "Pitea" = "Piteå"; "Varnamo" = "Värnamo"; "Soderhamn" = "Söderhamn"
+  "Harnosand" = "Härnösand"; "Kungalv" = "Kungälv"; "Skovde" = "Skövde"; "Lidkoping" = "Lidköping"; "Koping" = "Köping"; "Strangnas" = "Strängnäs"
+  "Vastervik" = "Västervik"; "Nassjo" = "Nässjö"; "Eslov" = "Eslöv"; "Kavlinge" = "Kävlinge"; "Hoganas" = "Höganäs"; "Alingsas" = "Alingsås"; "Solvesborg" = "Sölvesborg"
+}
+# Svenska kommuner som emittenter. Kommunerna med "stad" i sitt officiella namn; övriga heter "<ort>s kommun".
+$CityMunicipalities = @("Stockholm", "Göteborg", "Malmö", "Helsingborg", "Västerås", "Borås", "Lidingö", "Solna", "Sundbyberg", "Vaxholm", "Mölndal", "Trollhättan", "Landskrona", "Haparanda")
+$KnownPlaces = @{}
+foreach ($pl in @($SwedishPlaces.Values) + $CityMunicipalities + @("Lund", "Uppsala", "Huddinge", "Nacka", "Trelleborg", "Sundsvall", "Halmstad", "Kalmar", "Karlstad",
+    "Kristianstad", "Eskilstuna", "Falun", "Sollentuna", "Botkyrka", "Haninge", "Kungsbacka", "Varberg", "Uddevalla", "Karlskrona", "Kiruna", "Motala", "Katrineholm",
+    "Sigtuna", "Danderyd", "Vallentuna", "Hudiksvall", "Sandviken", "Ystad", "Vellinge", "Lerum", "Partille", "Falkenberg", "Mora", "Ludvika", "Avesta", "Arboga",
+    "Oskarshamn", "Ljungby", "Staffanstorp", "Lomma", "Svedala", "Karlshamn", "Ronneby", "Gotland", "Kristinehamn", "Nyköping", "Gävle")) { $KnownPlaces[$pl] = $pl }
+function MunicipalName($place) {
+  $gen = if ($place -match '[sxzaeiouyåäöé]$') { $place } else { $place + "s" }
+  return $gen + $(if ($CityMunicipalities -contains $place) { " stad" } else { " kommun" })
+}
+# "Stockholm", "Stockholms" eller "Linkopings" blir orten med å, ä och ö, om den är en känd svensk kommun
+function SwedishPlace($w) {
+  foreach ($cand in @($w, $(if ($w.EndsWith("s")) { $w.Substring(0, $w.Length - 1) } else { $null }))) {
+    if (-not $cand) { continue }
+    $fixed = if ($SwedishPlaces.ContainsKey($cand)) { $SwedishPlaces[$cand] } else { $cand }
+    if ($KnownPlaces.ContainsKey($fixed)) { return $KnownPlaces[$fixed] }
+  }
+  return $null
+}
 function PrettyIssuer($s) {
   $s = ([string]$s).Trim()
-  # "City of Malmo Sweden" blir "Malmo stad" och "Municipality of Huddinge Sweden" blir "Huddinge kommun"
+  # "City of Malmo Sweden" blir "Malmö stad" och "Municipality of Huddinge Sweden" blir "Huddinge kommun"
   $m = [regex]::Match($s, '(?i)^(city|municipality|county|region) of ([A-Za-zÅÄÖåäö\- ]+?)(,? sweden)?$')
   if ($m.Success) {
     $place = (Get-Culture).TextInfo.ToTitleCase($m.Groups[2].Value.ToLowerInvariant())
-    switch -regex ($m.Groups[1].Value) { '(?i)city' { return "$place stad" } '(?i)municipality' { return "$place kommun" } default { return "Region $place" } }
+    # Engelska namn saknar ofta å, ä och ö ("City of Malmo")
+    foreach ($pl in $SwedishPlaces.Keys) { $place = [regex]::Replace($place, "\b$pl\b", $SwedishPlaces[$pl]) }
+    if ($m.Groups[1].Value -match '(?i)county|region') { return "Region $place" }
+    $sw = SwedishPlace $place
+    if ($sw) { return MunicipalName $sw }
+    if ($m.Groups[3].Success) { return "$place " + $(if ($m.Groups[1].Value -match '(?i)city') { "stad" } else { "kommun" }) }
+    return "City of $place"
+  }
+  # Svenska namn i olika former ("Lunds stad", "Göteborgs kommun", "Stockholm stad") blir kommunens officiella namn
+  $m = [regex]::Match($s, '(?i)^([A-Za-zÅÄÖåäö\-]+) (stad|kommun)$')
+  if ($m.Success) {
+    $w = (Get-Culture).TextInfo.ToTitleCase($m.Groups[1].Value.ToLowerInvariant())
+    $sw = SwedishPlace $w
+    if ($sw) { return MunicipalName $sw }
   }
   $s = [regex]::Replace($s, '(?i),?\s+sweden$', '')
   # Ett ensamt kortnamn i versaler ("PFSI") behålls som det är i stället för att bli ett påhittat ord ("Pfsi")
@@ -354,7 +399,7 @@ function Build-Issuers($P, $C) {
     foreach ($ct in $e.country.Keys) { $gr.country[$ct] = [int]$gr.country[$ct] + $e.country[$ct] }
   }
   # Namn, kategori och sektor per grupp
-  $issuers = @{}; $usedSlugs = @{}
+  $issuers = @{}; $usedSlugs = @{}; $byName = @{}
   foreach ($g in ($groups.Keys | Sort-Object { -$groups[$_].mv })) {
     $gr = $groups[$g]
     $name = $null
@@ -366,13 +411,18 @@ function Build-Issuers($P, $C) {
       $name = ($cands.GetEnumerator() | Sort-Object { $(if ($_.Key -cmatch '[a-zåäö]' -and $_.Key.Length -ge 4) { 1e18 } else { 0 }) + $_.Value } -Descending | Select-Object -First 1).Key
       $name = PrettyIssuer $name
     }
+    $grNames = @($gr.keys.Keys | ForEach-Object { $keyNames[$_].Keys })
+    # Grupper som fått samma namn (t.ex. "ASIA" och "Asian Development Bank" som inte binds ihop av gemensamma
+    # obligationer) är samma emittent och får samma sida
+    if ($name -and $byName.ContainsKey($name)) { $issuers[$g] = $byName[$name]; $byName[$name].names = @($byName[$name].names) + $grNames; continue }
     $bc = ($gr.bransch.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1).Key
     $ct = ($gr.country.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1).Key
     $slug = Slug $name
     if (-not $slug) { $slug = "emittent" }
     if ($usedSlugs.ContainsKey($slug)) { $n2 = 2; while ($usedSlugs.ContainsKey("$slug-$n2")) { $n2++ }; $slug = "$slug-$n2" }
     $usedSlugs[$slug] = 1
-    $issuers[$g] = @{ key = $slug; name = $name; bransch = $bc; country = $ct; names = @($gr.keys.Keys | ForEach-Object { $keyNames[$_].Keys }) }
+    $issuers[$g] = @{ key = $slug; name = $name; bransch = $bc; country = $ct; names = $grNames }
+    if ($name) { $byName[$name] = $issuers[$g] }
   }
   # Kategori per obligation (alla namnvarianter, plus emittentens namn)
   foreach ($isin in $byIsin.Keys) {

@@ -45,6 +45,21 @@ function Save($rel, $text) {
   [System.IO.File]::WriteAllText($path, $text, $Utf8)
 }
 function Esc($s) { ([string]$s).Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace('"', "&quot;") }
+# Sidtitel "Namn – beskrivning | Fondinsyn". Blir den för lång för Googles träfflista (cirka 65 tecken) används den
+# korta beskrivningen, som skiljer t.ex. aktien Electrolux Professional från samma bolag som obligationsemittent.
+function PageTitle($name, $what, $short) {
+  foreach ($t in @("$name – $what | Fondinsyn", "$name – $short | Fondinsyn")) { if ($t.Length -le 65) { return $t } }
+  return "$name – $short"
+}
+# Beskrivningen i träfflistan kortas vid ett ordslut till cirka 160 tecken
+function ShortDesc($d) {
+  $d = [string]$d
+  if ($d.Length -le 160) { return $d }
+  $cut = $d.Substring(0, 157)
+  $sp = $cut.LastIndexOf(" ")
+  if ($sp -gt 100) { $cut = $cut.Substring(0, $sp) }
+  return $cut.TrimEnd(",", ";", ":", " ") + "…"
+}
 function J($s) { '"' + (([string]$s) -replace '[\x00-\x1f]+', ' ').Replace('\', '\\').Replace('"', '\"') + '"' }
 function Num($x) { if ($null -eq $x) { return $null }; return [double]$x }
 
@@ -271,6 +286,8 @@ function FlowBars($isin) {
 $pageStocks = @($stocks | Where-Object { $_.f2 -gt 0 } | Sort-Object isin)
 $used = @{}
 foreach ($s in $pageStocks) { $s.slug = Uniq $used (Slug $s.name) $s.isin }
+# Två aktieslag med samma namn (t.ex. stam- och preferensaktie) skiljs åt med ISIN i sidtiteln
+$nameCount = @{}; foreach ($s in $pageStocks) { $nameCount[$s.name] = 1 + [int]$nameCount[$s.name] }
 $used = @{}
 foreach ($fi in @($infos | Sort-Object id)) { $fi.slug = Uniq $used (Slug $fi.name) $fi.id }
 $used = @{}
@@ -450,6 +467,8 @@ if (Test-Path $archDir) {
     }
   }
   foreach ($isin in $byIsin.Keys) { Save "data/insyn/$isin.json" ('{"rows":[' + ($byIsin[$isin] -join ",") + "]}") }
+  $insynArchive = @{}
+  foreach ($isin in $byIsin.Keys) { $insynArchive[$isin] = 1 }
   # Köp, sälj och antal köpare per aktie de senaste tolv månaderna
   $agg = @{}
   if ($yearRows.Count) {
@@ -664,6 +683,7 @@ function Page($rel, $route, $title, $desc, $image, $content, $Crumbs, $Ld, [swit
   $head = $tag.charset + "`n  <base href=`"/`">" + $(if ($NoIndex) { "`n  <meta name=`"robots`" content=`"noindex`">" } else { "" })
   $t = $template.Replace($tag.charset, $head)
   $t = $t.Replace($tag.title, "<title>" + (Esc $title) + "</title>")
+  $desc = ShortDesc $desc
   $t = $t.Replace($tag.desc, '<meta name="description" content="' + (Esc $desc) + '">')
   $t = $t.Replace($tag.ogTitle, '<meta property="og:title" content="' + (Esc $title) + '">')
   $t = $t.Replace($tag.ogDesc, '<meta property="og:description" content="' + (Esc $desc) + '">')
@@ -728,8 +748,8 @@ foreach ($s in $pageStocks) {
          else { OgSvg $s.name "$($s.sector) · svenska fonders ägande · $QL" $stats "Största fondägare" $null (JoinSv @($holders | Select-Object -First 3 | ForEach-Object { $_.f.name })) }
   $img = Image "aktie-$($s.slug)" $svg
 
-  Page "aktie/$($s.slug)/" "aktie/$($s.isin)" "$($s.name) – vilka fonder äger aktien? | Fondinsyn" `
-    "$fundsText äger $($s.name)$(if ($s.val2 -gt 0) { ' för ' + (BigSek $s.val2) }) ($asOf). Se vilka fonder som köper och säljer aktien, största ägare och historik sedan 2018." $img $content -Crumbs @("Aktier", "aktier/", $s.name, "aktie/$($s.slug)/")
+  Page "aktie/$($s.slug)/" "aktie/$($s.isin)" (PageTitle $(if ($nameCount[$s.name] -gt 1) { "$($s.name) ($($s.isin))" } else { $s.name }) "vilka fonder äger aktien?" "fondägare") `
+    "$fundsText äger $($s.name)$(if ($s.val2 -gt 0) { ' för ' + (BigSek $s.val2) }) ($asOf). Se vilka fonder som köper och säljer, största ägare och historik." $img $content -Crumbs @("Aktier", "aktier/", $s.name, "aktie/$($s.slug)/")
 }
 Write-Host "  $($pageStocks.Count) aktiesidor"
 
@@ -774,7 +794,7 @@ foreach ($fi in $infos) {
          else { OgSvg $fi.name "$($fi.co) · $QL" $stats "Jämförelseindex" $null $(if ($fi.bench) { $fi.bench } else { "Saknas" }) }
   $img = Image "fond-$($fi.slug)" $svg
 
-  Page "fond/$($fi.slug)/" ("fond/" + [uri]::EscapeDataString($fi.id)) "$($fi.name) – innehav, avgift och affärer | Fondinsyn" `
+  Page "fond/$($fi.slug)/" ("fond/" + [uri]::EscapeDataString($fi.id)) (PageTitle $fi.name "innehav, avgift och affärer" "fond") `
     "Vad äger $($fi.name)? Se fondens svenska innehav, vilka aktier den köpt och sålt under $QL, avgift ($fee) och fondförmögenhet ($(BigSek $fi.aum))." $img $content -Crumbs @("Fonder", "fonder/", $fi.co, "fondbolag/$($companies[$fi.co].slug)/", $fi.name, "fond/$($fi.slug)/")
 }
 Write-Host "  $($infos.Count) fondsidor"
@@ -814,7 +834,7 @@ foreach ($c in $coList) {
   $svg = OgSvg $c.name "Fondbolag · $QL" $stats "Största fonder" $null (@($cf | Select-Object -First 3 | ForEach-Object { $_.name }) -join " · ")
   $img = Image "fondbolag-$($c.slug)" $svg
 
-  Page "fondbolag/$($c.slug)/" ("fondbolag/" + [uri]::EscapeDataString($c.name)) "$($c.name) – fonder, avgifter och innehav | Fondinsyn" `
+  Page "fondbolag/$($c.slug)/" ("fondbolag/" + [uri]::EscapeDataString($c.name)) (PageTitle $c.name "fonder, avgifter och innehav" "fondbolag") `
     "Alla $($cf.Count) fonder från $($c.name) med avgifter, fondförmögenhet och största innehav. Data från Finansinspektionen, $QL." $img $content -Crumbs @("Fondbolag", "fondbolag/", $c.name, "fondbolag/$($c.slug)/")
 }
 Write-Host "  $($coList.Count) fondbolagssidor"
@@ -1254,7 +1274,7 @@ if ($ratesLight -and $issLatest) {
       (Source ("/#/emittent/" + [uri]::EscapeDataString($i.key)) "Se alla fonder och värdepapper")
     $stats = @(@("Fondernas innehav", (BigSek $i.v2), "#1f2328"), @("Nettoköp $QL", (BigSek $i.flow -Sign), (FlowColor $i.flow)), @("Fonder som äger", (Num0 $i.f2), "#1f2328"))
     $img = Image "emittent-$($i.key)" (OgSvg $i.name "$catName · obligationer som svenska fonder äger" $stats "Största ägare" $null (($top | Select-Object -First 3) -join " · "))
-    Page "emittent/$($i.key)/" "emittent/$($i.key)" "$($i.name) – obligationer som fonderna äger | Fondinsyn" `
+    Page "emittent/$($i.key)/" "emittent/$($i.key)" (PageTitle $i.name "obligationer som fonderna äger" "obligationer") `
       "$($i.name): svenska fonder äger obligationer för $(BigSek $i.v2) ($asOf). Se vilka fonder som äger, köper och säljer bolagets obligationer och certifikat." `
       $img $content -Crumbs @("Räntor", "rantor/", $i.name, "emittent/$($i.key)/")
   }
@@ -1419,14 +1439,14 @@ function InsItem($r) {
 if ($insider) {
   $big = @($insider.rows | Where-Object { $null -ne $_[11] -and [double]$_[11] -ge 500000 -and ($_[7] -eq "Förvärv" -or $_[7] -eq "Avyttring") } | Sort-Object { [string]$_[1] } -Descending | Select-Object -First 100)
   SaveRss "rss/insyn.xml" "Fondinsyn – insynshandel" "/#/insyn" "Insiders köp och sälj för minst 500 000 kr i svenska bolag, från Finansinspektionens insynsregister." @($big | ForEach-Object { InsItem $_ })
-  $byIsin = @{}
-  foreach ($r in $insider.rows) { $k = [string]$r[3]; if ($slugOf.ContainsKey($k)) { if (-not $byIsin.ContainsKey($k)) { $byIsin[$k] = New-Object System.Collections.Generic.List[object] }; $byIsin[$k].Add($r) } }
-  foreach ($k in $byIsin.Keys) {
-    $rows = @($byIsin[$k] | Sort-Object { [string]$_[1] } -Descending | Select-Object -First 50)
+  $rssByIsin = @{}
+  foreach ($r in $insider.rows) { $k = [string]$r[3]; if ($slugOf.ContainsKey($k)) { if (-not $rssByIsin.ContainsKey($k)) { $rssByIsin[$k] = New-Object System.Collections.Generic.List[object] }; $rssByIsin[$k].Add($r) } }
+  foreach ($k in $rssByIsin.Keys) {
+    $rows = @($rssByIsin[$k] | Sort-Object { [string]$_[1] } -Descending | Select-Object -First 50)
     $nm = [string]$rows[0][2]
     SaveRss "rss/insyn/$($slugOf[$k]).xml" "Fondinsyn – insynshandel i $nm" "/aktie/$($slugOf[$k])/" "Insiders köp och sälj i $nm, från Finansinspektionens insynsregister." @($rows | ForEach-Object { InsItem $_ })
   }
-  Write-Host "  rss: rapporter, insyn och $($byIsin.Count) aktier"
+  Write-Host "  rss: rapporter, insyn och $($rssByIsin.Count) aktier"
 }
 
 # 3. Öppet dataset (data/dataset/): hela historiken per aktie och kvartal, fondsparandet per månad och en beskrivning.
@@ -1615,7 +1635,7 @@ Page "signaler/" "signaler" "Samlad signal – fonder, insiders och blankning ih
 # ---------- Fondernas ägarandel och Toppfonderna (listorna räknas i appen) ----------
 $content = '<div class="page-head"><h1>Fondernas ägarandel</h1><p class="meta lead">Hur stor del av bolagen på Stockholmsbörsen och First North som svenska fonder äger tillsammans, ' +
   'och var fonderna ökade och minskade sin andel under ' + $QL + '.</p></div><p class="desc">' + (A "/#/agarandel" "Se listan med alla bolag") + '</p>'
-Page "agarandel/" "agarandel" "Fondernas ägarandel – hur mycket av bolagen svenska fonder äger | Fondinsyn" `
+Page "agarandel/" "agarandel" "Fondernas ägarandel – hur mycket fonderna äger av bolagen | Fondinsyn" `
   "Hur stor andel av svenska börsbolag som ägs av svenska fonder, vilka bolag fonderna äger mest av och var de ökade och minskade sin andel $QL." `
   $defaultImg $content -Crumbs @("Fondernas ägarandel", "agarandel/")
 $content = '<div class="page-head"><h1>Toppfonderna</h1><p class="meta lead">De aktivt förvaltade fonderna med bäst avkastning de senaste fem åren, och vilka aktier de köpte och sålde under ' + $QL + '.</p></div>' +
@@ -1730,7 +1750,7 @@ if ($WriteHome) {
   $cont = @($pageStocks | Where-Object { $null -ne $_.netFlow -and $_.price })
   $rowsB = NewList; foreach ($s in @($cont | Where-Object { $_.flow -gt 0 } | Sort-Object flow -Descending | Select-Object -First 15)) { $rowsB.Add(@((A (StockUrl $s) $s.name), (Colored $s.flow (Mkr $s.flow -Sign)), (Num0 $s.f2))) }
   $rowsS = NewList; foreach ($s in @($cont | Where-Object { $_.flow -lt 0 } | Sort-Object flow | Select-Object -First 15)) { $rowsS.Add(@((A (StockUrl $s) $s.name), (Colored $s.flow (Mkr $s.flow -Sign)), (Num0 $s.f2))) }
-  $homeContent = $intro + '<div class="grid-2 section-gap">' + (Block "Störst nettoköp $QL" (Table @("Aktie", "Nettoköp (mkr)", "Fonder") $rowsB) "") +
+  $homeContent = '<h1 class="visually-hidden">Fondinsyn: vad svenska fonder köper och säljer</h1>' + $intro + '<div class="grid-2 section-gap">' + (Block "Störst nettoköp $QL" (Table @("Aktie", "Nettoköp (mkr)", "Fonder") $rowsB) "") +
     (Block "Störst nettosälj $QL" (Table @("Aktie", "Nettoköp (mkr)", "Fonder") $rowsS) "") + "</div>" +
     '<p class="desc section-gap"><a href="/rapport/' + (ReportSlug $Q) + '/">Kvartalsrapport ' + $QL + '</a> · <a href="/aktier/">Alla aktier</a> · <a href="/fonder/">Alla fonder</a> · <a href="/fondbolag/">Alla fondbolag</a> · <a href="/ordlista/">Ordlista</a></p>'
   # Webbplatsen och datan som dataset (syns i Google Dataset Search)
@@ -1755,7 +1775,7 @@ if ($WriteHome) {
 } else {
   $sitemap.Add($BaseUrl + "/")
 }
-Page "404.html" "" "Sidan finns inte | Fondinsyn" "Sidan finns inte." $defaultImg '<div class="notice">Sidan finns inte längre. <a href="/">Till översikten</a></div>' -NoIndex
+Page "404.html" "finnsinte" "Sidan finns inte | Fondinsyn" "Sidan finns inte på Fondinsyn. Sök efter aktien eller fonden, eller gå till översikten." $defaultImg '<div class="page-head"><h1>Sidan finns inte</h1><p class="meta lead">Adressen kan vara felstavad, eller så har aktien eller fonden bytt namn. <a href="/">Till översikten</a></p></div>' -NoIndex
 
 # ---------- Sitemap, robots.txt och adresslistan för Dela-knappen ----------
 
@@ -1770,6 +1790,8 @@ $map = @()
 $map += '"aktie":{' + ((@($pageStocks | ForEach-Object { (J $_.isin) + ":" + (J $_.slug) })) -join ",") + "}"
 $map += '"fond":{' + ((@($infos | ForEach-Object { (J $_.id) + ":" + (J $_.slug) })) -join ",") + "}"
 $map += '"fondbolag":{' + ((@($coList | ForEach-Object { (J $_.name) + ":" + (J $_.slug) })) -join ",") + "}"
+# Aktiesidor som har ett insynsarkiv (data/insyn/<isin>.json), så att appen inte frågar efter filer som saknas
+$map += '"insyn":[' + ((@($pageStocks | Where-Object { $insynArchive -and $insynArchive.ContainsKey($_.isin) } | ForEach-Object { J $_.isin })) -join ",") + "]"
 Save "data/pages.json" ("{" + ($map -join ",") + "}")
 Write-Host "  sitemap med $($sitemap.Count) adresser"
 
