@@ -277,13 +277,20 @@ body.scrolled .topbar { box-shadow: 0 1px 0 var(--border), 0 8px 24px rgba(12, 2
 
 /* ---------- Menyn: panel i full bredd på dator, panel nerifrån på mobil ---------- */
 
-.mega { position: fixed; left: 0; right: 0; z-index: 45; background: var(--bg); border-bottom: 1px solid var(--glass-line); box-shadow: 0 30px 60px -30px rgba(12, 20, 36, 0.35); animation: mega-in 0.38s var(--spring); }
+/* Menyn öppnas och stängs med övergångar (klassen is-open sätts av toggleMore i app.js), så att den kan vändas mitt i */
+.mega { position: fixed; left: 0; right: 0; z-index: 45; background: var(--bg); border-bottom: 1px solid var(--glass-line); box-shadow: 0 30px 60px -30px rgba(12, 20, 36, 0.35);
+  opacity: 0; transform: translateY(-8px); transition: opacity 0.16s ease-in, transform 0.2s ease-in; will-change: transform, opacity; }
+.mega.is-open { opacity: 1; transform: none; transition: opacity 0.26s ease-out, transform 0.5s var(--spring); }
 @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
   .mega { background: var(--glass-strong); backdrop-filter: saturate(180%) blur(28px); -webkit-backdrop-filter: saturate(180%) blur(28px); }
 }
-@keyframes mega-in { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: none; } }
 .mega-inner { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 0.85fr); gap: 32px; padding-top: 28px; padding-bottom: 32px; }
-.mega-col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mega-col { display: flex; flex-direction: column; gap: 2px; min-width: 0; opacity: 0; transform: translateY(6px); transition: opacity 0.12s, transform 0.12s; }
+/* Innehållet glider in strax efter panelen, en grupp i taget */
+.mega.is-open .mega-col { opacity: 1; transform: none; transition: opacity 0.34s ease-out, transform 0.55s var(--spring); }
+.mega.is-open .mega-col:nth-child(2) { transition-delay: 0.035s; }
+.mega.is-open .mega-col:nth-child(3) { transition-delay: 0.07s; }
+.mega.is-open .mega-col:nth-child(4) { transition-delay: 0.105s; }
 .mega-col h2 { font-size: 11.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--fg-muted); margin: 0 0 8px 10px; }
 .mega-col a { display: flex; flex-direction: column; padding: 9px 12px; border-radius: 12px; color: var(--fg); transition: background 0.2s, transform 0.25s var(--spring); }
 .mega-col a:hover { background: var(--bg-hover); text-decoration: none; }
@@ -294,7 +301,8 @@ body.scrolled .topbar { box-shadow: 0 1px 0 var(--border), 0 8px 24px rgba(12, 2
 .mega-about { border-left: 1px solid var(--border-muted); padding-left: 24px; }
 .mega-about a b { font-weight: 550; font-size: 14px; color: var(--fg-soft); }
 .mega .m-only, .sheet-handle { display: none; }
-.sheet-backdrop { position: fixed; inset: 0; z-index: 44; background: var(--backdrop); animation: fade-in-plain 0.25s ease-out; backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
+.sheet-backdrop { position: fixed; inset: 0; z-index: 44; background: var(--backdrop); opacity: 0; transition: opacity 0.2s ease-in; }
+.sheet-backdrop.is-open { opacity: 1; transition: opacity 0.3s ease-out; }
 @keyframes fade-in-plain { from { opacity: 0; } to { opacity: 1; } }
 body.sheet-open { overflow: hidden; }
 
@@ -1132,8 +1140,10 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .tabbar a[aria-current="page"] svg, .tabbar button[aria-expanded="true"] svg, .tabbar button.active svg { stroke-width: 2.1; }
 
   /* Menyn som panel nerifrån */
-  .mega.sheet { left: 12px; right: 12px; top: auto !important; bottom: calc(var(--tabbar-h) + var(--tabbar-gap) + 10px); max-height: calc(100vh - var(--tabbar-h) - 90px); overflow-y: auto; border-radius: 26px; border: 0; box-shadow: var(--glass-shadow), 0 30px 60px -20px rgba(12, 20, 36, 0.45); padding: 6px 0 12px; animation: sheet-in 0.42s var(--spring); transform-origin: 85% 100%; }
-  @keyframes sheet-in { from { transform: translateY(24px) scale(0.96); opacity: 0; } to { transform: none; opacity: 1; } }
+  .mega.sheet { left: 12px; right: 12px; top: auto !important; bottom: calc(var(--tabbar-h) + var(--tabbar-gap) + 10px); max-height: calc(100vh - var(--tabbar-h) - 90px); overflow-y: auto; border-radius: 26px; border: 0; box-shadow: var(--glass-shadow), 0 30px 60px -20px rgba(12, 20, 36, 0.45); padding: 6px 0 12px; transform-origin: 85% 100%; transform: translateY(20px) scale(0.97);
+    /* Ingen glaseffekt på mobilen: oskärpan måste räknas om varje bildruta medan panelen rör sig */
+    background: var(--bg); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  .mega.sheet.is-open { transform: none; }
   .mega.sheet .sheet-handle { display: block; width: 40px; height: 5px; border-radius: 3px; background: var(--border-strong); margin: 4px auto 6px; }
   .mega.sheet .m-only { display: flex; }
   .mega-inner { grid-template-columns: minmax(0, 1fr); gap: 14px; padding-top: 6px; padding-bottom: 6px; }

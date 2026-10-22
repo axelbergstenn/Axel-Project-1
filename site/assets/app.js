@@ -4340,20 +4340,32 @@
   // ---------- Händelser ----------
 
   // Menyn: på dator en panel i full bredd direkt under sidhuvudet, på mobil en panel nerifrån ovanför flikraden
+  // Öppnas med klassen is-open (övergångarna i style.css) och göms först när stängningen har spelats klart
+  var moreTimer = null;
+  function moreOpen() { return $("moreMenu").classList.contains("is-open"); }
   function toggleMore(open) {
-    var menu = $("moreMenu");
+    var menu = $("moreMenu"), bd = $("moreBackdrop");
     var sheet = window.matchMedia("(max-width: 760px)").matches;
-    if (open == null) open = menu.hidden;
-    menu.hidden = !open;
-    menu.classList.toggle("sheet", sheet);
-    $("moreBackdrop").hidden = !open;
+    if (open == null) open = !moreOpen();
+    if (open === moreOpen()) return;
+    clearTimeout(moreTimer);
     document.body.classList.toggle("sheet-open", open && sheet);
     $("moreBtn").setAttribute("aria-expanded", String(open));
     $("moreBtnM").setAttribute("aria-expanded", String(open));
     tabIndicator();
-    if (!open) return;
-    if (sheet) { menu.removeAttribute("style"); $("moreBackdrop").removeAttribute("style"); return; }
-    menu.style.top = $("moreBackdrop").style.top = Math.round(document.querySelector(".topbar").getBoundingClientRect().bottom) + "px";
+    if (!open) {
+      menu.classList.remove("is-open"); bd.classList.remove("is-open");
+      moreTimer = setTimeout(function () { menu.hidden = bd.hidden = true; }, 240);
+      return;
+    }
+    if (menu.hidden) menu.classList.toggle("sheet", sheet);
+    menu.hidden = bd.hidden = false;
+    if (sheet) { menu.removeAttribute("style"); bd.removeAttribute("style"); }
+    else menu.style.top = bd.style.top = Math.round(document.querySelector(".topbar").getBoundingClientRect().bottom) + "px";
+    // Läs av layouten så att övergången startar från det stängda läget
+    void menu.offsetWidth;
+    menu.classList.add("is-open"); bd.classList.add("is-open");
+    if (sheet) return;
     var first = menu.querySelector(".mega-col a:not(.m-only)");
     if (first && document.activeElement === $("moreBtn")) first.focus({ preventScroll: true });
   }
@@ -4361,7 +4373,7 @@
   window.addEventListener("resize", function () { if (window.innerWidth !== moreWidth) { moreWidth = window.innerWidth; toggleMore(false); } });
   // Skugga under sidhuvudet när sidan är skrollad
   window.addEventListener("scroll", function () { document.body.classList.toggle("scrolled", window.scrollY > 4); }, { passive: true });
-  window.addEventListener("scroll", function () { if (!$("moreMenu").hidden && !$("moreMenu").classList.contains("sheet")) toggleMore(false); }, { passive: true });
+  window.addEventListener("scroll", function () { if (moreOpen() && !$("moreMenu").classList.contains("sheet")) toggleMore(false); }, { passive: true });
 
   // Varje sida minns var man var. Tillbaka och Framåt hamnar på samma ställe, en ny sida börjar högst upp.
   if ("scrollRestoration" in history) history.scrollRestoration = "manual";
@@ -4467,7 +4479,7 @@
     }
     // Sök
     if (e.target.closest("#moreBtn, #moreBtnM")) { toggleMore(); return; }
-    if (!$("moreMenu").hidden && !e.target.closest("#moreMenu")) toggleMore(false);
+    if (moreOpen() && !e.target.closest("#moreMenu")) toggleMore(false);
     if (e.target.closest("#searchBtn, #searchBtnT")) { openSearch(); return; }
     if (e.target.closest("[data-search-close]")) { closeSearch(); return; }
     var sr = e.target.closest("[data-sr]");
@@ -4586,7 +4598,7 @@
     var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
     if ((e.key === "k" || e.key === "K") && (e.ctrlKey || e.metaKey)) { e.preventDefault(); search.open ? closeSearch() : openSearch(); return; }
     if (e.key === "/" && !typing && !search.open) { e.preventDefault(); openSearch(); return; }
-    if (e.key === "Escape" && !$("moreMenu").hidden) { toggleMore(false); ($("moreBtnM").offsetParent ? $("moreBtnM") : $("moreBtn")).focus(); return; }
+    if (e.key === "Escape" && moreOpen()) { toggleMore(false); ($("moreBtnM").offsetParent ? $("moreBtnM") : $("moreBtn")).focus(); return; }
     if (!search.open) return;
     if (e.key === "Escape") { e.preventDefault(); closeSearch(); }
     else if (e.key === "ArrowDown") { e.preventDefault(); moveSel(1); }
