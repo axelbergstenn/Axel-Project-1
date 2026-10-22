@@ -1680,24 +1680,22 @@ Page "metod/" "metod" "Metodrapport – så räknar Fondinsyn | Fondinsyn" `
   $defaultImg $content -Crumbs @("Metodrapport", "metod/")
 
 # ---------- Integritet och villkor: /integritet/ ----------
-$privacy = '<div class="page-head"><h1>Integritet och villkor</h1><p class="meta">Senast uppdaterad 15 oktober 2026</p></div>' +
+$privacy = '<div class="page-head"><h1>Integritet och villkor</h1><p class="meta">Senast uppdaterad 22 oktober 2026</p></div>' +
   '<p class="lead">Fondinsyn sätter inga kakor, kräver inget konto och säljer inga uppgifter. Här beskrivs vilka uppgifter som ändå hanteras när du använder sajten, och vilka villkor som gäller för innehållet.</p>' +
   (Block "Vem ansvarar" ("<p>Fondinsyn drivs som ett privat projekt och är personuppgiftsansvarig för de uppgifter som beskrivs här. Frågor om dina uppgifter skickar du via " + (A "/#/kontakt" "kontaktsidan") + ".</p>") "section-gap") +
   (Block "Besöksstatistik" ("<p>Fondinsyn räknar besök med " + (A "https://www.goatcounter.com/help/privacy" "GoatCounter") + ", som inte använder kakor och inte sparar IP-adresser. " +
     "Det som registreras är vilken sida som visas, vilken sajt du kom ifrån, webbläsare, operativsystem, skärmstorlek och land. Uppgifterna kan inte knytas till dig som person och används bara för att se vilka delar av sajten som används.</p>") "section-gap") +
   (Block "Det som sparas i din webbläsare" ("<p>Vissa val sparas i din egen webbläsare (lokal lagring) så att sajten kommer ihåg dem nästa gång: mörkt eller ljust läge, valt kvartal, Sverige eller utland, om indexfonder ska tas bort, " +
     "dina bevakade aktier och fonder och det du lagt in i Min portfölj. Uppgifterna skickas aldrig till Fondinsyn eller någon annan, och du tar bort dem genom att rensa webbplatsdata i webbläsaren.</p>") "section-gap") +
-  (Block "Nyhetsbrev och bevakning" ("<p>Om du anmäler dig till nyhetsbrevet eller bevakar en aktie via e-post sparas din e-postadress och vilka aktier du bevakar hos " + (A "https://buttondown.com/legal/privacy" "Buttondown") +
-    ", som skickar utskicken. Uppgifterna används bara för de utskick du anmält dig till, med ditt samtycke som grund. Varje mejl har en länk för att avregistrera dig, och då tas adressen bort från listan.</p>") "section-gap") +
   (Block "Kontakt och drift" ("<p>Skriver du till Fondinsyn används din e-postadress bara för att svara, och mejlet raderas när ärendet är klart. Sajten ligger hos " + (A "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" "GitHub Pages") +
     ", som av säkerhetsskäl kan logga IP-adresser enligt sin egen integritetspolicy. Fondinsyn får inte ta del av de loggarna.</p>") "section-gap") +
-  (Block "Dina rättigheter" ("<p>Du har rätt att få veta vilka uppgifter om dig som behandlas, att få dem rättade eller raderade och att återkalla ditt samtycke. Är du missnöjd med hur uppgifterna hanteras kan du klaga hos " +
+  (Block "Dina rättigheter" ("<p>Du har rätt att få veta vilka uppgifter om dig som behandlas, att få dem rättade eller raderade. Är du missnöjd med hur uppgifterna hanteras kan du klaga hos " +
     (A "https://www.imy.se/" "Integritetsskyddsmyndigheten") + ".</p>") "section-gap") +
   (Block "Villkor för innehållet" ("<p>Allt på Fondinsyn är information och inte investeringsrådgivning. Innehållet tar inte hänsyn till din ekonomi eller dina mål, och historiska affärer säger inget säkert om framtiden.</p>" +
     "<p>Uppgifterna kommer från Finansinspektionen, Riksbanken och Pensionsmyndigheten och bearbetas automatiskt av Fondinsyn. Källorna kan innehålla fel, och Fondinsyns uträkningar, till exempel nettoköp och vilken emittent en obligation hör till, kan bli fel. " +
     "Kontrollera därför viktiga uppgifter mot källan innan du fattar beslut. Fondinsyn ansvarar inte för förluster som uppstår när innehållet används.</p>" +
     "<p>Du får gärna använda och dela uppgifterna om du anger Fondinsyn och Finansinspektionen som källa. Se " + (A "/oppen-data/" "Data och API") + " för nedladdning.</p>") "section-gap")
-Page "integritet/" "integritet" "Integritet och villkor | Fondinsyn" "Hur Fondinsyn hanterar uppgifter: inga kakor, besöksstatistik utan personuppgifter och vad som gäller för nyhetsbrev. Plus villkoren för innehållet." $defaultImg ('<div class="text-page">' + $privacy + '</div>') -Crumbs @("Integritet och villkor", "integritet/") -Keep
+Page "integritet/" "integritet" "Integritet och villkor | Fondinsyn" "Hur Fondinsyn hanterar uppgifter: inga kakor, besöksstatistik utan personuppgifter och vad som sparas i webbläsaren. Plus villkoren för innehållet." $defaultImg ('<div class="text-page">' + $privacy + '</div>') -Crumbs @("Integritet och villkor", "integritet/") -Keep
 
 Page "oppen-data/" "data" "Data och API – ladda ner fonddata | Fondinsyn" "Var Fondinsyns data kommer ifrån, hur ofta den uppdateras och hur du laddar ner den som CSV eller JSON. Öppna data från Finansinspektionen." $defaultImg ('<div class="text-page">' + $odContent + '</div>') -Crumbs @("Data och API", "oppen-data/") -Keep
 Write-Host "  öppen data: $($fileStocks.rows) aktier, $($fileFunds.rows) fonder, $($fileHold.rows) innehav"
