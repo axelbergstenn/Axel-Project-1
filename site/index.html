@@ -29,7 +29,9 @@
     })();
   </script>
   <script>try { if (localStorage.getItem("ff-theme") === "dark") { document.documentElement.setAttribute("data-theme", "dark"); document.querySelector('meta[name="theme-color"]').setAttribute("content", "#0a0a0b"); } } catch (e) {}</script>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230B1F3A'/%3E%3Cg transform='translate(5 5) scale(.6875)'%3E%3Cpath d='M17.5 2.08A14 14 0 0 1 29.92 14.5H17.5Z' fill='%234D84FF'/%3E%3Cpath d='M29.92 17.5A14 14 0 0 1 17.5 29.92V17.5ZM14.5 29.92A14 14 0 0 1 2.08 17.5H14.5ZM2.08 14.5A14 14 0 0 1 14.5 2.08V14.5Z' fill='%23fff'/%3E%3C/g%3E%3C/svg%3E">
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon-96x96.png" type="image/png" sizes="96x96">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -66,6 +68,10 @@
           <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.75" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
           <span class="search-btn-text">Sök aktie, fond, emittent</span><kbd>Ctrl K</kbd>
         </button>
+        <a class="icon-btn theme-btn watch-btn" id="watchBtn" href="#/bevakning" aria-label="Min bevakning" title="Min bevakning">
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2l2.6 5.5 6 .7-4.5 4.1 1.2 5.9L12 16.5l-5.3 2.9 1.2-5.9-4.5-4.1 6-.7z"/></svg>
+          <span class="watch-count" id="watchCount" hidden></span>
+        </a>
         <button type="button" class="icon-btn theme-btn" id="themeBtn" aria-label="Byt till mörkt läge" title="Mörkt läge">
           <svg class="i-moon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
           <svg class="i-sun" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4"/></svg>
@@ -197,6 +203,7 @@
         <a href="#/avgifter" data-nav="avgifter"><b>Avgiftskollen</b><span>Indexnära fonder och vad de kostar</span></a>
         <a href="#/jamfor" data-nav="jamfor"><b>Jämför fonder</b><span>Hur lika är två fonder?</span></a>
         <a href="#/portfolj" data-nav="portfolj"><b>Min portfölj</b><span>Se vad dina fonder äger</span></a>
+        <a href="#/bevakning" data-nav="bevakning"><b>Min bevakning</b><span>Aktierna och fonderna du följer</span></a>
       </div>
       <div class="mega-col">
         <h2>Signaler</h2>
@@ -214,6 +221,7 @@
         <a href="#/ordlista" data-nav="ordlista"><b>Ordlista och vanliga frågor</b></a>
         <a href="/integritet/" data-nav="integritet"><b>Integritet och villkor</b></a>
         <a href="#/kontakt" data-nav="kontakt"><b>Kontakt</b></a>
+        <button type="button" class="theme-row" data-theme-toggle><b id="themeRowLabel">Mörkt läge</b></button>
       </div>
     </div>
   </div>

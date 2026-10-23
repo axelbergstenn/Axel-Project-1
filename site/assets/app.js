@@ -629,7 +629,7 @@
     var policy = (f.rates || []).filter(function (r) { return r[0] === "SECBREPOEFF"; })[0];
     var sav = f.savings;
     var tile = function (href, title, value, desc) {
-      return '<a class="ql" href="' + href + '"><span class="ql-t">' + title + '</span><span class="ql-v">' + value + '</span><span class="ql-d">' + desc + "</span></a>";
+      return '<a class="ql" data-acc="' + href.replace(/^#\//, "") + '" href="' + href + '"><span class="ql-t">' + title + '</span><span class="ql-v">' + value + '</span><span class="ql-d">' + desc + "</span></a>";
     };
     return '<nav class="quick section-gap" aria-label="Genvägar">' +
       tile("#/aktier", "Aktier", '<span class="' + cls(net) + '">' + bigSek(net, true) + "</span>", "fondernas nettoköp i " + int(t.held) + " " + marketWord() + " aktier") +
@@ -820,7 +820,7 @@
     var f = state.front;
     if (f === false) return "";
     var mod = function (title, href, linkText, desc, inner) {
-      return '<section class="module"><div class="module-head"><h2>' + title + '</h2><a href="' + href + '">' + linkText + "</a></div>" +
+      return '<section class="module" data-acc="' + (/rantor/.test(href) ? "rantor" : "signaler") + '"><div class="module-head"><h2>' + title + '</h2><a href="' + href + '">' + linkText + "</a></div>" +
         (desc ? '<p class="desc">' + desc + "</p>" : "") + inner + "</section>";
     };
     if (!f) {
@@ -1552,7 +1552,71 @@
     var parts = [];
     if (stocks.length) parts.push(block("Dina bevakade aktier", "", table("watch-s", stockCols, stocks, { static: true })));
     if (funds.length) parts.push(block("Dina bevakade fonder", "", table("watch-f", fundCols, funds, { static: true })));
-    return '<div class="watch ' + (parts.length > 1 ? "grid-2" : "") + '">' + parts.join("") + "</div>";
+    return '<div class="watch section-gap ' + (parts.length > 1 ? "grid-2" : "") + '">' + parts.join("") + '</div><a class="more" href="#/bevakning">Hela din bevakning</a>';
+  }
+
+  // Min bevakning: allt man bevakar på en sida, med det senaste från fonderna, insiders och blankarna.
+  // Listan finns bara i webbläsaren (ff-watch).
+  function viewWatch() {
+    document.title = "Min bevakning – Fondinsyn";
+    var w = watchGet();
+    var head = '<div class="page-head"><h1>Min bevakning</h1><p class="meta lead">Aktierna och fonderna du följer, med det senaste från fonderna, insiders och blankarna. ' +
+      "Listan sparas bara i din webbläsare.</p></div>";
+    if (!w.stocks.length && !w.funds.length) {
+      var d0 = quarterData().se, ideas = d0.stocks.filter(function (s) { return s.price && !s.isNew && !s.isGone && s.flow > 0; })
+        .sort(function (a, b) { return b.flow - a.flow; }).slice(0, 5);
+      return head + '<div class="empty-state"><h2>Du bevakar inget än</h2><p>Tryck på <b>Bevaka</b> på en aktie- eller fondsida, så hamnar den här. ' +
+        "Kvartalets mest köpta aktier att börja med:</p><p class=\"watch-ideas\">" + ideas.map(function (s) { return starBtn("stocks", s.isin).replace("Bevaka<", esc(s.name) + "<"); }).join("") + "</p></div>";
+    }
+    var d = quarterData();
+    var needsWorld = w.stocks.some(function (i) { return i.slice(0, 2) !== "SE"; });
+    var hasWorld = !needsWorld || needWorld(), hasIns = needInsider(), hasShorts = needShorts(), hasPerf = needPerf();
+    var stocks = w.stocks.map(function (isin) { return d.se.byIsin[isin] || (hasWorld && d.world ? d.world.byIsin[isin] : null); }).filter(Boolean);
+    var funds = w.funds.map(function (id) { return d.fi[id]; }).filter(Boolean);
+    // Insiders nettoköp de senaste 90 dagarna (köp minus sälj, kronor)
+    var insNet = function (isin) {
+      var rows = hasIns && state.insider.byIsin[isin];
+      if (!rows || !rows.length) return null;
+      return rows.reduce(function (a, r) { return a + (r.kind === "buy" ? r.sek || 0 : r.kind === "sell" ? -(r.sek || 0) : 0); }, 0);
+    };
+    var stockCols = [
+      stockCol(function (s) { return esc(s.sector) + " · " + int(s.f2) + " fonder"; }), col.flow,
+      { key: "chg", label: "Δ antal aktier", hideSm: true, cell: col.chg.cell, value: col.chg.value },
+      { key: "ins", label: "Insiders 90 d", cell: function (s) { var v = insNet(s.isin); return v == null ? '<span class="muted">–</span>' : '<span class="' + cls(v) + '">' + bigSek(v, true) + "</span>"; },
+        value: function (s) { return insNet(s.isin); } },
+      { key: "sh", label: "Blankning", hideSm: true, cell: function (s) { var a = hasShorts && state.shorts.byIsin[s.isin]; return a ? nf2.format(a.pct) + " %" : '<span class="muted">–</span>'; },
+        value: function (s) { var a = hasShorts && state.shorts.byIsin[s.isin]; return a ? a.pct : null; } },
+      { key: "rm", label: "", cell: function (s) { return starBtn("stocks", s.isin); } }
+    ];
+    var fundNet = function (f) {
+      var v = 0, any = false;
+      [d.se.fundById[f.id], d.world && d.world.fundById[f.id]].forEach(function (m) { if (m && m.both) { v += m.bought + m.sold; any = true; } });
+      return any ? v : null;
+    };
+    var fundCols = [
+      { key: "name", label: "Fond", align: "l", cls: "name", value: function (f) { return f.name; }, cell: function (f) { return nameCell(fundHref(f), f.name, esc(f.co)); } },
+      { key: "net", label: "Fondens nettoköp (mkr)", cell: function (f) { var v = fundNet(f); return v == null ? "–" : '<span class="' + cls(v) + '">' + mkr(v, true) + "</span>"; }, value: fundNet },
+      { key: "r5", label: "Per år, 5 år", hideSm: true, cell: function (f) { var p = hasPerf && perfOf(f.id); return p ? retText(p[3]) : "–"; }, value: function (f) { var p = hasPerf && perfOf(f.id); return p ? p[3] : null; } },
+      { key: "fee", label: "Avgift", hideSm: true, cell: function (f) { return feeText(f); }, value: function (f) { return f.feeMax; } },
+      { key: "rm", label: "", cell: function (f) { return starBtn("funds", f.id); } }
+    ];
+    return head +
+      (stocks.length ? block("Aktier", int(stocks.length) + (stocks.length === 1 ? " aktie" : " aktier") + ". Fondernas köp och sälj gäller " + quarterLabel(state.q) + ".",
+        table("watch-stocks", stockCols, stocks, { sort: { col: "flow", dir: -1 } })) : "") +
+      (funds.length ? block("Fonder", int(funds.length) + (funds.length === 1 ? " fond" : " fonder") + ". Nettoköp är fondens egna affärer i aktier under " + quarterLabel(state.q) + ".",
+        table("watch-funds", fundCols, funds, { sort: { col: "net", dir: -1 } }), "section-gap") : "") +
+      '<p class="desc section-gap">Tryck på stjärnan för att sluta bevaka. Listan finns bara på den här enheten och i den här webbläsaren.</p>';
+  }
+
+  // Stjärnan i sidhuvudet visar hur många aktier och fonder man bevakar
+  function syncWatchCount(pulse) {
+    var w = watchGet(), n = w.stocks.length + w.funds.length, el = $("watchCount"), btn = $("watchBtn");
+    if (!el || !btn) return;
+    el.hidden = !n;
+    el.textContent = n > 99 ? "99+" : String(n);
+    btn.classList.toggle("has", n > 0);
+    btn.setAttribute("aria-label", n ? "Min bevakning, " + n + " bevakade" : "Min bevakning");
+    if (pulse) { btn.classList.remove("pulse"); void btn.offsetWidth; btn.classList.add("pulse"); }
   }
 
   // ---------- Sektorrotation ----------
@@ -1978,6 +2042,7 @@
     var q = $("searchInput").value.trim().toLowerCase();
     var d = quarterData(), items = [];
     if (!q) {
+      recentSearches().forEach(function (r) { items.push({ kind: "Senaste", was: r.was, label: r.label, sub: r.sub, href: r.href }); });
       var w = watchGet();
       w.stocks.forEach(function (isin) {
         var s = d.se.byIsin[isin] || (d.world && d.world.byIsin[isin]) || worldNames().filter(function (x) { return x.isin === isin; })[0];
@@ -2026,8 +2091,12 @@
     search.sel = 0;
     var html = "", last = "";
     items.forEach(function (it, i) {
-      if (it.kind !== last) { html += '<li class="sr-group" role="presentation">' + it.kind + "</li>"; last = it.kind; }
-      html += '<li role="option" id="sr-' + i + '" class="sr-item" data-sr="' + i + '"' + (i === 0 ? ' aria-selected="true"' : "") + '>' + (/^(Aktier|Fonder|Fondbolag|Bevakade)$/.test(it.kind) ? avatar(it.label, true) : "") + '<span class="sr-label">' + esc(it.label) + "</span>" +
+      if (it.kind !== last) {
+        html += it.kind === "Senaste" ? '<li class="sr-group" role="presentation">Senaste sökningar<button type="button" class="sr-clear" data-clear-recent>Rensa</button></li>'
+          : '<li class="sr-group" role="presentation">' + it.kind + "</li>";
+        last = it.kind;
+      }
+      html += '<li role="option" id="sr-' + i + '" class="sr-item" data-sr="' + i + '"' + (i === 0 ? ' aria-selected="true"' : "") + '>' + (/^(Aktier|Fonder|Fondbolag|Bevakade)$/.test(it.was || it.kind) ? avatar(it.label, true) : "") + '<span class="sr-label">' + esc(it.label) + "</span>" +
         (it.sub ? '<span class="sr-sub">' + esc(it.sub) + "</span>" : "") + "</li>";
     });
     if (!items.length) {
@@ -2047,8 +2116,18 @@
   function pickSel(i) {
     var it = search.items[i == null ? search.sel : i];
     if (!it) return;
+    rememberSearch(it);
     closeSearch();
     location.hash = it.href;
+  }
+
+  // Senaste sökningar: de sex senast valda träffarna sparas i webbläsaren och visas när sökrutan öppnas
+  function recentSearches() { var r = store("ff-recent"); return Array.isArray(r) ? r : []; }
+  function rememberSearch(it) {
+    if (it.kind === "Senaste") it = { kind: it.was, label: it.label, sub: it.sub, href: it.href };
+    var list = recentSearches().filter(function (x) { return x.href !== it.href; });
+    list.unshift({ was: it.kind, label: it.label, sub: it.sub || "", href: it.href });
+    store("ff-recent", list.slice(0, 6));
   }
 
   // ---------- Uppköp ----------
@@ -4236,7 +4315,7 @@
   // Avdelningarna i menyraden och sidorna i varje avdelning (flikarna överst på sidan)
   var SECTIONS = {
     aktier: { label: "Aktier", items: [["aktier", "Alla aktier", "#/aktier"], ["agarandel", "Fondernas ägarandel", "#/agarandel"]] },
-    fonder: { label: "Fonder", items: [["fonder", "Alla fonder", "#/fonder"], ["toppfonder", "Toppfonderna", "#/toppfonder"], ["risk", "Risk och avkastning", "#/risk"], ["backtest", "Följ fonderna?", "#/backtest"], ["fondbolag", "Fondbolag", "#/fondbolag"],
+    fonder: { label: "Fonder", items: [["fonder", "Alla fonder", "#/fonder"], ["toppfonder", "Toppfonderna", "#/toppfonder"], ["risk", "Risk och avkastning", "#/risk"], ["backtest", "Följ fonderna", "#/backtest"], ["fondbolag", "Fondbolag", "#/fondbolag"],
       ["forvaltare", "Kända förvaltare", "#/forvaltare"], ["avgifter", "Avgiftskollen", "#/avgifter"], ["jamfor", "Jämför fonder", "#/jamfor"], ["portfolj", "Min portfölj", "#/portfolj"]] },
     signaler: { label: "Signaler", items: [["signaler", "Samlad signal", "#/signaler"], ["insyn", "Insynshandel", "#/insyn"], ["dubbelsignal", "Dubbelsignal", "#/dubbelsignal"],
       ["blankning", "Blankning", "#/blankning"], ["uppkop", "Uppköp", "#/uppkop"]] },
@@ -4300,6 +4379,7 @@
       case "agarandel": html = viewOwnership(); break;
       case "toppfonder": html = viewTopFunds(); break;
       case "risk": html = viewRisk(); break;
+      case "bevakning": html = viewWatch(); break;
       case "backtest": html = viewBacktest(); break;
       case "metod": html = viewMethod(); break;
       case "signaler": html = viewSignals(); break;
@@ -4354,6 +4434,8 @@
       if (gh) ph.insertAdjacentHTML("afterbegin", '<p class="kicker">' + esc(gh.textContent) + "</p>");
     }
     $("marketSwitch").hidden = !MARKET_PAGES[r.page];
+    syncWatchCount();
+    if (r.page === "bevakning") $("watchBtn").setAttribute("aria-current", "page"); else $("watchBtn").removeAttribute("aria-current");
     // Raden med kvartalets jämförelse och "Utan indexfonder" gäller fondinnehaven och döljs på sidor utan dem
     document.querySelector(".subbar").style.display = NO_SUBBAR[r.page] || app.querySelector("[data-notfound]") ? "none" : "";
     renderSummary();
@@ -4592,6 +4674,7 @@
     var dark = isDark();
     $("themeBtn").setAttribute("aria-label", dark ? "Byt till ljust läge" : "Byt till mörkt läge");
     $("themeBtn").title = dark ? "Ljust läge" : "Mörkt läge";
+    if ($("themeRowLabel")) $("themeRowLabel").textContent = dark ? "Ljust läge" : "Mörkt läge";
   }
   function setTheme(theme) {
     if (theme === "dark") document.documentElement.setAttribute("data-theme", "dark");
@@ -4613,7 +4696,7 @@
   }, true);
 
   document.addEventListener("click", function (e) {
-    if (e.target.closest && e.target.closest("#themeBtn")) { setTheme(isDark() ? "light" : "dark"); return; }
+    if (e.target.closest && e.target.closest("#themeBtn, [data-theme-toggle]")) { setTheme(isDark() ? "light" : "dark"); return; }
     // Hela raden i en tabell går att klicka på och öppnar raden första länk
     var row = e.target.closest && e.target.closest(".table-wrap tbody tr");
     if (row && !e.target.closest("a, button, input, select, label")) {
@@ -4671,6 +4754,7 @@
     if (moreOpen() && !e.target.closest("#moreMenu")) toggleMore(false);
     if (e.target.closest("#searchBtn, #searchBtnT")) { openSearch(); return; }
     if (e.target.closest("[data-search-close]")) { closeSearch(); return; }
+    if (e.target.closest("[data-clear-recent]")) { store("ff-recent", []); runSearch(); $("searchInput").focus(); return; }
     var sr = e.target.closest("[data-sr]");
     if (sr) { pickSel(+sr.getAttribute("data-sr")); return; }
 
@@ -4679,6 +4763,11 @@
     if (wt) {
       var key0 = wt.getAttribute("data-watch"), kind = key0.split(":")[0], wid = key0.slice(kind.length + 1);
       watchToggle(kind, wid);
+      var added = watching(kind, wid);
+      syncWatchCount(added);
+      if (added) toast("Sparad i Min bevakning, stjärnan uppe till höger");
+      // På bevakningssidan ritas listan om, annars byts bara knappen
+      if (route().page === "bevakning") { var sy0 = window.scrollY; render(); window.scrollTo(0, sy0); return; }
       wt.outerHTML = starBtn(kind, wid);
       var again0 = document.querySelector('[data-watch="' + key0 + '"]');
       if (again0) again0.focus();

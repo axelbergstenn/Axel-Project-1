@@ -8,27 +8,32 @@
 /* ---------- Färger och mått ---------- */
 
 :root {
-  --canvas: #f4f5f7;
+  /* Ljust läge: gråblå botten som inte bländar, vita kort med tydlig kant och en indigo accent */
+  --canvas: #eceff5;
   --bg: #ffffff;
-  --bg-subtle: #f8f9fb;
-  --bg-hover: #f2f4f7;
-  --fg: #0c1424;
-  --fg-soft: #2e3a4e;
-  --fg-muted: #627084;
-  --border: #e2e6eb;
-  --border-strong: #cdd4dd;
-  --border-muted: #edf0f3;
-  --brand: #1d5bd6;
-  --brand-ink: #1647ab;
-  --brand-soft: #edf2fd;
-  --brand-border: #b9cdf5;
-  --navy: #0b1f3a;
-  --navy-2: #12294a;
-  --navy-fg: #e6ecf5;
-  --navy-muted: #93a3bb;
-  --logo-ink: #0b1f3a;
-  --logo-dot: #2f6bff;
-  --link: #1647ab;
+  --bg-subtle: #f5f6fa;
+  --bg-hover: #eff1f8;
+  --fg: #0e1424;
+  --fg-soft: #2c3446;
+  --fg-muted: #5d6679;
+  --border: #dfe3ec;
+  --border-strong: #c8cedb;
+  --border-muted: #e9ecf3;
+  --brand: #4f46e5;
+  --brand-ink: #3f37c9;
+  --brand-soft: #eef0ff;
+  --brand-border: #c9cbfa;
+  --navy: #151a36;
+  --navy-2: #1d2348;
+  --navy-fg: #e7e9f6;
+  --navy-muted: #9aa0c3;
+  --logo-ink: #151a36;
+  --logo-dot: #6366f1;
+  --link: #3f37c9;
+  /* Svagt tonade ytor för kort som ska sticka ut, och accentfärger per avdelning */
+  --tint: #f5f6ff;
+  --tint-border: #dcdffb;
+  --acc-aktier: #4f46e5; --acc-fonder: #0d9488; --acc-signaler: #d97706; --acc-sparande: #16a34a; --acc-rantor: #7c3aed; --acc-rapport: #db2777;
   --pos: #0a7a4a;
   --neg: #c2321c;
   --pos-bg: #e9f7ef;
@@ -43,22 +48,22 @@
   --star-bg: #fff8eb;
   --star-fg: #8a3a0a;
   --dot-warn: #f08c00;
-  --dot-active: #2e7bf0;
+  --dot-active: #5b61f0;
   --dot-index: #b0b8c4;
   --zone: rgba(240, 140, 0, 0.09);
-  --seg-bg: #eceff3;
+  --seg-bg: #e4e7f0;
   --seg-active: #ffffff;
-  --chip-bg: #f0f2f5;
-  --sk-a: #e9edf1;
-  --sk-b: #f4f6f8;
-  --tip-bg: rgba(12, 20, 36, 0.86);
+  --chip-bg: #eceef5;
+  --sk-a: #e6e9f1;
+  --sk-b: #f2f4f8;
+  --tip-bg: rgba(21, 26, 54, 0.92);
   --tip-fg: #ffffff;
   --tabbar-bg: rgba(255, 255, 255, 0.94);
   --backdrop: rgba(9, 17, 31, 0.45);
   --radius: 10px;
   --radius-sm: 7px;
-  --shadow-sm: 0 1px 2px rgba(12, 20, 36, 0.04);
-  --shadow: 0 1px 3px rgba(12, 20, 36, 0.06), 0 1px 2px rgba(12, 20, 36, 0.03);
+  --shadow-sm: 0 1px 2px rgba(21, 26, 54, 0.05), 0 1px 1px rgba(21, 26, 54, 0.03);
+  --shadow: 0 2px 6px rgba(21, 26, 54, 0.07), 0 1px 2px rgba(21, 26, 54, 0.04);
   --shadow-lg: 0 18px 48px rgba(12, 20, 36, 0.16), 0 4px 12px rgba(12, 20, 36, 0.06);
   --font: "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 
@@ -72,11 +77,11 @@
   --glass-edge: rgba(255, 255, 255, 0.9);
   --glass-line: rgba(12, 20, 36, 0.07);
   --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85), 0 0 0 1px rgba(12, 20, 36, 0.055), 0 12px 32px -14px rgba(12, 20, 36, 0.2), 0 2px 6px -2px rgba(12, 20, 36, 0.06);
-  --aura-1: rgba(47, 107, 255, 0.08);
-  --aura-2: rgba(27, 175, 122, 0.08);
-  --aura-3: rgba(235, 104, 52, 0.05);
+  --aura-1: rgba(99, 102, 241, 0.12);
+  --aura-2: rgba(13, 148, 136, 0.08);
+  --aura-3: rgba(219, 39, 119, 0.04);
   --tabbar-h: 0px;
-  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --s1: #5b61f0; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
   --cat-bostad: #2a78d6; --cat-stat: #eb6834; --cat-kommun: #1baf7a; --cat-bank: #eda100;
   --cat-fastighet: #e87ba4; --cat-foretag: #4a3aa7; --cat-utland: #98a2b3;
   color-scheme: light;
@@ -95,17 +100,20 @@
   --border: #28282a;
   --border-strong: #38383b;
   --border-muted: #1d1d1f;
-  --brand: #4a83f5;
-  --brand-ink: #9db9f7;
-  --brand-soft: rgba(74, 131, 245, 0.14);
-  --brand-border: rgba(157, 185, 247, 0.32);
+  --brand: #6d72f6;
+  --brand-ink: #a9adfb;
+  --brand-soft: rgba(109, 114, 246, 0.15);
+  --brand-border: rgba(169, 173, 251, 0.32);
   --navy: #080809;
   --navy-2: #121213;
   --navy-fg: #e8e8e9;
   --navy-muted: #8a8a8d;
   --logo-ink: #ececec;
-  --logo-dot: #5a8dff;
-  --link: #9db9f7;
+  --logo-dot: #7c80ff;
+  --link: #a9adfb;
+  --tint: #18181b;
+  --tint-border: #2c2c31;
+  --acc-aktier: #8b8ff9; --acc-fonder: #2dd4bf; --acc-signaler: #fbbf24; --acc-sparande: #4ade80; --acc-rantor: #a78bfa; --acc-rapport: #f472b6;
   --pos: #45c785;
   --neg: #ff6f5e;
   --pos-bg: rgba(69, 199, 133, 0.12);
@@ -135,13 +143,13 @@
   --glass-edge: rgba(255, 255, 255, 0.12);
   --glass-line: rgba(255, 255, 255, 0.07);
   --glass-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 0 0 1px rgba(255, 255, 255, 0.06), 0 16px 36px -14px rgba(0, 0, 0, 0.75);
-  --aura-1: rgba(74, 131, 245, 0.07);
-  --aura-2: rgba(74, 131, 245, 0.06);
+  --aura-1: rgba(109, 114, 246, 0.08);
+  --aura-2: rgba(109, 114, 246, 0.06);
   --aura-3: rgba(255, 255, 255, 0.02);
   --shadow-sm: none;
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.65);
-  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --s1: #7c80ff; --s2: #d95926; --s3: #199e70; --s4: #c98500;
   --cat-bostad: #3987e5; --cat-stat: #d95926; --cat-kommun: #199e70; --cat-bank: #c98500;
   --cat-fastighet: #d55181; --cat-foretag: #9085e9; --cat-utland: #646468;
   color-scheme: dark;
@@ -245,6 +253,24 @@ body.scrolled .topbar { box-shadow: 0 1px 0 var(--border), 0 8px 24px rgba(12, 2
 .theme-btn:hover { background: var(--bg-hover); color: var(--fg); border-color: var(--border-strong); }
 .theme-btn svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.4s var(--ease); }
 .theme-btn:hover svg { transform: rotate(-20deg); }
+/* Stjärnan till Min bevakning, med antalet bevakade */
+.watch-btn { position: relative; text-decoration: none !important; }
+/* På smala mobiler flyttar knappen för mörkt läge in i menyn, så att loggan får plats */
+.theme-row { display: none; }
+@media (max-width: 420px) {
+  #themeBtn { display: none; }
+  .mega.sheet .theme-row { display: flex; font: inherit; font-size: 15px; color: var(--fg); background: none; border: 0; text-align: left; padding: 10px; border-radius: 12px; cursor: pointer; }
+  .mega.sheet .theme-row:hover { background: var(--bg-hover); }
+  .mega.sheet .theme-row b { font-weight: 650; }
+}
+.watch-btn:hover svg { transform: scale(1.1); }
+.watch-btn[aria-current="page"], .watch-btn.has { color: #d97706; }
+:root[data-theme="dark"] .watch-btn[aria-current="page"], :root[data-theme="dark"] .watch-btn.has { color: #fbbf24; }
+.watch-btn.has svg { fill: currentColor; }
+.watch-count { position: absolute; top: -4px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--brand); color: #fff;
+  font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; box-shadow: 0 0 0 2px var(--canvas); }
+.watch-btn.pulse .watch-count { animation: watch-pulse 0.6s var(--spring); }
+@keyframes watch-pulse { 0% { transform: scale(1); } 40% { transform: scale(1.45); } 100% { transform: scale(1); } }
 .theme-btn .i-sun { display: none; }
 :root[data-theme="dark"] .theme-btn .i-sun { display: block; }
 :root[data-theme="dark"] .theme-btn .i-moon { display: none; }
@@ -588,7 +614,8 @@ a.btn { color: var(--fg-soft); }
 .hero-stats dd { order: 1; }
 
 /* Vad Fondinsyn är och hur ofta datan uppdateras */
-.about-card { position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px 36px; align-items: center; padding: 20px 24px; margin-bottom: 14px; border-radius: 18px; background: var(--bg); border: 1px solid var(--border); }
+.about-card { position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px 36px; align-items: center; padding: 20px 24px; margin-bottom: 14px; border-radius: 18px;
+  background: linear-gradient(135deg, var(--tint) 0%, var(--bg) 70%); border: 1px solid var(--tint-border); }
 .ac-text h2 { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
 .ac-text p { font-size: 14px; line-height: 1.6; color: var(--fg-soft); max-width: 62ch; }
 .ac-text a { font-weight: 600; white-space: nowrap; }
@@ -602,7 +629,8 @@ a.btn { color: var(--fg-soft); }
 .ac-close:hover { background: var(--bg-hover); color: var(--fg); }
 
 /* Kvartalsrapporten i liten form överst på startsidan */
-.rep-card { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 18px 32px; flex-wrap: wrap; padding: 20px 24px; border-radius: 20px; background: var(--glass); box-shadow: var(--glass-shadow); }
+.rep-card { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 18px 32px; flex-wrap: wrap; padding: 20px 24px; border-radius: 20px; box-shadow: var(--shadow);
+  background: linear-gradient(115deg, color-mix(in srgb, var(--brand) 10%, var(--bg)) 0%, var(--bg) 52%, color-mix(in srgb, var(--acc-fonder) 8%, var(--bg)) 100%); border: 1px solid var(--tint-border); }
 .rc-main { min-width: 0; flex: 1 1 420px; display: flex; flex-direction: column; gap: 6px; }
 .rc-title { font-size: 21px; font-weight: 700; letter-spacing: -0.015em; line-height: 1.25; color: var(--fg); text-wrap: balance; }
 .rc-title:hover { color: var(--brand-ink); text-decoration: none; }
@@ -663,8 +691,8 @@ a.btn { color: var(--fg-soft); }
 .quick { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
 .ql { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 14px 16px 15px; border-radius: 14px; background: var(--bg); border: 1px solid var(--border); color: var(--fg); transition: border-color 0.2s, background 0.2s; }
 .ql:hover { text-decoration: none; border-color: var(--border-strong); background: var(--bg-subtle); }
-.ql-t { font-size: 13px; font-weight: 600; color: var(--fg-muted); display: flex; justify-content: space-between; align-items: center; }
-.ql-t::after { content: "→"; color: var(--fg-muted); transition: transform 0.2s var(--ease), color 0.2s; }
+.ql-t { font-size: 13px; font-weight: 600; color: var(--fg-muted); display: flex; align-items: center; }
+.ql-t::after { content: "→"; margin-left: auto; color: var(--fg-muted); transition: transform 0.2s var(--ease), color 0.2s; }
 .ql:hover .ql-t::after { transform: translateX(3px); color: var(--fg); }
 .ql-v { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ql-d { font-size: 12.5px; color: var(--fg-muted); line-height: 1.4; }
@@ -680,6 +708,14 @@ a.btn { color: var(--fg-soft); }
 .modules { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 .module { position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 20px 14px; display: flex; flex-direction: column; min-width: 0; box-shadow: var(--shadow-sm); transition: border-color 0.25s, box-shadow 0.35s var(--spring), transform 0.35s var(--spring); }
 .module:hover { border-color: var(--border-strong); }
+
+/* Avdelningarnas accentfärger: en tunn färgad list överst, en prick vid rubriken och en svag ton nedåt */
+[data-acc="aktier"] { --acc: var(--acc-aktier); } [data-acc="fonder"] { --acc: var(--acc-fonder); } [data-acc="signaler"] { --acc: var(--acc-signaler); }
+[data-acc="sparande"] { --acc: var(--acc-sparande); } [data-acc="rantor"] { --acc: var(--acc-rantor); } [data-acc="rapport"] { --acc: var(--acc-rapport); }
+.ql[data-acc], .module[data-acc] { position: relative; overflow: hidden; background: linear-gradient(180deg, color-mix(in srgb, var(--acc) 7%, var(--bg)) 0%, var(--bg) 60%); }
+.ql[data-acc]::before, .module[data-acc]::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--acc); }
+.ql[data-acc] .ql-t::before, .module[data-acc] .module-head h2::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--acc); margin-right: 8px; vertical-align: 1px; }
+.ql[data-acc]:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--acc) 12%, var(--bg)) 0%, var(--bg) 70%); }
 .module-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 .module-head h2 { font-size: 16px; font-weight: 700; }
 .module-head a { font-size: 12.5px; font-weight: 600; white-space: nowrap; }
@@ -916,7 +952,9 @@ kbd { font-family: var(--mono); font-size: 11px; line-height: 18px; padding: 0 6
 .search-input::-webkit-search-cancel-button { display: none; }
 .search-close { font-family: var(--mono); font-size: 11px; color: var(--fg-muted); background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 6px; padding: 3px 7px; cursor: pointer; }
 .search-results { list-style: none; margin: 0; padding: 8px; overflow-y: auto; }
-.sr-group { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-muted); padding: 12px 12px 4px; }
+.sr-group { display: flex; align-items: center; justify-content: space-between; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-muted); padding: 12px 12px 4px; }
+.sr-clear { font: inherit; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--link); background: none; border: 0; padding: 2px 4px; border-radius: 6px; cursor: pointer; }
+.sr-clear:hover { background: var(--bg-hover); }
 .sr-item { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 12px; cursor: pointer; min-width: 0; transition: background 0.15s; }
 .sr-item[aria-selected="true"], .sr-item:hover { background: var(--brand-soft); }
 .sr-label { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1077,9 +1115,12 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .highlights.hl-4 .hl:nth-child(n+3) { border-top: 1px solid var(--border); }
   .mgr-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@media (max-width: 1000px) {
+/* Sökknappen blir en rund ikon när sidhuvudet inte har plats för texten */
+@media (max-width: 1240px) {
   .search-btn { flex: none; width: 38px; padding: 0; justify-content: center; }
   .search-btn-text, .search-btn kbd { display: none; }
+}
+@media (max-width: 1000px) {
   .menu-label { display: none; }
   .menu-btn { width: 38px; padding: 0; justify-content: center; }
   .mega-inner { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 28px; }
