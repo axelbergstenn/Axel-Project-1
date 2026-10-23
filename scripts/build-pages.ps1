@@ -551,10 +551,10 @@ function TextEl($x, $y, $size, $color, $text, $extra) {
 function OgSvg($title, $sub, $stats, $label, $bars, $line) {
   $sb = New-Object System.Text.StringBuilder
   [void]$sb.Append('<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">')
-  [void]$sb.Append('<rect width="1200" height="630" fill="#ffffff"/><rect width="1200" height="8" fill="#6366f1"/>')
+  [void]$sb.Append('<rect width="1200" height="630" fill="#ffffff"/><rect width="1200" height="8" fill="#2f6bff"/>')
   # Loggan: Kvartal-symbolen (fyra delar, senaste kvartalet i blått) och namnet
-  [void]$sb.Append('<g transform="translate(72,50) scale(1.3)"><path d="M17.5 2.08A14 14 0 0 1 29.92 14.5H17.5Z" fill="#6366f1"/><path d="M29.92 17.5A14 14 0 0 1 17.5 29.92V17.5ZM14.5 29.92A14 14 0 0 1 2.08 17.5H14.5ZM2.08 14.5A14 14 0 0 1 14.5 2.08V14.5Z" fill="#151a36"/></g>')
-  [void]$sb.Append((TextEl 128 84 32 "#151a36" "Fondinsyn" ' font-weight="800" letter-spacing="-0.9"'))
+  [void]$sb.Append('<g transform="translate(72,50) scale(1.3)"><path d="M17.5 2.08A14 14 0 0 1 29.92 14.5H17.5Z" fill="#2f6bff"/><path d="M29.92 17.5A14 14 0 0 1 17.5 29.92V17.5ZM14.5 29.92A14 14 0 0 1 2.08 17.5H14.5ZM2.08 14.5A14 14 0 0 1 14.5 2.08V14.5Z" fill="#0b1f3a"/></g>')
+  [void]$sb.Append((TextEl 128 84 32 "#0b1f3a" "Fondinsyn" ' font-weight="800" letter-spacing="-0.9"'))
   $ts = FitSize $title 64 40 1056 0.6
   [void]$sb.Append((TextEl 72 205 $ts "#1f2328" (Clip $title $ts 1056 0.6) ' font-weight="700"'))
   [void]$sb.Append((TextEl 72 255 28 "#59636e" (Clip $sub 28 1056 0.55) ""))
@@ -600,9 +600,9 @@ function ReportOgSvg($kicker, $headline, $netLabel, $net, $items) {
   $sb = New-Object System.Text.StringBuilder
   [void]$sb.Append('<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">')
   [void]$sb.Append('<rect width="1200" height="630" fill="#ffffff"/>')
-  [void]$sb.Append('<g transform="translate(64,46) scale(1.15)"><path d="M17.5 2.08A14 14 0 0 1 29.92 14.5H17.5Z" fill="#6366f1"/><path d="M29.92 17.5A14 14 0 0 1 17.5 29.92V17.5ZM14.5 29.92A14 14 0 0 1 2.08 17.5H14.5ZM2.08 14.5A14 14 0 0 1 14.5 2.08V14.5Z" fill="#151a36"/></g>')
-  [void]$sb.Append((TextEl 112 76 30 "#151a36" "Fondinsyn" ' font-weight="800" letter-spacing="-0.6"'))
-  [void]$sb.Append((TextEl 1136 76 24 "#4f46e5" $kicker ' font-weight="600" text-anchor="end"'))
+  [void]$sb.Append('<g transform="translate(64,46) scale(1.15)"><path d="M17.5 2.08A14 14 0 0 1 29.92 14.5H17.5Z" fill="#2f6bff"/><path d="M29.92 17.5A14 14 0 0 1 17.5 29.92V17.5ZM14.5 29.92A14 14 0 0 1 2.08 17.5H14.5ZM2.08 14.5A14 14 0 0 1 14.5 2.08V14.5Z" fill="#0b1f3a"/></g>')
+  [void]$sb.Append((TextEl 112 76 30 "#0b1f3a" "Fondinsyn" ' font-weight="800" letter-spacing="-0.6"'))
+  [void]$sb.Append((TextEl 1136 76 24 "#1d5bd6" $kicker ' font-weight="600" text-anchor="end"'))
   # Rubriken på högst två rader
   $size = 50; $maxW = 1072; $factor = 0.54
   $words = ([string]$headline).Split(" "); $lines = @("");
@@ -628,7 +628,7 @@ function ReportOgSvg($kicker, $headline, $netLabel, $net, $items) {
     [void]$sb.Append('<rect x="800" y="' + ($y + 12) + '" width="' + [math]::Round($w, 1).ToString($Inv) + '" height="18" rx="5" fill="#1f9d63"/>')
     [void]$sb.Append((TextEl 1136 ($y + 28) 24 "#0a7a4a" (BigSek ([double]$items[$i][1]) -Sign) ' font-weight="700" text-anchor="end"'))
   }
-  [void]$sb.Append('<rect y="606" width="1200" height="24" fill="#151a36"/>')
+  [void]$sb.Append('<rect y="606" width="1200" height="24" fill="#0b1f3a"/>')
   [void]$sb.Append((TextEl 64 623 14 "#c9d3e0" "www.fondinsyn.se · Källa: Finansinspektionens fondinnehav" ""))
   [void]$sb.Append("</svg>")
   return $sb.ToString()

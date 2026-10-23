@@ -629,7 +629,7 @@
     var policy = (f.rates || []).filter(function (r) { return r[0] === "SECBREPOEFF"; })[0];
     var sav = f.savings;
     var tile = function (href, title, value, desc) {
-      return '<a class="ql" data-acc="' + href.replace(/^#\//, "") + '" href="' + href + '"><span class="ql-t">' + title + '</span><span class="ql-v">' + value + '</span><span class="ql-d">' + desc + "</span></a>";
+      return '<a class="ql" href="' + href + '"><span class="ql-t">' + title + '</span><span class="ql-v">' + value + '</span><span class="ql-d">' + desc + "</span></a>";
     };
     return '<nav class="quick section-gap" aria-label="Genvägar">' +
       tile("#/aktier", "Aktier", '<span class="' + cls(net) + '">' + bigSek(net, true) + "</span>", "fondernas nettoköp i " + int(t.held) + " " + marketWord() + " aktier") +
@@ -820,7 +820,7 @@
     var f = state.front;
     if (f === false) return "";
     var mod = function (title, href, linkText, desc, inner) {
-      return '<section class="module" data-acc="' + (/rantor/.test(href) ? "rantor" : "signaler") + '"><div class="module-head"><h2>' + title + '</h2><a href="' + href + '">' + linkText + "</a></div>" +
+      return '<section class="module"><div class="module-head"><h2>' + title + '</h2><a href="' + href + '">' + linkText + "</a></div>" +
         (desc ? '<p class="desc">' + desc + "</p>" : "") + inner + "</section>";
     };
     if (!f) {
