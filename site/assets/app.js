@@ -4667,8 +4667,8 @@
     resizeTimer = setTimeout(function () { drawCharts(); segThumbs(); navIndicator(); }, 150);
   });
 
-  // Ljust eller mörkt läge. Valet sparas i webbläsaren och läses in redan i <head> (index.html),
-  // så att sidan inte hinner visas i fel läge.
+  // Ljust eller mörkt läge. Utan eget val följer sidan systemets inställning. Ett val med knappen sparas i
+  // webbläsaren och läses in redan i <head> (index.html), så att sidan inte hinner visas i fel läge.
   function isDark() { return document.documentElement.getAttribute("data-theme") === "dark"; }
   function syncThemeBtn() {
     var dark = isDark();
@@ -4676,15 +4676,25 @@
     $("themeBtn").title = dark ? "Ljust läge" : "Mörkt läge";
     if ($("themeRowLabel")) $("themeRowLabel").textContent = dark ? "Ljust läge" : "Mörkt läge";
   }
-  function setTheme(theme) {
+  function setTheme(theme, fromSystem) {
     if (theme === "dark") document.documentElement.setAttribute("data-theme", "dark");
     else document.documentElement.removeAttribute("data-theme");
-    try { localStorage.setItem("ff-theme", theme); } catch (e) { /* ingen lagring */ }
+    if (!fromSystem) { try { localStorage.setItem("ff-theme", theme); } catch (e) { /* ingen lagring */ } }
     var meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", theme === "dark" ? "#0a0a0b" : "#ffffff");
     syncThemeBtn();
   }
   syncThemeBtn();
+  // Byter systemet läge (till exempel mörkt på kvällen) följer sidan med, om man inte själv har valt
+  if (window.matchMedia && !/[?&]pdf/.test(location.search)) {
+    var darkMq = window.matchMedia("(prefers-color-scheme: dark)");
+    var onSystemTheme = function (e) {
+      var saved = null;
+      try { saved = localStorage.getItem("ff-theme"); } catch (err) { /* ingen lagring */ }
+      if (!saved) setTheme(e.matches ? "dark" : "light", true);
+    };
+    if (darkMq.addEventListener) darkMq.addEventListener("change", onSystemTheme); else if (darkMq.addListener) darkMq.addListener(onSystemTheme);
+  }
 
   // Förhandsvisningen av inbäddningsrutan laddas först när rutan fälls ut, i samma läge som sidan
   document.addEventListener("toggle", function (e) {

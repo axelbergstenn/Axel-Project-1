@@ -28,7 +28,16 @@
       if (window.fetch) list.forEach(function (u) { pre[u] = fetch(u, { cache: "no-cache" }); });
     })();
   </script>
-  <script>try { if (localStorage.getItem("ff-theme") === "dark") { document.documentElement.setAttribute("data-theme", "dark"); document.querySelector('meta[name="theme-color"]').setAttribute("content", "#0a0a0b"); } } catch (e) {}</script>
+  <script>
+    // Mörkt läge om man själv valt det, annars enligt systemets inställning (inte i PDF-utskriften)
+    try {
+      var ffTheme = localStorage.getItem("ff-theme");
+      if (ffTheme === "dark" || (!ffTheme && !/[?&]pdf/.test(location.search) && window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches)) {
+        document.documentElement.setAttribute("data-theme", "dark");
+        document.querySelector('meta[name="theme-color"]').setAttribute("content", "#0a0a0b");
+      }
+    } catch (e) {}
+  </script>
   <link rel="icon" href="/favicon.ico" sizes="48x48">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="/favicon-96x96.png" type="image/png" sizes="96x96">
