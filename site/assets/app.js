@@ -605,12 +605,12 @@
         '<div class="sk sk-line w70" style="height:22px;margin:4px 0 8px"></div><div class="sk sk-line w40"></div>';
     }
     return '<section class="rep-card"><div class="rc-main">' +
-      '<p class="kicker">Kvartalsrapport ' + quarterLabel(pq) + " · " + (world ? "utländska aktier" : "svenska aktier") + "</p>" + body +
+      '<p class="kicker">Kvartalsrapport ' + quarterLabel(pq) + " · " + (world ? "globala aktier" : "svenska aktier") + "</p>" + body +
       (pq === state.index.quarters[0].id ? '<p class="rc-next">Nästa kvartal, ' + quarterLabel(nextQuarter(pq)) + ", läggs in automatiskt samma morgon som Finansinspektionen publicerar det.</p>" : "") +
       "</div>" +
       '<div class="rc-controls" role="group" aria-label="Välj kvartalsrapport">' +
       '<select class="select-sm" id="repQ" aria-label="Kvartal">' + opts + "</select>" +
-      '<div class="seg" role="group" aria-label="Marknad i rapporten">' + pick("se", "Sverige") + pick("world", "Utland") + "</div>" +
+      '<div class="seg" role="group" aria-label="Marknad i rapporten">' + pick("se", "Sverige") + pick("world", "Globalt") + "</div>" +
       repGoLinks(pq, pm) + "</div></section>";
   }
   // Ritar om bara kortet när kvartal eller marknad väljs (resten av startsidan står kvar)
@@ -663,7 +663,7 @@
 
   // Kvartalets nettoköp som en stor siffra, en mening som sätter den i perspektiv och staplar för tre år
   function heroFigure(net) {
-    var head = '<div class="hero-figure"><div class="hf-label">Fondernas nettoköp <span>' + marketWord() + " aktier, " + quarterLabel(state.q) +
+    var head = '<div class="hero-figure"><div class="hf-label">Fondernas nettoköp <span>' + (state.market === "world" ? "globala" : "svenska") + " aktier, " + quarterLabel(state.q) +
       (state.excludeIndex ? " · utan indexfonder" : "") + "</span></div>" +
       '<div class="hf-value count ' + cls(net) + '">' + bigSek(net, true) + "</div>";
     var part = state.market === "world" ? "world" : "se";
@@ -3618,12 +3618,13 @@
       setTimeout(function () { selectQuarter(q, true); }, 0);
       return loadingBlock();
     }
-    // Rapporten följer marknadsvalet (Sverige/Utland), som också kan bytas direkt i rapporten.
+    // Rapporten följer marknadsvalet (Sverige/Globalt), som också kan bytas direkt i rapporten.
     // Blankning, uppköp och köpsviter finns bara för svenska aktier.
     var world = state.market === "world";
     var d = quarterData(), m = d.meta, ds = marketDs();
-    if (!ds) return failed("world-" + state.q) ? errorBlock() : loadingBlock("Laddar utländska aktier…");
-    var word = marketWord(), Word = world ? "Utländska aktier" : "Svenska aktier";
+    if (!ds) return failed("world-" + state.q) ? errorBlock() : loadingBlock("Laddar globala aktier…");
+    // Rapporten säger "globala aktier" om de utländska
+    var word = world ? "globala" : "svenska", Word = world ? "Globala aktier" : "Svenska aktier";
     var hasHist = needHistory(world ? "world" : "se"), hasOffers = !world && needOffers();
     var cont = ds.stocks.filter(function (s) { return s.price && !s.isNew && !s.isGone; });
     var buys = cont.filter(function (s) { return s.flow > 0; }).sort(function (a, b) { return b.flow - a.flow; });
@@ -3651,7 +3652,7 @@
     var stat = function (value, label) { return '<div><dt>' + label + '</dt><dd class="count">' + value + "</dd></div>"; };
     var head = '<header class="hero rep-hero"><div class="hero-text">' +
       '<div class="crumbs"><a href="/rapport/">Kvartalsrapporter</a> / ' + quarterLabel(state.q) + "</div>" +
-      '<div class="rep-tools"><div class="seg rep-market" role="group" aria-label="Rapport för">' + mbtn("se", "Svenska aktier") + mbtn("world", "Utländska aktier") + "</div>" +
+      '<div class="rep-tools"><div class="seg rep-market" role="group" aria-label="Rapport för">' + mbtn("se", "Svenska aktier") + mbtn("world", "Globala aktier") + "</div>" +
       (hasPdf(state.q, world) ? '<a class="rep-pdf" href="' + pdfHref(state.q, world) + '" target="_blank" rel="noopener">PDF</a>' : "") + "</div>" +
       '<p class="kicker">Kvartalsrapport ' + quarterLabel(state.q) + " · " + Word + "</p>" +
       "<h1>" + esc(headline) + "</h1>" +
