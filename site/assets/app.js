@@ -1387,9 +1387,9 @@
       { key: "co", label: "Fondbolag", align: "l", cls: "muted", hideSm: true, cell: function (f) { return esc(f.co); }, value: function (f) { return f.co; } },
       { key: "fee", label: "Avgift", cell: function (f) { return nf2.format(f.feeMax) + " %"; }, value: function (f) { return f.feeMax; } },
       { key: "ar", label: "Aktiv risk", hideSm: true, cell: function (f) { return pctPlain(f.ar); }, value: function (f) { return f.ar; } },
-      { key: "r5", label: "Per år, 5 år", hideSm: true, cell: function (f) { var p = hasPerf && perfOf(f.id); return p ? retText(p[3]) : "–"; },
+      { key: "r5", label: "Per år, 5 år", hideSm: true, cell: function (f) { var p = hasPerf && perfOf(f.id); return p && p[3] != null ? retText(p[3]) : PERF_MISSING; },
         value: function (f) { var p = hasPerf && perfOf(f.id); return p ? p[3] : null; } },
-      { key: "t5", label: "Totalt, 5 år", hideSm: true, cell: function (f) { var p = hasPerf && perfOf(f.id); return p ? retApprox(total5(p)) : "–"; },
+      { key: "t5", label: "Totalt, 5 år", hideSm: true, cell: function (f) { var p = hasPerf && perfOf(f.id); return p && p[3] != null ? retApprox(total5(p)) : PERF_MISSING; },
         value: function (f) { var p = hasPerf && perfOf(f.id); return p ? total5(p) : null; } },
       { key: "as", label: "Aktiv andel", hideSm: true, cell: function (f) { var p = hasWorld && fundProfile(f.id); return p ? pctShare(p.active) : "…"; },
         value: function (f) { var p = hasWorld && fundProfile(f.id); return p ? p.active : null; } },
@@ -1596,14 +1596,19 @@
     var fundCols = [
       { key: "name", label: "Fond", align: "l", cls: "name", value: function (f) { return f.name; }, cell: function (f) { return nameCell(fundHref(f), f.name, esc(f.co)); } },
       { key: "net", label: "Fondens nettoköp (mkr)", cell: function (f) { var v = fundNet(f); return v == null ? "–" : '<span class="' + cls(v) + '">' + mkr(v, true) + "</span>"; }, value: fundNet },
-      { key: "r5", label: "Per år, 5 år", hideSm: true, cell: function (f) { var p = hasPerf && perfOf(f.id); return p ? retText(p[3]) : "–"; }, value: function (f) { var p = hasPerf && perfOf(f.id); return p ? p[3] : null; } },
+      { key: "r5", label: "Avkastning per år, 5 år", hideSm: true, cell: function (f) { var p = hasPerf && perfOf(f.id); return p && p[3] != null ? retText(p[3]) : PERF_MISSING; },
+        value: function (f) { var p = hasPerf && perfOf(f.id); return p ? p[3] : null; } },
       { key: "fee", label: "Avgift", hideSm: true, cell: function (f) { return feeText(f); }, value: function (f) { return f.feeMax; } },
       { key: "rm", label: "", cell: function (f) { return starBtn("funds", f.id); } }
     ];
+    // Avkastningen finns bara för fonderna på premiepensionens fondtorg. Har ingen av fonderna någon, visas inte kolumnen.
+    var withPerf = funds.filter(function (f) { var p = hasPerf && perfOf(f.id); return p && p[3] != null; }).length;
+    if (hasPerf && !withPerf) fundCols = fundCols.filter(function (c) { return c.key !== "r5"; });
+    var perfNote = hasPerf && withPerf < funds.length ? " Avkastningen kommer från Pensionsmyndigheten och finns bara för fonder på premiepensionens fondtorg." : "";
     return head +
       (stocks.length ? block("Aktier", int(stocks.length) + (stocks.length === 1 ? " aktie" : " aktier") + ". Fondernas köp och sälj gäller " + quarterLabel(state.q) + ".",
         table("watch-stocks", stockCols, stocks, { sort: { col: "flow", dir: -1 } })) : "") +
-      (funds.length ? block("Fonder", int(funds.length) + (funds.length === 1 ? " fond" : " fonder") + ". Nettoköp är fondens egna affärer i aktier under " + quarterLabel(state.q) + ".",
+      (funds.length ? block("Fonder", int(funds.length) + (funds.length === 1 ? " fond" : " fonder") + ". Nettoköp är fondens egna affärer i aktier under " + quarterLabel(state.q) + "." + perfNote,
         table("watch-funds", fundCols, funds, { sort: { col: "net", dir: -1 } }), "section-gap") : "") +
       '<p class="desc section-gap">Tryck på stjärnan för att sluta bevaka. Listan finns bara på den här enheten och i den här webbläsaren.</p>';
   }
@@ -1951,8 +1956,8 @@
       row("Antal aktier", function (f) { return int(f.id === idA ? ov.a.n : ov.b.n); }) +
       row(termLink("aktiv-andel", "Aktiv andel"), function (f) { var p = fundProfile(f.id); return p ? pctShare(p.active) : "–"; }) +
       row(termLink("koncentration", "Tio största"), function (f) { var p = fundProfile(f.id); return p ? pctShare(p.top10) : "–"; }) +
-      row(termLink("avkastning", "Avkastning per år, 5 år"), function (f) { var p = needPerf() && perfOf(f.id); return p ? retText(p[3]) : "–"; }) +
-      row("Total avkastning, 5 år", function (f) { var p = needPerf() && perfOf(f.id); return p ? retApprox(total5(p)) : "–"; }) +
+      row(termLink("avkastning", "Avkastning per år, 5 år"), function (f) { var p = needPerf() && perfOf(f.id); return p && p[3] != null ? retText(p[3]) : PERF_MISSING; }) +
+      row("Total avkastning, 5 år", function (f) { var p = needPerf() && perfOf(f.id); return p && p[3] != null ? retApprox(total5(p)) : PERF_MISSING; }) +
       row("Jämförelseindex", function (f) { return esc(f.bench || "–"); }) +
       "</tbody></table></div>" +
       '<section class="block section-gap"><div class="block-head"><h2>Gemensamma innehav</h2><span class="note">Andel av fondernas aktieinnehav</span></div>' +
@@ -2134,6 +2139,7 @@
 
   // ---------- Avkastning (Pensionsmyndigheten) ----------
 
+  var PERF_MISSING = '<span class="muted" title="Pensionsmyndigheten har bara avkastning för fonder på premiepensionens fondtorg">Saknas</span>';
   function needPerf() {
     return need("perf", function () {
       return getJSON("data/perf.json").then(function (d) { state.perf = d; });
