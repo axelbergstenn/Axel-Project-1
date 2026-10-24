@@ -944,7 +944,8 @@
     if (s ? s.sector : hs.sector) metaParts.push(esc(s ? s.sector : hs.sector));
     if (world) metaParts.push(esc(countryName(s ? s.country : hs.country)));
     metaParts.push(esc(isin));
-    if (s && s.price) metaParts.push("Kurs " + nf1.format(s.price) + " kr (" + esc(d.meta.curr) + ")");
+    // Kursen kommer ur fondernas kvartalsrapporter och gäller kvartalsslutet, inte i dag
+    if (s && s.price) metaParts.push("Kurs vid kvartalsslutet " + dateText(d.meta.curr) + ": " + nf1.format(s.price) + " kr");
     if (s && s.split) metaParts.push("Splitjusterad ×" + nf1.format(s.split));
 
     var html = '<div class="page-head">' + crumbs + '<div class="title-row"><div class="title-main">' + avatar(name) + '<h1>' + esc(name) + '</h1></div><div class="actions">' + starBtn("stocks", isin) + shareBtn("aktie", isin) + '</div></div><p class="meta">' + metaParts.join(" · ") + "</p></div>";

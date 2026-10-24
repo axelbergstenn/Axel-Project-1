@@ -748,7 +748,7 @@ foreach ($s in $pageStocks) {
   if ($holders.Count) { $lead += " Största ägare är " + (JoinSv @($holders | Select-Object -First 3 | ForEach-Object { $_.f.name })) + "." }
 
   $metaParts = @((Esc $s.sector), $s.isin)
-  if ($s.price) { $metaParts += "Kurs " + (Fmt $s.price 1) + " kr (" + $qMeta.curr + ")" }
+  if ($s.price) { $metaParts += "Kurs vid kvartalsslutet " + $asOf + ": " + (Fmt $s.price 1) + " kr" }
   $flowText = if ($null -eq $s.netFlow) { "–" } else { Colored $s.flow (BigSek $s.flow -Sign) }
 
   $holderRows = NewList
