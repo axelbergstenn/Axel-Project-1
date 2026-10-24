@@ -944,8 +944,10 @@
     if (s ? s.sector : hs.sector) metaParts.push(esc(s ? s.sector : hs.sector));
     if (world) metaParts.push(esc(countryName(s ? s.country : hs.country)));
     metaParts.push(esc(isin));
-    // Kursen kommer ur fondernas kvartalsrapporter och gäller kvartalsslutet, inte i dag
+    // Kursen kommer ur fondernas kvartalsrapporter och gäller kvartalsslutet, inte i dag. Dagens kurs finns hos Nasdaq.
     if (s && s.price) metaParts.push("Kurs vid kvartalsslutet " + dateText(d.meta.curr) + ": " + nf1.format(s.price) + " kr");
+    var nq = needShares() && nasdaqUrl(isin);
+    if (nq) metaParts.push('<a href="' + nq + '" target="_blank" rel="noopener">Dagens kurs hos Nasdaq ↗</a>');
     if (s && s.split) metaParts.push("Splitjusterad ×" + nf1.format(s.split));
 
     var html = '<div class="page-head">' + crumbs + '<div class="title-row"><div class="title-main">' + avatar(name) + '<h1>' + esc(name) + '</h1></div><div class="actions">' + starBtn("stocks", isin) + shareBtn("aktie", isin) + '</div></div><p class="meta">' + metaParts.join(" · ") + "</p></div>";
@@ -2486,7 +2488,13 @@
   // Ägarandelen är fondernas antal aktier delat med antalet aktier i aktieslaget, samma antal aktier för båda kvartalen.
 
   function needShares() {
-    return need("shares", function () { return getJSON("data/shares.json").then(function (d) { state.shares = d.shares || {}; state.sharesBuilt = d.built; }); });
+    return need("shares", function () { return getJSON("data/shares.json").then(function (d) { state.shares = d.shares || {}; state.sharesBuilt = d.built; state.nasdaqIds = d.book || {}; }); });
+  }
+  // Länk till aktiens sida hos Nasdaq, där dagens kurs finns (vi visar själva bara kursen vid kvartalsslutet)
+  function nasdaqUrl(isin) {
+    var b = state.nasdaqIds && state.nasdaqIds[isin];
+    if (!b || !b[0] || !b[1]) return null;
+    return "https://www.nasdaq.com/european-market-activity/shares/" + encodeURIComponent(b[1].toLowerCase().replace(/\s+/g, "-")) + "?id=" + encodeURIComponent(b[0]);
   }
   function ownShare(s, prev) {
     var n = state.shares && state.shares[s.isin];
