@@ -2190,7 +2190,12 @@
     });
     if (last < 0) return null;
     var latest = h.quarters.length - 1, offerQ = h.qIndex[o.quarter];
-    if (last >= latest) return { gone: false, label: "Ägs fortfarande av fonder" };
+    // Fonderna ägde aktien i den senaste kvartalsrapporten. Kom budet under eller efter det kvartalet kan bolaget
+    // ha köpts ut senare; det syns först i nästa rapport. Är budet äldre finns bolaget kvar på börsen.
+    if (last >= latest) {
+      if (offerQ == null || offerQ >= latest - 1) return { gone: false, label: "Ägdes av fonder " + dateText(quarterEnd(h.quarters[latest])) };
+      return { gone: false, label: "Kvar på börsen" };
+    }
     if (offerQ != null && last < offerQ) return null;
     return { gone: true, label: "Borta ur fonderna efter " + quarterLabel(h.quarters[last]) };
   }
@@ -2265,7 +2270,10 @@
       '<p class="desc">Antal bolag som fonden ägde vid kvartalsslutet före budet. Indexfonder, blandfonder och fonder med aktiv risk under 1,5 % är borträknade.</p>' +
       table("offer-winners", winCols, winners, { static: true, empty: "Inga fonder." }) + "</section>" +
       '<p class="desc section-gap">Källa: Finansinspektionens prospektregister. Målbolag, pris och premie läses automatiskt ur erbjudandehandlingarna och kan i enstaka fall bli fel. ' +
-      "Bud på First North och andra marknader utan krav på godkänd erbjudandehandling saknas.</p>";
+      "Bud på First North och andra marknader utan krav på godkänd erbjudandehandling saknas.</p>" +
+      '<p class="desc">Status bygger på fondernas senaste kvartalsrapport till Finansinspektionen' + (state.history ? ", " + dateText(quarterEnd(state.history.quarters[state.history.quarters.length - 1])) : "") + ". " +
+      "<b>Kvar på börsen</b> betyder att fonderna fortfarande äger aktien flera kvartal efter budet, alltså att budet inte ledde till att bolaget avnoterades. " +
+      "Ett bolag som köpts ut efter kvartalsslutet syns som borta först i nästa rapport.</p>";
   }
 
   function viewOffer(id) {
