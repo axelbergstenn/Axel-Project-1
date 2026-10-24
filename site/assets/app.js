@@ -2180,6 +2180,10 @@
   }
 
   // Status utifrån historiken: finns aktien kvar i fonderna eller försvann den efter budet?
+  // Budets utfall, härlett ur fondernas innehav:
+  //   done     aktien försvann ur alla fonder efter budet: bolaget köptes ut och avnoterades
+  //   failed   fonderna äger aktien flera kvartal efter budet: bolaget är kvar på börsen
+  //   pending  budet kom under eller efter senaste kvartalsrapporten: utfallet syns i nästa rapport
   function offerStatus(o) {
     var h = state.history;
     if (!h || !o.isins || !o.isins.length) return null;
@@ -2193,11 +2197,23 @@
     // Fonderna ägde aktien i den senaste kvartalsrapporten. Kom budet under eller efter det kvartalet kan bolaget
     // ha köpts ut senare; det syns först i nästa rapport. Är budet äldre finns bolaget kvar på börsen.
     if (last >= latest) {
-      if (offerQ == null || offerQ >= latest - 1) return { gone: false, label: "Ägdes av fonder " + dateText(quarterEnd(h.quarters[latest])) };
-      return { gone: false, label: "Kvar på börsen" };
+      if (offerQ == null || offerQ >= latest - 1) return { key: "pending", label: "Pågår eller oklart", note: "fonder ägde aktien " + dateText(quarterEnd(h.quarters[latest])) };
+      return { key: "failed", label: "Inte genomfört", note: "bolaget är kvar på börsen" };
     }
     if (offerQ != null && last < offerQ) return null;
-    return { gone: true, label: "Borta ur fonderna efter " + quarterLabel(h.quarters[last]) };
+    return { key: "done", label: "Genomfört", note: "borta ur fonderna efter " + quarterLabel(h.quarters[last]) };
+  }
+
+  function outcomeText(s) {
+    return s.key === "done" ? "Aktien försvann ur alla svenska fonder efter budet, vilket betyder att bolaget köptes ut och lämnade börsen. Anslutningsgraden och datum för avnoteringen står i pressmeddelandena."
+      : s.key === "failed" ? "Fonderna äger fortfarande aktien flera kvartal efter budet. Budet ledde alltså inte till att bolaget lämnade börsen: det kan ha dragits tillbaka, fått för få ja eller bara gett budgivaren en del av aktierna."
+      : "Budet kom under eller efter fondernas senaste kvartalsrapport. Utfallet syns här när nästa rapport kommer, och står redan nu i pressmeddelandena.";
+  }
+  function outcomeLabel(s) { return '<span class="label ' + { done: "up", failed: "", pending: "warn" }[s.key] + '">' + s.label + "</span>"; }
+  // Sökning bland pressmeddelanden hos MFN, där budgivare och bolag publicerar utfallet och avnoteringen
+  function offerNewsUrl(o) {
+    var name = String(o.name || o.target || "").replace(/\s*\(publ\)\s*/i, " ").replace(/\s+(AB|Aktiebolag)\s*$/i, "").trim();
+    return "https://mfn.se/all/s/nordic?query=" + encodeURIComponent(name);
   }
 
   function offerPriceText(o) {
@@ -2248,7 +2264,8 @@
       { key: "price", label: "Pris", hideSm: true, cell: offerPriceText, value: function (o) { return o.price; } },
       { key: "premium", label: "Premie", cell: function (o) { return o.premium == null ? "–" : '<span class="pos">' + nf1.format(o.premium) + " %</span>"; }, value: function (o) { return o.premium; } },
       { key: "held", label: "Fonder ägde", hideSm: true, cell: function (o) { return o.holders.length ? int(o.holders.length) + " · " + bigSek(o.held) : "–"; }, value: function (o) { return o.held; } },
-      { key: "status", label: "Status", align: "l", hideSm: true, cell: function (o) { var s = offerStatus(o); return s ? '<span class="label' + (s.gone ? " out" : "") + '">' + s.label + "</span>" : "–"; } },
+      { key: "status", label: "Utfall", align: "l", hideSm: true, cell: function (o) { var s = offerStatus(o); return s ? outcomeLabel(s) + '<span class="sub">' + s.note + "</span>" : "–"; },
+        value: function (o) { var s = offerStatus(o); return s ? s.label : ""; } },
       { key: "more", label: "", cell: function (o) { return '<a href="#/uppkop/' + encodeURIComponent(o.id) + '">Detaljer</a>'; } }
     ];
     var winCols = [
@@ -2271,9 +2288,10 @@
       table("offer-winners", winCols, winners, { static: true, empty: "Inga fonder." }) + "</section>" +
       '<p class="desc section-gap">Källa: Finansinspektionens prospektregister. Målbolag, pris och premie läses automatiskt ur erbjudandehandlingarna och kan i enstaka fall bli fel. ' +
       "Bud på First North och andra marknader utan krav på godkänd erbjudandehandling saknas.</p>" +
-      '<p class="desc">Status bygger på fondernas senaste kvartalsrapport till Finansinspektionen' + (state.history ? ", " + dateText(quarterEnd(state.history.quarters[state.history.quarters.length - 1])) : "") + ". " +
-      "<b>Kvar på börsen</b> betyder att fonderna fortfarande äger aktien flera kvartal efter budet, alltså att budet inte ledde till att bolaget avnoterades. " +
-      "Ett bolag som köpts ut efter kvartalsslutet syns som borta först i nästa rapport.</p>";
+      '<p class="desc"><b>Utfallet</b> läses ur fondernas kvartalsrapporter till Finansinspektionen, senast' + (state.history ? " " + dateText(quarterEnd(state.history.quarters[state.history.quarters.length - 1])) : "") + ". " +
+      "<b>Genomfört</b>: aktien försvann ur alla fonder efter budet, bolaget köptes ut. <b>Inte genomfört</b>: fonderna äger aktien flera kvartal senare, bolaget är kvar på börsen. " +
+      "<b>Pågår eller oklart</b>: budet kom under eller efter senaste rapporten. I sällsynta fall kan ett litet bolag försvinna ur fonderna utan att ha köpts ut. " +
+      "Exakt anslutningsgrad står i pressmeddelandena, som det finns en länk till på varje bud.</p>";
   }
 
   function viewOffer(id) {
@@ -2292,9 +2310,11 @@
       '<dl class="figures">' + (o.price != null || o.type === "Aktiebud" ? fig("Pris per aktie", offerPriceText(o)) : "") +
       (o.premium != null ? fig("Premie", nf1.format(o.premium) + " %", "mot stängningskursen före budet") : "") +
       fig("Fonder som ägde", int(o.holders.length), quarterLabel(o.quarter)) + (o.holders.length ? fig("Fondernas innehav", bigSek(o.held)) : "") +
-      (st ? fig("Status", st.label) : "") + "</dl>" +
+      (st ? fig("Utfall", outcomeLabel(st), st.note) : "") + "</dl>" +
       '<p class="actions-row">' + (o.isins && o.isins.length ? '<a class="btn" href="#/aktie/' + o.isins[0] + '">Aktiens sida och historik</a> ' : "") +
-      '<a class="btn" href="' + offerUrl(o) + '" target="_blank" rel="noopener">Erbjudandehandlingen hos FI ↗</a></p>' +
+      '<a class="btn" href="' + offerUrl(o) + '" target="_blank" rel="noopener">Erbjudandehandlingen hos FI ↗</a> ' +
+      '<a class="btn" href="' + offerNewsUrl(o) + '" target="_blank" rel="noopener">Pressmeddelanden om budet ↗</a></p>' +
+      (st ? '<p class="desc">' + outcomeText(st) + "</p>" : "") +
       '<section class="block section-gap"><div class="block-head"><h2>Fonder som ägde bolaget</h2><span class="note">Vid kvartalsslutet före budet, ' + quarterLabel(o.quarter) + "</span></div>" +
       table("offer-holders-" + o.id, cols, o.holders, { sort: { col: "v", dir: -1 }, empty: "Inga svenska fonder ägde bolaget." }) + "</section>";
   }
