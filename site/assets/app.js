@@ -4322,16 +4322,18 @@
 
   // Avdelningarna i menyraden och sidorna i varje avdelning (flikarna överst på sidan)
   var SECTIONS = {
-    aktier: { label: "Aktier", items: [["aktier", "Alla aktier", "#/aktier"], ["agarandel", "Fondernas ägarandel", "#/agarandel"]] },
-    fonder: { label: "Fonder", items: [["fonder", "Alla fonder", "#/fonder"], ["risk", "Risk och avkastning", "#/risk"], ["backtest", "Följ fonderna", "#/backtest"], ["fondbolag", "Fondbolag", "#/fondbolag"],
-      ["forvaltare", "Kända förvaltare", "#/forvaltare"], ["avgifter", "Avgiftskollen", "#/avgifter"], ["jamfor", "Jämför fonder", "#/jamfor"], ["portfolj", "Min portfölj", "#/portfolj"]] },
+    aktier: { label: "Aktier och marknad", items: [["aktier", "Alla aktier", "#/aktier"], ["agarandel", "Fondernas ägarandel", "#/agarandel"], ["sparande", "Fondsparandet", "#/sparande"],
+      ["rantor", "Räntor", "#/rantor"]] },
+    fonder: { label: "Fonder", items: [["fonder", "Alla fonder", "#/fonder"], ["risk", "Risk och avkastning", "#/risk"], ["avgifter", "Avgiftskollen", "#/avgifter"],
+      ["jamfor", "Jämför fonder", "#/jamfor"], ["fondbolag", "Fondbolag", "#/fondbolag"], ["forvaltare", "Kända förvaltare", "#/forvaltare"], ["backtest", "Följ fonderna", "#/backtest"]] },
     signaler: { label: "Signaler", items: [["signaler", "Samlad signal", "#/signaler"], ["insyn", "Insynshandel", "#/insyn"], ["dubbelsignal", "Dubbelsignal", "#/dubbelsignal"],
       ["blankning", "Blankning", "#/blankning"], ["uppkop", "Uppköp", "#/uppkop"]] },
     om: { label: "Om Fondinsyn", items: [["om", "Om datan", "#/om"], ["metod", "Metodrapport", "#/metod"], ["ordlista", "Ordlista", "#/ordlista"], ["kontakt", "Kontakt", "#/kontakt"]] }
   };
-  var PAGE_SECTION = { aktie: "aktier", agarandel: "aktier", fond: "fonder", risk: "fonder", fondbolag: "fonder", forvaltare: "fonder", avgifter: "fonder",
-    jamfor: "fonder", portfolj: "fonder", insyn: "signaler", dubbelsignal: "signaler", blankning: "signaler", blankare: "signaler", uppkop: "signaler",
-    emittent: "rantor", ordlista: "om", kontakt: "om", backtest: "fonder", metod: "om" };
+  // Sidor som hör till en avdelning i menyraden (Sparande och Räntor ligger under Aktier och marknad)
+  var PAGE_SECTION = { aktie: "aktier", agarandel: "aktier", sparande: "aktier", rantor: "aktier", emittent: "aktier", fond: "fonder", risk: "fonder", fondbolag: "fonder",
+    forvaltare: "fonder", avgifter: "fonder", jamfor: "fonder", backtest: "fonder", insyn: "signaler", dubbelsignal: "signaler", blankning: "signaler",
+    blankare: "signaler", uppkop: "signaler", ordlista: "om", kontakt: "om", metod: "om" };
 
   // Kvartalsrapporten har egna flikar för marknaden
   var MARKET_PAGES = { oversikt: 1, aktier: 1, fonder: 1, fondbolag: 1 };
