@@ -300,7 +300,7 @@ function FundUrl($id) { $fi = $infoById[$id]; if ($fi) { return "/fond/$($fi.slu
 function CoUrl($co) { if ($companies.ContainsKey($co)) { return "/fondbolag/$($companies[$co].slug)/" }; return "/#/fondbolag/" + [uri]::EscapeDataString($co) }
 
 # Gamla sidor tas bort så att aktier och fonder som försvunnit inte ligger kvar
-foreach ($dir in @("aktie", "fond", "fondbolag", "aktier", "fonder", "ordlista", "rapport", "og", "data/fund", "data/hist", "data/csv", "oppen-data", "data/insyn", "data/rf", "data/re", "rantor", "emittent", "integritet", "dubbelsignal", "sparande", "signaler", "agarandel", "toppfonder", "backtest", "metod", "rss", "data/dataset")) {
+foreach ($dir in @("aktie", "fond", "fondbolag", "aktier", "fonder", "ordlista", "rapport", "og", "data/fund", "data/hist", "data/csv", "oppen-data", "data/insyn", "data/rf", "data/re", "rantor", "emittent", "integritet", "dubbelsignal", "sparande", "signaler", "agarandel", "toppfonder", "backtest", "metod", "rss", "data/dataset", "insyn", "blankning", "uppkop", "avgifter", "risk")) {
   $p = Join-Path $Site $dir
   if (Test-Path $p) { Remove-Item $p -Recurse -Force }
 }
@@ -694,6 +694,11 @@ function PreList($route) {
     '^rapport/(\d{4}Q\d)/utland$' { @("data/history-world.json", "data/reports-pdf.json", "data/$($Matches[1])-world.json") + @($(if ($Matches[1] -ne $Q) { "data/$($Matches[1]).json" })) }
     '^(rantor|emittent)' { @("data/$Q-rates.json", "data/rates-market.json") }
     '^sparande' { @("data/flows.json") }
+    '^insyn$' { @("data/insider.json", "data/insider-year.json") }
+    '^blankning$' { @("data/shorts.json") }
+    '^uppkop$' { @("data/offers.json", "data/history-se.json") }
+    '^avgifter$' { @("data/profiles.json", "data/perf.json") }
+    '^risk$' { @("data/perf.json") }
     default { @() }
   }
   return ((@($files | Where-Object { $_ }) | ForEach-Object { ", " + (J $_) }) -join "")
@@ -1391,7 +1396,7 @@ foreach ($x in @(@($fileStocks, "Aktier: fondägare, innehav och nettoköp"), @(
 }
 $apiRows = NewList
 foreach ($x in @(@("data/index.json", "Vilka kvartal som finns"), @("data/$Q.json", "Svenska aktier, fondernas innehav och nyckeltal för alla fonder"),
-    @("data/$Q-world.json", "Utländska aktier och innehav"), @("data/history-se.json", "Ägande och nettoköp per svensk aktie sedan 2018"),
+    @("data/$Q-world.json", "Globala aktier och innehav"), @("data/history-se.json", "Ägande och nettoköp per svensk aktie sedan 2018"),
     @("data/profiles.json", "Aktiv andel, tio största och antal aktier per fond"), @("data/shorts.json", "Blankning per bolag och innehavare"),
     @("data/insider.json", "Insynshandel i aktier, senaste 90 dagarna"), @("data/offers.json", "Uppköpserbjudanden och budpremier"), @("data/perf.json", "Avkastning per fond"),
     @("data/$Q-rates.json", "Räntepapper: emittenter, kategorier, löptider och nyckeltal per fond"), @("data/rates-market.json", "Marknadsräntor från Riksbanken, en notering per vecka"))) {
@@ -1581,6 +1586,128 @@ $odContent = '<div class="page-head"><h1>Data och API</h1></div>' +
     '<p>Kvartalets mest köpta eller sålda aktier: byt adressen mot <code>embed.html?lista=kopta</code> eller <code>?lista=salda</code> och höjden mot 300. ' +
     'Rutan följer besökarens ljusa eller mörka läge, eller lägg till <code>&amp;tema=ljust</code> eller <code>&amp;tema=morkt</code>.</p>') "section-gap") +
   (Block "Villkor" "<p>Uppgifterna kommer från myndigheternas öppna register och får användas fritt. Fondinsyns uträkningar får också användas om du anger källan (CC BY 4.0). Inget här är investeringsrådgivning.</p>" "section-gap")
+# ---------- Sidor för sökmotorer: /insyn/, /blankning/, /uppkop/, /avgifter/ och /risk/ ----------
+# Appen ritar sidorna som vanligt (data-route). Här skrivs innehållet ut som HTML så att Google och Bing kan
+# läsa och indexera det; adresser med # indexeras inte.
+function IssuerLink($isin, $name) { if ($slugOf.ContainsKey([string]$isin)) { return A "/aktie/$($slugOf[[string]$isin])/" ([string]$name) }; return Esc ([string]$name) }
+function Plain($s) { return (([string]$s) -replace '\s+', ' ').Trim() }
+
+# Insynshandel: största köpen och försäljningarna de senaste dagarna
+if ($insider) {
+  $insTrades = @($insider.rows | Where-Object { $null -ne $_[11] -and ($_[7] -eq "Förvärv" -or $_[7] -eq "Avyttring") })
+  $insBuyList = @($insTrades | Where-Object { $_[7] -eq "Förvärv" })
+  $insSellList = @($insTrades | Where-Object { $_[7] -eq "Avyttring" })
+  $insBuySum = 0.0; foreach ($r in $insBuyList) { $insBuySum += [double]$r[11] }
+  $insSellSum = 0.0; foreach ($r in $insSellList) { $insSellSum += [double]$r[11] }
+  $insTable = {
+    param($list)
+    $t = NewList
+    foreach ($r in @($list | Sort-Object { -[double]$_[11] } | Select-Object -First 20)) {
+      $t.Add(@((IssuerLink $r[3] $r[2]), (Esc (Plain $r[4])), (BigSek ([double]$r[11])), (Esc ([string]$r[0])), (Esc (Plain $r[5]))))
+    }
+    , $t
+  }
+  $content = '<div class="page-head"><h1>Insynshandel</h1><p class="meta lead">Köp och sälj som vd:ar, styrelseledamöter och andra i ledande ställning har gjort i sina egna bolag ' +
+    "de senaste $($insider.days) dagarna, enligt Finansinspektionens insynsregister. Uppdateras varje morgon.</p></div>" +
+    '<dl class="figures">' + (Fig "Insiderköp" (BigSek $insBuySum)) + (Fig "Insidersälj" (BigSek $insSellSum)) + (Fig "Köpaffärer" (Num0 $insBuyList.Count)) + (Fig "Säljaffärer" (Num0 $insSellList.Count)) + "</dl>" +
+    (Block "Största köpen" (Table @("Bolag", "Person", "Värde", "Affärsdag", "Befattning") (& $insTable $insBuyList)) "section-gap") +
+    (Block "Största försäljningarna" (Table @("Bolag", "Person", "Värde", "Affärsdag", "Befattning") (& $insTable $insSellList)) "section-gap") +
+    '<p class="desc section-gap">Insiders kan sälja av många skäl, till exempel skatt, lån eller en bostad. Ett köp med egna pengar säger ofta mer. ' + (A "/rss/insyn.xml" "Följ insynshandeln via RSS") + ".</p>"
+  Page "insyn/" "insyn" "Insynshandel – insiders köp och sälj i svenska bolag | Fondinsyn" `
+    "Vd:ar, styrelseledamöter och andra insiders köp och sälj i sina egna bolag de senaste $($insider.days) dagarna, från Finansinspektionens insynsregister. Uppdateras varje morgon." `
+    $defaultImg $content -Crumbs @("Insynshandel", "insyn/")
+}
+
+# Blankning: mest blankade aktier och de största blankarna
+try { $shortsSeo = ReadJson "shorts.json" } catch { $shortsSeo = $null }
+if ($shortsSeo -and $shortsSeo.aggregate) {
+  $shTopRows = NewList
+  foreach ($a in @($shortsSeo.aggregate | Sort-Object { -[double]$_[2] } | Select-Object -First 25)) {
+    $ch = if ($null -ne $a[4]) { [double]$a[4] } else { 0.0 }
+    $shTopRows.Add(@((IssuerLink $a[1] $a[0]), ((Fmt ([double]$a[2]) 2) + " %"), $(if ([math]::Abs($ch) -lt 0.005) { "oförändrat" } else { Colored (-$ch) ((Fmt $ch 2) + " p.e.") }), (Esc ([string]$a[3]))))
+  }
+  $byHolder = @{}
+  foreach ($c in $shortsSeo.current) { $hk = [string]$c[0]; if (-not $byHolder.ContainsKey($hk)) { $byHolder[$hk] = NewList }; $byHolder[$hk].Add($c) }
+  $holderRows = NewList
+  foreach ($hk in @($byHolder.Keys | Sort-Object { -$byHolder[$_].Count } | Select-Object -First 15)) {
+    $holderRows.Add(@((A ("/#/blankare/" + [uri]::EscapeDataString($hk.ToLowerInvariant())) $hk), (Num0 $byHolder[$hk].Count)))
+  }
+  $content = '<div class="page-head"><h1>Blankning</h1><p class="meta lead">Vilka aktier på Stockholmsbörsen och First North som blankas mest, och vem som blankar. ' +
+    "Från Finansinspektionens blankningsregister, där positioner från 0,5 % av aktierna redovisas. Uppdateras varje morgon.</p></div>" +
+    (Block "Mest blankade aktier" (Table @("Bolag", "Blankat", "Förändring 30 dagar", "Senast ändrad") $shTopRows) "section-gap") +
+    (Block "Största blankarna" (Table @("Blankare", "Antal aktier") $holderRows) "section-gap") +
+    '<p class="desc section-gap">Blankning betyder att någon har lånat aktier och sålt dem för att köpa tillbaka billigare. Hög blankning visar att många tror på en nedgång, men kan också vara del av en annan affär. ' +
+    (A "/ordlista/blankning/" "Vad är blankning?") + "</p>"
+  Page "blankning/" "blankning" "Blankning – mest blankade aktier på Stockholmsbörsen | Fondinsyn" `
+    "De mest blankade aktierna på Stockholmsbörsen och First North och de största blankarna, från Finansinspektionens blankningsregister. Uppdateras varje morgon." `
+    $defaultImg $content -Crumbs @("Blankning", "blankning/")
+}
+
+# Uppköp: de senaste budet på börsbolag
+try { $offersSeo = ReadJson "offers.json" } catch { $offersSeo = $null }
+if ($offersSeo -and $offersSeo.offers) {
+  $offerRows = NewList
+  foreach ($o in @($offersSeo.offers | Sort-Object { [string]$_.date } -Descending | Select-Object -First 30)) {
+    $tgt = if ($o.target) { [string]$o.target } else { "Okänt målbolag" }
+    $name = if ($o.isins -and @($o.isins).Count) { IssuerLink @($o.isins)[0] $tgt } else { Esc $tgt }
+    $price = if ($null -ne $o.price) { (Fmt ([double]$o.price) 2) + " " + $(if ($o.currency -eq "SEK") { "kr" } else { [string]$o.currency }) } elseif ($o.type -eq "Aktiebud") { "Aktier" } else { "–" }
+    $prem = if ($null -ne $o.premium) { (Fmt ([double]$o.premium) 1) + " %" } else { "–" }
+    $offerRows.Add(@($name, (Esc ([string]$o.date)), $price, $prem, (Esc ([string]$o.bidder))))
+  }
+  $content = '<div class="page-head"><h1>Uppköp</h1><p class="meta lead">Offentliga uppköpserbjudanden på svenska börsbolag som godkänts av Finansinspektionen, ' +
+    "med pris, budpremie och vilka svenska fonder som ägde bolagen när budet kom.</p></div>" +
+    (Block "Senaste buden" (Table @("Bolag", "Datum", "Pris per aktie", "Premie", "Budgivare") $offerRows) "section-gap") +
+    '<p class="desc section-gap">Källa: Finansinspektionens prospektregister. Premien är mot stängningskursen dagen före budet.</p>'
+  Page "uppkop/" "uppkop" "Uppköp – bud på svenska börsbolag | Fondinsyn" `
+    "Uppköpserbjudanden på svenska börsbolag med pris, budpremie och vilka fonder som ägde bolagen när budet kom. Från Finansinspektionens prospektregister." `
+    $defaultImg $content -Crumbs @("Uppköp", "uppkop/")
+}
+
+# Avgiftskollen: indexnära aktiefonder med hög avgift (samma regler som viewFees i app.js)
+$closet = @($infos | Where-Object { $_.aum -ge 100e6 -and (Category $_) -eq "closet" } | Sort-Object { -($_.aum * $_.feeMax) })
+if ($closet.Count) {
+  $closetAum = 0.0; $closetCost = 0.0
+  foreach ($fi in $closet) { $closetAum += $fi.aum; $closetCost += $fi.aum * $fi.feeMax / 100 }
+  $feeRows = NewList
+  foreach ($fi in @($closet | Select-Object -First 30)) {
+    $feeRows.Add(@((A (FundUrl $fi.id) $fi.name), ((Fmt $fi.feeMax 2) + " %"), ((Fmt $fi.ar 1) + " %"), (Esc $fi.co), (BigSek $fi.aum)))
+  }
+  $content = '<div class="page-head"><h1>Avgiftskollen</h1><p class="meta lead">Aktivt förvaltade aktiefonder som i praktiken följer sitt jämförelseindex, ' +
+    "men tar betalt som aktiva fonder. Aktiv risk under $CLOSET_AR % och avgift från $(Fmt $CLOSET_FEE 1) %.</p></div>" +
+    '<dl class="figures">' + (Fig "Indexnära med hög avgift" "$($closet.Count) fonder") + (Fig "Sparat kapital i dem" (BigSek $closetAum)) + (Fig "Avgifter per år" (BigSek $closetCost)) + "</dl>" +
+    (Block "Indexnära fonder med hög avgift" (Table @("Fond", "Avgift", "Aktiv risk", "Fondbolag", "Förmögenhet") $feeRows) "section-gap") +
+    '<p class="desc section-gap">Aktiv risk mäter hur mycket fondens avkastning har avvikit från jämförelseindex de senaste 24 månaderna. Siffrorna rapporteras av fondbolagen till Finansinspektionen.</p>'
+  Page "avgifter/" "avgifter" "Avgiftskollen – indexnära fonder med hög avgift | Fondinsyn" `
+    "$($closet.Count) svenska aktiefonder följer sitt index nästan som en indexfond men tar betalt som aktiva fonder. Se vilka, vad de kostar och hur mycket sparare betalar per år." `
+    $defaultImg $content -Crumbs @("Avgiftskollen", "avgifter/")
+}
+
+# Risk och avkastning: aktiefonder med femårshistorik hos Pensionsmyndigheten
+if ($perf -and $perf.funds) {
+  $riskList = NewList
+  foreach ($pr in $perf.funds.PSObject.Properties) {
+    $fi = $infoById[$pr.Name]; $p = $pr.Value
+    if (-not $fi -or $null -eq $fi.sd -or $fi.sd -le 0 -or $null -eq $p[3]) { continue }
+    $cat = Category $fi
+    if ($cat -ne "index" -and $cat -ne "active" -and $cat -ne "closet") { continue }
+    $riskList.Add([pscustomobject]@{ fi = $fi; y = [double]$p[3]; x = [double]$fi.sd })
+  }
+  if ($riskList.Count) {
+    $riskRows = NewList
+    foreach ($rr in @($riskList | Sort-Object { -($_.y / $_.x) } | Select-Object -First 30)) {
+      $riskRows.Add(@((A (FundUrl $rr.fi.id) $rr.fi.name), (Colored $rr.y ((Fmt $rr.y 0) + " %")), ((Fmt $rr.x 1) + " %"), $(if ($null -ne $rr.fi.feeMax) { (Fmt $rr.fi.feeMax 2) + " %" } else { "–" }), (Esc $rr.fi.co)))
+    }
+    $content = '<div class="page-head"><h1>Risk och avkastning</h1><p class="meta lead">' + $riskList.Count + ' svenska aktiefonder med fem års historik: hur mycket fondens värde svänger, ' +
+      "och vad den har gett per år. Sorterat på avkastning per risk, högst först.</p></div>" +
+      (Block "Mest avkastning för risken" (Table @("Fond", "Per år, 5 år", "Risk", "Avgift", "Fondbolag") $riskRows) "section-gap") +
+      '<p class="desc section-gap">Avkastningen är Pensionsmyndighetens genomsnitt per år efter avgifter, risken är standardavvikelsen de senaste 24 månaderna enligt Finansinspektionen. Historisk avkastning är ingen garanti för framtida avkastning.</p>'
+    Page "risk/" "risk" "Risk och avkastning – svenska aktiefonder jämförda | Fondinsyn" `
+      "$($riskList.Count) svenska aktiefonder jämförda: avkastning per år de senaste fem åren mot risken. Se vilka fonder som gett mest för svängningarna." `
+      $defaultImg $content -Crumbs @("Risk och avkastning", "risk/")
+  }
+}
+Write-Host "  sidor för sökmotorer: insyn, blankning, uppköp, avgiftskollen, risk"
+
 # ---------- Dubbelsignal: /dubbelsignal/ (samma regler som viewDouble i app.js) ----------
 if ($insider) {
   $insBy = @{}
@@ -1655,17 +1782,12 @@ Page "signaler/" "signaler" "Samlad signal – fonder, insiders och blankning ih
   "Svenska aktier där fonderna köper, insiders köper och blankningen minskar, eller tvärtom. Tre signaler vägda ihop till ett tal per aktie." `
   $defaultImg $content -Crumbs @("Samlad signal", "signaler/")
 
-# ---------- Fondernas ägarandel och Toppfonderna (listorna räknas i appen) ----------
+# ---------- Fondernas ägarandel (listan räknas i appen) ----------
 $content = '<div class="page-head"><h1>Fondernas ägarandel</h1><p class="meta lead">Hur stor del av bolagen på Stockholmsbörsen och First North som svenska fonder äger tillsammans, ' +
   'och var fonderna ökade och minskade sin andel under ' + $QL + '.</p></div><p class="desc">' + (A "/#/agarandel" "Se listan med alla bolag") + '</p>'
 Page "agarandel/" "agarandel" "Fondernas ägarandel – hur mycket fonderna äger av bolagen | Fondinsyn" `
   "Hur stor andel av svenska börsbolag som ägs av svenska fonder, vilka bolag fonderna äger mest av och var de ökade och minskade sin andel $QL." `
   $defaultImg $content -Crumbs @("Fondernas ägarandel", "agarandel/")
-$content = '<div class="page-head"><h1>Toppfonderna</h1><p class="meta lead">De aktivt förvaltade fonderna med bäst avkastning de senaste fem åren, och vilka aktier de köpte och sålde under ' + $QL + '.</p></div>' +
-  '<p class="desc">' + (A "/#/toppfonder" "Se fonderna och deras affärer") + '</p>'
-Page "toppfonder/" "toppfonder" "Toppfonderna – vad fonderna med bäst avkastning köper | Fondinsyn" `
-  "Vilka aktier de svenska fonderna med bäst avkastning de senaste fem åren köpte och sålde under $QL." `
-  $defaultImg $content -Crumbs @("Toppfonderna", "toppfonder/")
 
 # ---------- Backtest och metodrapport (räknas i appen, här står en sammanfattning för sökmotorer) ----------
 $content = '<div class="page-head"><h1>Lönar det sig att följa fonderna?</h1><p class="meta lead">Ett backtest på historisk data sedan 2019: går de svenska aktier som fonderna köper mest bättre än de som de säljer? ' +

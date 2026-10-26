@@ -173,6 +173,11 @@ jobs:
         continue-on-error: true
         run: bash scripts/build-pdf.sh site
 
+      # Röktest: Chrome öppnar sajtens viktigaste sidor. Ritas en sida inte, eller får sajtens skript ett fel,
+      # stoppas publiceringen och gårdagens version ligger kvar.
+      - name: Röktest av sajten
+        run: bash scripts/smoke-test.sh site
+
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

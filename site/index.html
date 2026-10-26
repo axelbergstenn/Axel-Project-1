@@ -19,6 +19,13 @@
   <meta name="theme-color" content="#ffffff">
   <meta name="color-scheme" content="light dark">
   <script>
+    // Fel i sajtens egna skript märks på <html> (data-js-error). Röktestet i scripts/smoke-test.sh läser märket.
+    window.addEventListener("error", function (e) {
+      if (!e.message || /^ResizeObserver/.test(e.message) || (e.filename && e.filename.indexOf(location.host) < 0)) return;
+      document.documentElement.setAttribute("data-js-error", e.message + " (" + String(e.filename || "").split("/").pop() + ":" + e.lineno + ")");
+    });
+  </script>
+  <script>
     // Datan hämtas direkt, samtidigt som skripten laddas, i stället för efter dem. app.js tar svaren ur window.__pre.
     // scripts/build-pages.ps1 fyller i senaste kvartalet och sidans egna filer (__LATEST__ och PRE).
     (function () {
@@ -101,7 +108,7 @@
         <span class="filter-label" aria-hidden="true">Visa</span>
         <div class="seg" id="marketSwitch" role="group" aria-label="Marknad">
           <button type="button" class="seg-btn" data-market="se" aria-pressed="true">Svenska aktier</button>
-          <button type="button" class="seg-btn" data-market="world" aria-pressed="false">Utländska aktier</button>
+          <button type="button" class="seg-btn" data-market="world" aria-pressed="false">Globala aktier</button>
         </div>
         <label class="switch" title="Indexfonder följer ett index och gör inga egna val. Räkna bort dem för att se vad de aktivt förvaltade fonderna gör.">
           <input type="checkbox" id="excludeIndex" role="switch">
@@ -132,7 +139,6 @@
         <div>
           <h2>Fonder</h2>
           <a href="#/fonder">Alla fonder</a>
-          <a href="#/toppfonder">Toppfonderna</a>
           <a href="#/risk">Risk och avkastning</a>
           <a href="#/backtest">Lönar det sig att följa fonderna?</a>
           <a href="#/fondbolag">Fondbolag</a>
@@ -204,7 +210,6 @@
       <div class="mega-col">
         <h2>Fonder</h2>
         <a href="#/fonder" data-nav="fonder"><b>Alla fonder</b><span>Innehav, avgifter och affärer</span></a>
-        <a href="#/toppfonder" data-nav="toppfonder"><b>Toppfonderna</b><span>Vad fonderna med bäst avkastning köper</span></a>
         <a href="#/risk" data-nav="risk"><b>Risk och avkastning</b><span>Alla aktiefonder på en karta</span></a>
         <a href="#/backtest" data-nav="backtest"><b>Lönar det sig att följa fonderna?</b><span>Backtest sedan 2019</span></a>
         <a href="#/fondbolag" data-nav="fondbolag"><b>Fondbolag</b><span>Alla bolag och deras fonder</span></a>

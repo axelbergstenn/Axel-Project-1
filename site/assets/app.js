@@ -537,7 +537,7 @@
     });
   }
 
-  function marketWord() { return state.market === "se" ? "svenska" : "utländska"; }
+  function marketWord() { return state.market === "se" ? "svenska" : "globala"; }
 
   // ---------- Översikt ----------
 
@@ -598,7 +598,7 @@
       var sells = cont.filter(function (s) { return s.flow < 0; }).sort(function (a, b) { return a.flow - b.flow; });
       var t = cd.ds.totals, net = t.buy + t.sell;
       body = '<a class="rc-title rc-web-link" href="' + reportHref(pq) + '">' + esc(quarterHeadline(cont, buys, sells)) + "</a>" +
-        '<p class="rc-meta">Nettoköp ' + (world ? "utländska" : "svenska") + ' aktier <b class="' + cls(net) + '">' + bigSek(net, true) + "</b> · " + int(t.funds) + " fonder" +
+        '<p class="rc-meta">Nettoköp ' + (world ? "globala" : "svenska") + ' aktier <b class="' + cls(net) + '">' + bigSek(net, true) + "</b> · " + int(t.funds) + " fonder" +
         (state.excludeIndex ? " utan indexfonder" : "") + " · innehaven den " + dateText(cd.meta.curr) + "</p>";
     } else {
       body = (failed("se-" + pq) || failed("world-" + pq)) ? '<p class="rc-meta">Rapporten kunde inte laddas.</p>' :
@@ -633,7 +633,7 @@
     };
     return '<nav class="quick section-gap" aria-label="Genvägar">' +
       tile("#/aktier", "Aktier", '<span class="' + cls(net) + '">' + bigSek(net, true) + "</span>", "fondernas nettoköp i " + int(t.held) + " " + marketWord() + " aktier") +
-      tile("#/fonder", "Fonder", int(Object.keys(quarterData().fi).length), "fonder med innehav, avgifter och toppfonderna") +
+      tile("#/fonder", "Fonder", int(Object.keys(quarterData().fi).length), "fonder med innehav, avgifter och avkastning") +
       tile("#/signaler", "Signaler", f.double ? int(f.double.buy) : "Insyn", f.double ? "dubbelsignaler just nu, och insyn och blankning" : "insynshandel, blankning och samlad signal") +
       tile("#/sparande", "Sparande", sav ? '<span class="' + cls(sav[1]) + '">' + bigSek(sav[1] * 1e6, true) + "</span>" : "Fondsparandet",
         sav ? "spararnas nettosparande i " + monthLabel(sav[0], true) : "vart spararnas pengar går") +
@@ -704,7 +704,7 @@
 
   function viewOverview() {
     var ds = marketDs();
-    if (!ds) return failed("world-" + state.q) ? errorBlock() : loadingBlock("Laddar utländska aktier…");
+    if (!ds) return failed("world-" + state.q) ? errorBlock() : loadingBlock("Laddar globala aktier…");
     var S = ds.stocks;
     var cont = S.filter(function (s) { return s.price && !s.isNew && !s.isGone; });
     var buys = cont.filter(function (s) { return s.flow > 0; }).sort(function (a, b) { return b.flow - a.flow; }).slice(0, 15);
@@ -884,9 +884,9 @@
   var stockFilter = { q: "", sector: "", min: "100" };
 
   function viewStocks() {
-    document.title = (state.market === "world" ? "Utländska aktier" : "Svenska aktier") + " som fonderna äger – Fondinsyn";
+    document.title = (state.market === "world" ? "Globala aktier" : "Svenska aktier") + " som fonderna äger – Fondinsyn";
     var ds = marketDs();
-    if (!ds) return failed("world-" + state.q) ? errorBlock() : loadingBlock("Laddar utländska aktier…");
+    if (!ds) return failed("world-" + state.q) ? errorBlock() : loadingBlock("Laddar globala aktier…");
     var sectors = {};
     ds.stocks.forEach(function (s) { if (s.f2 || s.f1b) sectors[s.sector] = 1; });
     var sectorOpts = Object.keys(sectors).sort(function (a, b) { return a.localeCompare(b, "sv"); }).map(function (x) {
@@ -895,7 +895,7 @@
     var minOpts = [["0", "Alla storlekar"], ["10", "Över 10 mkr"], ["100", "Över 100 mkr"], ["1000", "Över 1 000 mkr"]].map(function (o) {
       return '<option value="' + o[0] + '"' + (stockFilter.min === o[0] ? " selected" : "") + ">" + o[1] + "</option>";
     }).join("");
-    return '<div class="page-head"><h1>' + (state.market === "se" ? "Svenska aktier" : "Utländska aktier") + '</h1><p class="meta">Aktier som ägs av svenska fonder, ' +
+    return '<div class="page-head"><h1>' + (state.market === "se" ? "Svenska aktier" : "Globala aktier") + '</h1><p class="meta">Aktier som ägs av svenska fonder, ' +
       quarterLabel(state.q) + " jämfört med " + quarterLabel(quarterData().meta.prevId) + ".</p></div>" +
       '<div class="toolbar">' +
       '<input class="input" type="search" id="stockSearch" aria-label="Filtrera aktierna" placeholder="Sök aktie eller ISIN" value="' + esc(stockFilter.q) + '" autocomplete="off">' +
@@ -939,7 +939,7 @@
     var name = s ? s.name : hs.name;
     document.title = name + " – Fondinsyn";
     var world = isin.slice(0, 2) !== "SE";
-    var crumbs = '<div class="crumbs"><a href="#/aktier" data-market="' + (world ? "world" : "se") + '">' + (world ? "Utländska aktier" : "Aktier") + "</a> / " + esc(name) + "</div>";
+    var crumbs = '<div class="crumbs"><a href="#/aktier" data-market="' + (world ? "world" : "se") + '">' + (world ? "Globala aktier" : "Aktier") + "</a> / " + esc(name) + "</div>";
     var metaParts = [];
     if (s ? s.sector : hs.sector) metaParts.push(esc(s ? s.sector : hs.sector));
     if (world) metaParts.push(esc(countryName(s ? s.country : hs.country)));
@@ -1042,7 +1042,7 @@
   function viewFunds() {
     document.title = "Fonder – innehav, avgifter och affärer – Fondinsyn";
     var ds = marketDs();
-    if (!ds) return failed("world-" + state.q) ? errorBlock() : loadingBlock("Laddar utländska aktier…");
+    if (!ds) return failed("world-" + state.q) ? errorBlock() : loadingBlock("Laddar globala aktier…");
     var cos = {};
     fundList().forEach(function (f) { cos[f.co] = 1; });
     var coOpts = Object.keys(cos).sort(function (a, b) { return a.localeCompare(b, "sv"); }).map(function (x) {
@@ -1135,7 +1135,7 @@
     var r = ratesData(), x = r && r.funds[id];
     var items = [
       { label: "Svenska aktier", v: seF ? seF.val || 0 : 0, ready: true },
-      { label: "Utländska aktier", v: wF ? wF.val || 0 : 0, ready: hasWorld },
+      { label: "Globala aktier", v: wF ? wF.val || 0 : 0, ready: hasWorld },
       { label: "Räntepapper", v: x ? x.bond : 0, ready: !!r },
       { label: "Fondandelar", v: x ? x.unit : 0, ready: !!r }
     ];
@@ -1207,8 +1207,8 @@
     // Delarna i storleksordning: en räntefond visar räntepappren först, en aktiefond aktierna
     var parts = [];
     if (seF && seF.h.length) parts.push({ v: seF.val || 0, html: fundHoldings(f, seF, "Svenska aktier", d.se, d.meta) });
-    if (!hasWorld) parts.push({ v: -1, html: '<section class="block section-gap"><div class="block-head"><h2>Utländska aktier</h2></div>' + (failed("world-" + state.q) ? errorBlock() : loadingBlock()) + "</section>" });
-    else if (wF && wF.h.length) parts.push({ v: wF.val || 0, html: fundHoldings(f, wF, "Utländska aktier", wds, d.meta) });
+    if (!hasWorld) parts.push({ v: -1, html: '<section class="block section-gap"><div class="block-head"><h2>Globala aktier</h2></div>' + (failed("world-" + state.q) ? errorBlock() : loadingBlock()) + "</section>" });
+    else if (wF && wF.h.length) parts.push({ v: wF.val || 0, html: fundHoldings(f, wF, "Globala aktier", wds, d.meta) });
     if (hasBonds) parts.push({ v: rx.bond, html: fundBondSection(f, rx, rrows) });
     if (hasUnits) parts.push({ v: rx.unit, html: fundUnitSection(f, rx, rrows) });
     parts.sort(function (a, b) { return b.v - a.v; });
@@ -1219,7 +1219,7 @@
   var fundTradeFilter = "all";
   function fundTradesView(info, seF, wF, wds, hasWorld, meta, rx, rrows) {
     var rows = [];
-    [[seF, quarterData().se, "Svenska aktier"], [wF, wds, "Utländska aktier"]].forEach(function (x) {
+    [[seF, quarterData().se, "Svenska aktier"], [wF, wds, "Globala aktier"]].forEach(function (x) {
       var f = x[0], ds = x[1];
       if (!f || !f.both || !ds) return;
       f.h.forEach(function (r) {
@@ -2538,24 +2538,6 @@
       "Fonder som inte rapporterar till Finansinspektionen, till exempel utländska fonder, räknas inte med.</p>";
   }
 
-  // ---------- Toppfonderna ----------
-  // De fonder som haft bäst avkastning de senaste fem åren (Pensionsmyndighetens snitt per år, efter avgifter),
-  // och vad de köpte och sålde under kvartalet. Svenska aktier: fonder som placerar i Sverige och Norden.
-  // Utländska aktier: aktiefonder med andra placeringsinriktningar.
-
-  var TOP_SE = /^(Sverige|Sverige småbolag|Norden)$/;
-  var TOP_WORLD = /^(Global|Global och Sverige|USA och Nordamerika|Europa|Europa småbolag|Asien|Japan|Indien|Nya marknader|IT och kommunikation|Läkemedel och bioteknik|Fastighet)$/;
-  var TOP_N = 15;
-
-  function topFunds(world) {
-    var d = quarterData(), ds = world ? d.world : d.se;
-    if (!ds) return [];
-    var re = world ? TOP_WORLD : TOP_SE;
-    return Object.keys(state.perf.funds).map(function (id) { return { id: id, p: state.perf.funds[id], fi: d.fi[id], m: ds.fundById[id] }; })
-      .filter(function (x) { return x.fi && !x.fi.isIndex && x.m && x.m.both && x.p[3] != null && re.test(x.p[7] || ""); })
-      .sort(function (a, b) { return b.p[3] - a.p[3]; }).slice(0, TOP_N);
-  }
-
   // Risk och avkastning: alla aktiefonder med femårshistorik hos Pensionsmyndigheten på en karta, och i en tabell
   function viewRisk() {
     document.title = "Risk och avkastning – Fondinsyn";
@@ -2597,57 +2579,6 @@
       block("Alla fonder på kartan", "Sorterat på avkastning per risk: avkastningen per år delat med risken. Högre är bättre. Tryck på en rubrik för att sortera om.",
         table("risk-funds", cols, pts, { sort: { col: "ratio", dir: -1 }, limit: 15, expand: true, csv: true }), "section-gap") +
       '<p class="desc section-gap">Historisk avkastning är ingen garanti för framtida avkastning. Risken är standardavvikelsen för fondens avkastning de senaste 24 månaderna.</p>';
-  }
-
-  function viewTopFunds() {
-    var world = state.market === "world";
-    document.title = "Toppfonderna – vad fonderna med bäst avkastning köper – Fondinsyn";
-    var head = '<div class="page-head"><h1>Toppfonderna</h1><p class="meta lead">De ' + TOP_N + " aktivt förvaltade fonderna med bäst avkastning de senaste fem åren " +
-      (world ? "bland fonder som placerar utanför Sverige" : "bland fonder som placerar i Sverige och Norden") + ", och vad de köpte och sålde under " + quarterLabel(state.q) +
-      ". Byt till " + (world ? "svenska" : "utländska") + " aktier uppe till höger.</p></div>";
-    if (!needPerf()) return head + (failed("perf") ? errorBlock() : loadingBlock());
-    var ds = marketDs();
-    if (!ds) return head + (failed("world-" + state.q) ? errorBlock() : loadingBlock("Laddar utländska aktier…"));
-    var funds = topFunds(world);
-    if (!funds.length) return head + '<div class="notice">Det finns ingen avkastning för fonderna det här kvartalet.</div>';
-    // Summera fondernas affärer per aktie
-    var by = {};
-    funds.forEach(function (x) {
-      x.m.h.forEach(function (r) {
-        var st = ds.stocks[r[0]], s1 = r[1] || 0, s2 = r[2] || 0;
-        if (s1 === s2 || !st.price || st.isNew || st.isGone) return;
-        var e = by[st.isin] = by[st.isin] || { s: st, buy: 0, sell: 0, flow: 0, buyers: [], sellers: [] };
-        var v = (s2 - s1) * st.price;
-        e.flow += v;
-        if (s2 > s1) { e.buy++; e.buyers.push(x.fi.name); } else { e.sell++; e.sellers.push(x.fi.name); }
-      });
-    });
-    var all = Object.keys(by).map(function (k) { return by[k]; });
-    var buys = all.filter(function (e) { return e.flow > 0; }).sort(function (a, b) { return (b.buy - b.sell) - (a.buy - a.sell) || b.flow - a.flow; });
-    var sells = all.filter(function (e) { return e.flow < 0; }).sort(function (a, b) { return (b.sell - b.buy) - (a.sell - a.buy) || a.flow - b.flow; });
-    var stockCol = { key: "name", label: "Aktie", align: "l", cls: "name", cell: function (e) {
-      return nameCell(stockHref(e.s), e.s.name, e.buy + " köpte, " + e.sell + " sålde");
-    }, value: function (e) { return e.s.name; } };
-    var cntCol = { key: "n", label: "Fonder", align: "l", hideSm: true, cell: function (e) {
-      return '<span class="pos">' + e.buy + " köpte</span>, " + '<span class="neg">' + e.sell + " sålde</span>";
-    }, value: function (e) { return e.buy - e.sell; } };
-    var flowC = { key: "flow", label: "Nettoköp (mkr)", cell: function (e) { return '<span class="' + cls(e.flow) + '">' + mkr(e.flow, true) + "</span>"; }, value: function (e) { return e.flow; } };
-    var fundCols = [
-      { key: "rank", label: "#", cls: "rank", hideSm: true, cell: function (x, n) { return n + 1; } },
-      { key: "name", label: "Fond", align: "l", cls: "name", cell: function (x) { return nameCell(fundHref({ id: x.id }), x.fi.name, esc(x.fi.co) + " · " + esc(x.p[7])); }, value: function (x) { return x.fi.name; } },
-      { key: "cat", label: "Inriktning", align: "l", cls: "muted", hideSm: true, cell: function (x) { return esc(x.p[7]); } },
-      { key: "r5", label: "Per år, 5 år", cell: function (x) { return retText(x.p[3]); }, value: function (x) { return x.p[3]; } },
-      { key: "ytd", label: "I år", hideSm: true, cell: function (x) { return retText(x.p[0]); }, value: function (x) { return x.p[0]; } },
-      { key: "aum", label: "Förmögenhet", hideSm: true, cell: function (x) { return bigSek(x.fi.aum); }, value: function (x) { return x.fi.aum; } }
-    ];
-    return head +
-      '<div class="grid-2">' +
-      block("Mest köpta av toppfonderna", "Sorterat på hur många av fonderna som köpte, sedan nettoköp.", table("top-buy", [stockCol, cntCol, flowC], buys.slice(0, 15), { static: true })) +
-      block("Mest sålda av toppfonderna", "&nbsp;", table("top-sell", [stockCol, cntCol, flowC], sells.slice(0, 15), { static: true })) + "</div>" +
-      block("Fonderna", "Genomsnittlig avkastning per år de senaste fem åren efter avgifter, enligt Pensionsmyndigheten (beräknad " + esc(state.perf.calculated) + "). Indexfonder är inte med.",
-        table("top-funds", fundCols, funds, { static: true }), "section-gap") +
-      '<p class="desc section-gap">Fonder som inte finns på premiepensionens fondtorg saknar avkastning hos Pensionsmyndigheten och kan därför inte vara med. ' +
-      "Historisk avkastning är ingen garanti för framtida avkastning.</p>";
   }
 
   // ---------- Backtest: lönar det sig att följa fonderna? ----------
@@ -3955,7 +3886,7 @@
       "<li>Vid aktiesplit justeras förra kvartalets antal. Splitten känns igen på att fondernas antal aktier ändrats med samma kvot samtidigt som kursen rört sig lika mycket åt andra hållet.</li>" +
       "<li>Indexfonder identifieras på namnet. Deras affärer speglar oftast in- och utflöden i fonden snarare än aktiva beslut.</li>" +
       "<li><b>Köpsviter</b> räknas på historiken sedan 2018. Kvartal med nettoköp under 0,5 mkr räknas inte.</li>" +
-      "<li>Utländska aktier visas om svenska fonder sammanlagt äger minst 20 mkr.</li>" +
+      "<li>Globala aktier (aktier noterade utanför Sverige) visas om svenska fonder sammanlagt äger minst 20 mkr.</li>" +
       '<li><b>Räntepapper</b> (obligationer och certifikat) och <b>fondandelar</b> visas på fondsidan och under <a href="#/rantor">Räntor</a>. Emittenten läses ur värdepapperets namn, ' +
       "och papper som förfallit räknas inte som sålda. Marknadsräntorna kommer från Riksbanken.</li></ul>" +
       '<p class="desc">Fondinsyn räknar antalet besök med GoatCounter, som inte använder kakor och inte sparar några personuppgifter.</p>' +
@@ -4359,18 +4290,18 @@
   // Avdelningarna i menyraden och sidorna i varje avdelning (flikarna överst på sidan)
   var SECTIONS = {
     aktier: { label: "Aktier", items: [["aktier", "Alla aktier", "#/aktier"], ["agarandel", "Fondernas ägarandel", "#/agarandel"]] },
-    fonder: { label: "Fonder", items: [["fonder", "Alla fonder", "#/fonder"], ["toppfonder", "Toppfonderna", "#/toppfonder"], ["risk", "Risk och avkastning", "#/risk"], ["backtest", "Följ fonderna", "#/backtest"], ["fondbolag", "Fondbolag", "#/fondbolag"],
+    fonder: { label: "Fonder", items: [["fonder", "Alla fonder", "#/fonder"], ["risk", "Risk och avkastning", "#/risk"], ["backtest", "Följ fonderna", "#/backtest"], ["fondbolag", "Fondbolag", "#/fondbolag"],
       ["forvaltare", "Kända förvaltare", "#/forvaltare"], ["avgifter", "Avgiftskollen", "#/avgifter"], ["jamfor", "Jämför fonder", "#/jamfor"], ["portfolj", "Min portfölj", "#/portfolj"]] },
     signaler: { label: "Signaler", items: [["signaler", "Samlad signal", "#/signaler"], ["insyn", "Insynshandel", "#/insyn"], ["dubbelsignal", "Dubbelsignal", "#/dubbelsignal"],
       ["blankning", "Blankning", "#/blankning"], ["uppkop", "Uppköp", "#/uppkop"]] },
     om: { label: "Om Fondinsyn", items: [["om", "Om datan", "#/om"], ["metod", "Metodrapport", "#/metod"], ["ordlista", "Ordlista", "#/ordlista"], ["kontakt", "Kontakt", "#/kontakt"]] }
   };
-  var PAGE_SECTION = { aktie: "aktier", agarandel: "aktier", fond: "fonder", toppfonder: "fonder", risk: "fonder", fondbolag: "fonder", forvaltare: "fonder", avgifter: "fonder",
+  var PAGE_SECTION = { aktie: "aktier", agarandel: "aktier", fond: "fonder", risk: "fonder", fondbolag: "fonder", forvaltare: "fonder", avgifter: "fonder",
     jamfor: "fonder", portfolj: "fonder", insyn: "signaler", dubbelsignal: "signaler", blankning: "signaler", blankare: "signaler", uppkop: "signaler",
     emittent: "rantor", ordlista: "om", kontakt: "om", backtest: "fonder", metod: "om" };
 
   // Kvartalsrapporten har egna flikar för marknaden
-  var MARKET_PAGES = { oversikt: 1, aktier: 1, fonder: 1, fondbolag: 1, toppfonder: 1 };
+  var MARKET_PAGES = { oversikt: 1, aktier: 1, fonder: 1, fondbolag: 1 };
   var NO_SUBBAR = { insyn: 1, blankning: 1, blankare: 1, uppkop: 1, sparande: 1, rantor: 1, emittent: 1, backtest: 1, om: 1, metod: 1, ordlista: 1, kontakt: 1, finnsinte: 1, data: 1, integritet: 1 };
   // #/fonder/rantefonder öppnar fondlistan filtrerad på en fondtyp
   var FUND_TYPE_SLUGS = { aktiefonder: "equity", rantefonder: "rante", blandfonder: "bland", fondandelsfonder: "fof", indexfonder: "index" };
@@ -4421,7 +4352,8 @@
       case "dubbelsignal": html = viewDouble(); break;
       case "sparande": html = viewSavings(); break;
       case "agarandel": html = viewOwnership(); break;
-      case "toppfonder": html = viewTopFunds(); break;
+      // Toppfonderna finns inte längre; gamla länkar går till risk och avkastning
+      case "toppfonder": location.replace("#/risk"); return;
       case "risk": html = viewRisk(); break;
       case "bevakning": html = viewWatch(); break;
       case "backtest": html = viewBacktest(); break;
@@ -4457,7 +4389,7 @@
       var key = a.getAttribute("data-nav"), top = a.closest(".mainnav, .tabbar");
       if (key === (top ? section : navKey)) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
-    // Flikar för avdelningen överst på sidan (Fonder: Alla fonder, Toppfonderna, Fondbolag ...)
+    // Flikar för avdelningen överst på sidan (Fonder: Alla fonder, Risk och avkastning, Fondbolag ...)
     var sec = SECTIONS[section];
     var onList = sec && sec.items.some(function (it) { return it[0] === navKey && r.page === navKey && !r.arg; });
     if (onList && html !== null) {
@@ -4800,7 +4732,7 @@
     var mk = e.target.closest("[data-market]");
     if (mk) {
       setMarket(mk.getAttribute("data-market"));
-      if (mk.closest("#marketSwitch, .rep-market")) { render(); toast(mk.getAttribute("data-market") === "world" ? "Visar utländska aktier" : "Visar svenska aktier"); }
+      if (mk.closest("#marketSwitch, .rep-market")) { render(); toast(mk.getAttribute("data-market") === "world" ? "Visar globala aktier" : "Visar svenska aktier"); }
       return; // länkar med data-market (brödsmulor) navigerar som vanligt
     }
     // Sök
