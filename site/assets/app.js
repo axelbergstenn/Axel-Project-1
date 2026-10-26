@@ -1577,15 +1577,18 @@
     var stocks = w.stocks.map(function (isin) { return d.se.byIsin[isin] || (hasWorld && d.world ? d.world.byIsin[isin] : null); }).filter(Boolean);
     var funds = w.funds.map(function (id) { return d.fi[id]; }).filter(Boolean);
     // Insiders nettoköp de senaste 90 dagarna (köp minus sälj, kronor)
-    var insNet = function (isin) {
+    var insNet = function (isin, closeOnly) {
       var rows = hasIns && state.insider.byIsin[isin];
       if (!rows || !rows.length) return null;
-      return rows.reduce(function (a, r) { return a + (r.kind === "buy" ? r.sek || 0 : r.kind === "sell" ? -(r.sek || 0) : 0); }, 0);
+      return rows.reduce(function (a, r) { return a + (closeOnly && !r.close ? 0 : r.kind === "buy" ? r.sek || 0 : r.kind === "sell" ? -(r.sek || 0) : 0); }, 0);
     };
     var stockCols = [
       stockCol(function (s) { return esc(s.sector) + " · " + int(s.f2) + " fonder"; }), col.flow,
       { key: "chg", label: "Δ antal aktier", hideSm: true, cell: col.chg.cell, value: col.chg.value },
-      { key: "ins", label: "Insiders 90 d", cell: function (s) { var v = insNet(s.isin); return v == null ? '<span class="muted">–</span>' : '<span class="' + cls(v) + '">' + bigSek(v, true) + "</span>"; },
+      { key: "ins", label: "Insiders 90 d", cell: function (s) {
+        var v = insNet(s.isin), note = v == null ? "" : closeNote(v, insNet(s.isin, true));
+        return v == null ? '<span class="muted">–</span>' : '<span class="' + cls(v) + '">' + bigSek(v, true) + "</span>" + (note ? '<span class="sub">' + note.slice(2) + "</span>" : "");
+      },
         value: function (s) { return insNet(s.isin); } },
       { key: "sh", label: "Blankning", hideSm: true, cell: function (s) { var a = hasShorts && state.shorts.byIsin[s.isin]; return a ? nf2.format(a.pct) + " %" : '<span class="muted">–</span>'; },
         value: function (s) { var a = hasShorts && state.shorts.byIsin[s.isin]; return a ? a.pct : null; } },
@@ -2460,7 +2463,7 @@
       });
     });
   }
-  var insiderFilter = { kind: "buy", min: 100000, period: "90" };
+  var insiderFilter = { kind: "buy", min: 100000, period: "90", own: false };
   function daysAgo(n) { return new Date(Date.now() - n * 864e5).toISOString().slice(0, 10); }
   function insiderKind(r) {
     return r.kind === "buy" ? '<span class="label up">Köp</span>' : r.kind === "sell" ? '<span class="label down">Sälj</span>' : '<span class="label">' + esc(r.nature) + "</span>";
@@ -2481,7 +2484,18 @@
     if (p === p.toUpperCase() && /[A-ZÅÄÖ]{2}/.test(p)) p = p.toLowerCase();
     return p === p.toLowerCase() ? p.replace(/(^|[\s-])(\S)/g, function (m, a, c) { return a + c.toUpperCase(); }) : p;
   }
-  function personText(r) { return esc(personName(r.person)) + (r.close ? " (närstående)" : ""); }
+  // Närstående är familjemedlemmar eller bolag som personen kontrollerar eller företräder (till exempel ett
+  // investmentbolag där personen är vd). Registret säger inte vem, bara att det inte var personen själv.
+  var CLOSE_INFO = "Närstående är familjemedlemmar eller bolag som personen kontrollerar eller företräder, till exempel ett investmentbolag där personen är vd. Sådana affärer kan vara mycket större än personens egna.";
+  function personText(r) {
+    var n = esc(personName(r.person));
+    return r.close ? '<span class="close-of" title="' + esc(CLOSE_INFO) + '">Närstående till</span> ' + n : n;
+  }
+  // ", varav 468 mkr via närstående" när mer än hälften av nettot kommer från närstående
+  function closeNote(total, part) {
+    if (!part || !total || Math.abs(part) < 0.5 * Math.abs(total)) return "";
+    return Math.abs(part) >= 0.95 * Math.abs(total) ? ", nästan allt via närstående" : ", varav " + bigSek(Math.abs(part)) + " via närstående";
+  }
 
   // ---------- Fondernas ägarandel ----------
   // data/shares.json (scripts/build-shares.ps1): antal aktier per aktieslag för bolag på Nasdaq Stockholm och First North.
@@ -3117,14 +3131,15 @@
     var I = Math.abs(inet) < 2e5 ? 0 : clamp1(inet / 5e6);
     var a = state.shorts && state.shorts.byIsin[s.isin];
     var S = a && a.ch30 != null ? clamp1(-a.ch30 / 1) : 0;
-    return { s: s, score: Math.round(100 * (0.4 * F + 0.4 * I + 0.2 * S)), F: F, I: I, S: S, fb: fb, fs: fs, inet: e ? inet : null, nIns: e ? e.n : 0, short: a || null };
+    return { s: s, score: Math.round(100 * (0.4 * F + 0.4 * I + 0.2 * S)), F: F, I: I, S: S, fb: fb, fs: fs, inet: e ? inet : null, cnet: e ? e.close : 0, nIns: e ? e.n : 0, short: a || null };
   }
   function insiderTotals() {
     var by = {};
     state.insider.rows.forEach(function (r) {
       if (r.sek == null || r.kind === "other") return;
-      var e = by[r.isin] = by[r.isin] || { buy: 0, sell: 0, n: 0 };
+      var e = by[r.isin] = by[r.isin] || { buy: 0, sell: 0, n: 0, close: 0 };
       if (r.kind === "buy") e.buy += r.sek; else e.sell += r.sek;
+      if (r.close) e.close += r.kind === "buy" ? r.sek : -r.sek;
       e.n++;
     });
     return by;
@@ -3145,7 +3160,7 @@
   }
   function partText(g, which) {
     if (which === "F") return (g.fb || g.fs ? g.fb + " köpte, " + g.fs + " sålde" : "Inga affärer") + (g.s.chg != null ? " · aktier " + pct(g.s.chg) : "");
-    if (which === "I") return g.inet == null ? "Ingen handel" : (g.inet >= 0 ? "Köp minus sälj " : "Sälj minus köp ") + bigSek(Math.abs(g.inet));
+    if (which === "I") return g.inet == null ? "Ingen handel" : (g.inet >= 0 ? "Köp minus sälj " : "Sälj minus köp ") + bigSek(Math.abs(g.inet)) + closeNote(g.inet, g.cnet);
     return g.short ? nf2.format(g.short.pct) + " % blankat" + (g.short.ch30 == null ? "" : Math.abs(g.short.ch30) < 0.005 ? ", oförändrat på 30 dagar" : ", " + signed(nf2.format(g.short.ch30), g.short.ch30) + " p.e. på 30 dagar") : "Ingen större blankning";
   }
   // En liten färgad punkt per del: grön (positiv), röd (negativ) eller grå (neutral)
@@ -3211,8 +3226,9 @@
     } else {
       I.rows.forEach(function (r) {
         if (r.sek == null || r.kind === "other") return;
-        var e = by[r.isin] = by[r.isin] || { buy: 0, sell: 0, buyers: {}, last: null };
+        var e = by[r.isin] = by[r.isin] || { buy: 0, sell: 0, close: 0, buyers: {}, last: null };
         if (r.kind === "buy") { e.buy += r.sek; e.buyers[r.person] = 1; if (!e.last || r.tx > e.last) e.last = r.tx; } else e.sell += r.sek;
+        if (r.close) e.close += r.kind === "buy" ? r.sek : -r.sek;
       });
       Object.keys(by).forEach(function (k) { by[k].nBuyers = Object.keys(by[k].buyers).length; });
     }
@@ -3224,7 +3240,7 @@
       if (Math.abs(s.flow) < DOUBLE_MIN_FUND || Math.abs(net) < DOUBLE_MIN_INSIDER || (s.flow > 0) !== (net > 0)) return;
       var nb = 0, nsell = 0;
       s.trades.forEach(function (t) { if (t.d > 0) nb++; else if (t.d < 0) nsell++; });
-      rows.push({ s: s, flow: s.flow, net: net, buy: e.buy, sell: e.sell, nBuyers: e.nBuyers, last: e.last, fb: nb, fs: nsell });
+      rows.push({ s: s, flow: s.flow, net: net, cnet: e.close || 0, buy: e.buy, sell: e.sell, nBuyers: e.nBuyers, last: e.last, fb: nb, fs: nsell });
     });
     return { buy: rows.filter(function (x) { return x.flow > 0; }), sell: rows.filter(function (x) { return x.flow < 0; }) };
   }
@@ -3243,7 +3259,7 @@
     var cols = function (sell) {
       return [
         { key: "n", label: "Aktie", align: "l", cls: "name", value: function (x) { return x.s.name; }, cell: function (x) {
-          return nameCell(stockHref(x.s), x.s.name, (sell ? int(x.fs) + " fonder sålde" : int(x.fb) + " fonder köpte") + " · insiders " + bigSek(x.net, true));
+          return nameCell(stockHref(x.s), x.s.name, (sell ? int(x.fs) + " fonder sålde" : int(x.fb) + " fonder köpte") + " · insiders " + bigSek(x.net, true) + closeNote(x.net, x.cnet));
         } },
         { key: "f", label: "Fonderna " + quarterLabel(state.q), cell: function (x) { return '<span class="' + cls(x.flow) + '">' + bigSek(x.flow, true) + "</span>"; }, value: function (x) { return x.flow; } },
         { key: "fn", label: sell ? "Fonder som sålt" : "Fonder som köpt", hideSm: true, cell: function (x) { return int(sell ? x.fs : x.fb) + '<span class="vote-other"> / ' + int(sell ? x.fb : x.fs) + "</span>"; }, value: function (x) { return sell ? x.fs : x.fb; } },
@@ -3257,7 +3273,7 @@
     var html = head + '<div class="highlights">' +
       highlight("Dubbel köpsignal", int(sig.buy.length) + " aktier", null, "fonder och insiders köper", "") +
       highlight("Dubbel säljsignal", int(sig.sell.length) + " aktier", null, "fonder och insiders säljer", "") +
-      highlight("Mest köpt av insiders", top && top.s.name, top ? stockHref(top.s) : null, top ? '<span class="pos">' + bigSek(top.net, true) + "</span>" : "", top ? "insiders, och fonderna " + bigSek(top.flow, true) : "") +
+      highlight("Mest köpt av insiders", top && top.s.name, top ? stockHref(top.s) : null, top ? '<span class="pos">' + bigSek(top.net, true) + "</span>" : "", top ? "insiders" + closeNote(top.net, top.cnet) + ", och fonderna " + bigSek(top.flow, true) : "") +
       "</div>" +
       '<div class="toolbar section-gap"><div class="seg" role="group" aria-label="Period för insidernas affärer">' + pseg("90", "Insiders 90 dagar") + pseg("365", "Insiders 12 månader") + "</div></div>" +
       block("Både fonder och insiders köper", "Fonderna nettoköpte för minst 1 mkr under " + quarterLabel(state.q) + " och insiders köpte för minst 500 000 kr mer än de sålde de senaste " + (yearMode ? "12 månaderna" : state.insider.days + " dagarna") + ".",
@@ -3276,36 +3292,42 @@
       "Från Finansinspektionens insynsregister, uppdateras varje morgon. " + termLink("insynshandel", "Vad är insynshandel?") + "</p></div>";
     if (!needInsider()) return head + (failed("insider") ? errorBlock() : loadingBlock("Laddar insynshandel…"));
     var I = state.insider, ds = quarterData().se, since30 = daysAgo(30);
+    // "Bara egna affärer" räknar bort närståendes affärer (familj och bolag som personen kontrollerar eller företräder)
+    var rowsAll = insiderFilter.own ? I.rows.filter(function (r) { return !r.close; }) : I.rows;
     var sum = function (list) { return list.reduce(function (a, r) { return a + (r.sek || 0); }, 0); };
-    var buys30 = I.rows.filter(function (r) { return r.kind === "buy" && r.tx >= since30; });
-    var sells30 = I.rows.filter(function (r) { return r.kind === "sell" && r.tx >= since30; });
+    var closeOf = function (list) { return list.filter(function (r) { return r.close; }); };
+    var buys30 = rowsAll.filter(function (r) { return r.kind === "buy" && r.tx >= since30; });
+    var sells30 = rowsAll.filter(function (r) { return r.kind === "sell" && r.tx >= since30; });
 
     // Per bolag under hela perioden: köpt, sålt och hur många olika personer som köpt
     var by = {};
-    I.rows.forEach(function (r) {
+    rowsAll.forEach(function (r) {
       if (r.sek == null || r.kind === "other") return;
-      var e = by[r.isin] = by[r.isin] || { r: r, buy: 0, sell: 0, buyers: {} };
+      var e = by[r.isin] = by[r.isin] || { r: r, buy: 0, sell: 0, close: 0, buyers: {} };
       if (r.kind === "buy") { e.buy += r.sek; e.buyers[r.person] = 1; } else e.sell += r.sek;
+      if (r.close) e.close += r.kind === "buy" ? r.sek : -r.sek;
     });
     var comp = Object.keys(by).map(function (k) { var e = by[k]; e.net = e.buy - e.sell; e.nBuyers = Object.keys(e.buyers).length; return e; });
     // Tolv månader: sammanställningen ur arkivet (data/insider-year.json, byggs av scripts/build-pages.ps1)
-    var yearMode = insiderFilter.period === "365" && need("insider-year", function () { return getJSON("data/insider-year.json").then(function (x) { state.insiderYear = x; }); });
+    var yearMode = insiderFilter.period === "365" && !insiderFilter.own && need("insider-year", function () { return getJSON("data/insider-year.json").then(function (x) { state.insiderYear = x; }); });
     if (yearMode) comp = state.insiderYear.rows.map(function (y) { return { r: { issuer: y[1], isin: y[0] }, buy: y[2], sell: y[3], net: y[2] - y[3], nBuyers: y[4] }; });
     var periodText = yearMode ? "12 månaderna" : I.days + " dagarna";
     var top = comp.filter(function (e) { return e.net > 0; }).sort(function (a, b) { return b.net - a.net; });
     var topSold = comp.filter(function (e) { return e.net < 0; }).sort(function (a, b) { return a.net - b.net; });
 
     var html = head + '<div class="highlights">' +
-      highlight("Insiderköp, 30 dagar", bigSek(sum(buys30)), null, '<span class="pos">' + int(buys30.length) + " affärer</span>", "") +
-      highlight("Insidersälj, 30 dagar", bigSek(sum(sells30)), null, '<span class="neg">' + int(sells30.length) + " affärer</span>", "") +
+      highlight("Insiderköp, 30 dagar", bigSek(sum(buys30)), null, '<span class="pos">' + int(buys30.length) + " affärer</span>",
+        insiderFilter.own ? "bara egna affärer" : closeNote(sum(buys30), sum(closeOf(buys30))).replace(/^, /, "")) +
+      highlight("Insidersälj, 30 dagar", bigSek(sum(sells30)), null, '<span class="neg">' + int(sells30.length) + " affärer</span>",
+        insiderFilter.own ? "bara egna affärer" : closeNote(sum(sells30), sum(closeOf(sells30))).replace(/^, /, "")) +
       highlight("Mest köpt av insiders", top[0] && top[0].r.issuer, top[0] && ds.byIsin[top[0].r.isin] ? stockHref(ds.byIsin[top[0].r.isin]) : null,
-        top[0] ? '<span class="pos">' + bigSek(top[0].net, true) + "</span>" : "", top[0] ? int(top[0].nBuyers) + (top[0].nBuyers === 1 ? " person" : " personer") + ", " + (yearMode ? "12 månader" : I.days + " dagar") : "") +
+        top[0] ? '<span class="pos">' + bigSek(top[0].net, true) + "</span>" : "", top[0] ? int(top[0].nBuyers) + (top[0].nBuyers === 1 ? " person" : " personer") + ", " + (yearMode ? "12 månader" : I.days + " dagar") + closeNote(top[0].net, top[0].close) : "") +
       "</div>";
 
     var fundFlow = function (e) { var s = ds.byIsin[e.r.isin]; return s && s.netFlow != null ? s.flow : null; };
     var compCols = function (sold) {
       return [
-        { key: "b", label: "Bolag", align: "l", cls: "name", cell: function (e) { return issuerCell(e.r, sold ? "Sålt " + bigSek(e.sell) : "Köpt " + bigSek(e.buy) + " · " + int(e.nBuyers) + " köpare"); } },
+        { key: "b", label: "Bolag", align: "l", cls: "name", cell: function (e) { return issuerCell(e.r, (sold ? "Sålt " + bigSek(e.sell) : "Köpt " + bigSek(e.buy) + " · " + int(e.nBuyers) + " köpare") + closeNote(e.net, e.close)); } },
         { key: "net", label: "Netto insiders", cell: function (e) { return '<span class="' + cls(e.net) + '">' + bigSek(e.net, true) + "</span>"; }, value: function (e) { return e.net; } },
         { key: "n", label: "Köpare", hideSm: true, cell: function (e) { return int(e.nBuyers); }, value: function (e) { return e.nBuyers; } },
         { key: "f", label: "Fondernas nettoköp " + quarterLabel(state.q), cell: function (e) { var v = fundFlow(e); return v == null ? "–" : '<span class="' + cls(v) + '">' + bigSek(v, true) + "</span>"; },
@@ -3313,7 +3335,9 @@
       ];
     };
     var pseg = function (v, label) { return '<button type="button" class="seg-btn" data-ins-period="' + v + '" aria-pressed="' + (insiderFilter.period === v) + '">' + label + "</button>"; };
+    var oseg = function (v, label) { return '<button type="button" class="seg-btn" data-ins-own="' + v + '" aria-pressed="' + (insiderFilter.own === v) + '">' + label + "</button>"; };
     html += '<div class="toolbar section-gap"><div class="seg" role="group" aria-label="Period">' + pseg("90", "90 dagar") + pseg("365", "12 månader") + "</div>" +
+      '<div class="seg" role="group" aria-label="Vems affärer">' + oseg(false, "Alla affärer") + oseg(true, "Bara egna") + "</div>" +
       '<a class="note" href="#/dubbelsignal">Dubbelsignal: när både fonder och insiders köper</a></div>';
     html += '<div class="grid-2">' +
       block("Mest köpt av insiders", "Köp minus sälj de senaste " + periodText + ", i kronor.", table("ins-top", compCols(false), top, { sort: { col: "net", dir: -1 }, limit: 15 })) +
@@ -3322,7 +3346,7 @@
 
     // Senaste affärerna med filter
     var f = insiderFilter;
-    var list = I.rows.filter(function (r) {
+    var list = rowsAll.filter(function (r) {
       if (f.kind !== "all" && r.kind !== f.kind) return false;
       return !f.min || (r.sek != null && r.sek >= f.min);
     });
@@ -3340,7 +3364,9 @@
       [[0, "Alla belopp"], [100000, "Över 100 000 kr"], [1000000, "Över 1 mkr"]].map(function (o) { return '<option value="' + o[0] + '"' + (f.min === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") +
       '</select><span class="count">' + int(list.length) + " affärer</span></div>" +
       table("ins-latest", cols, list, { sort: { col: "d", dir: -1 }, limit: 150, csv: true }) + "</section>";
-    html += '<p class="desc section-gap">Källa: Finansinspektionens insynsregister, publiceringar sedan ' + esc(I.from) + ". Bara affärer i aktier visas. " +
+    html += '<p class="desc section-gap"><b>Om närstående:</b> ' + CLOSE_INFO + " Registret säger inte vem den närstående är. Med <b>Bara egna</b> räknas bara personernas egna affärer" +
+      (insiderFilter.period === "365" && insiderFilter.own ? " (för de senaste " + I.days + " dagarna, sammanställningen för tolv månader delar inte upp affärerna)" : "") + ".</p>" +
+      '<p class="desc">Källa: Finansinspektionens insynsregister, publiceringar sedan ' + esc(I.from) + ". Bara affärer i aktier visas. " +
       "Värdet är antal gånger pris och visas i kronor för affärer i svenska kronor.</p>";
     return html;
   }
@@ -3375,8 +3401,12 @@
     if (!res) return "";
     var rows = res.rows.filter(function (r) { return r.kind !== "other"; });
     if (!rows.length) return "";
-    var since = daysAgo(365), b = 0, s = 0;
-    rows.forEach(function (r) { if (r.tx < since) return; if (r.kind === "buy") b += r.sek || 0; else s += r.sek || 0; });
+    var since = daysAgo(365), b = 0, s = 0, cb = 0, cs = 0;
+    rows.forEach(function (r) {
+      if (r.tx < since) return;
+      if (r.kind === "buy") { b += r.sek || 0; if (r.close) cb += r.sek || 0; } else { s += r.sek || 0; if (r.close) cs += r.sek || 0; }
+    });
+    var anyClose = rows.some(function (r) { return r.close; });
     var cols = [
       { key: "p", label: "Person", align: "l", cls: "name", cell: function (r) { return '<span class="nm-plain">' + personText(r) + '</span><span class="sub">' + esc(r.role) + '<span class="show-sm-i"> · ' + esc(r.tx) + "</span></span>"; } },
       { key: "k", label: "Typ", align: "l", cell: insiderKind },
@@ -3384,8 +3414,10 @@
       { key: "d", label: "Datum", cls: "muted", hideSm: true, cell: function (r) { return esc(r.tx); } }
     ];
     var first = rows[rows.length - 1].tx.slice(0, 4);
-    return '<section class="block section-gap"><div class="block-head"><h2>Insynshandel</h2><span class="note">' + (b || s ? "Senaste 12 månaderna: köpt " + bigSek(b) + " · sålt " + bigSek(s) : "Inga köp eller sälj de senaste 12 månaderna") + "</span></div>" +
-      '<p class="desc">' + int(rows.length) + (rows.length === 1 ? " köp eller sälj" : " köp och sälj") + " anmälda " + (res.all ? "sedan " + first : "de senaste 90 dagarna") + ".</p>" +
+    return '<section class="block section-gap"><div class="block-head"><h2>Insynshandel</h2><span class="note">' + (b || s ? "Senaste 12 månaderna: köpt " + bigSek(b) + (cb >= 0.5 * b && cb > 0 ? " (varav " + bigSek(cb) + " via närstående)" : "") +
+        " · sålt " + bigSek(s) + (cs >= 0.5 * s && cs > 0 ? " (varav " + bigSek(cs) + " via närstående)" : "") : "Inga köp eller sälj de senaste 12 månaderna") + "</span></div>" +
+      '<p class="desc">' + int(rows.length) + (rows.length === 1 ? " köp eller sälj" : " köp och sälj") + " anmälda " + (res.all ? "sedan " + first : "de senaste 90 dagarna") + "." +
+      (anyClose ? " " + CLOSE_INFO : "") + "</p>" +
       table("stock-ins-" + isin, cols, rows, { static: true, limit: 10, expand: true }) +
       '<a class="more" href="#/insyn">All insynshandel</a></section>';
   }
@@ -4796,6 +4828,8 @@
 
     var insPeriod = e.target.closest("[data-ins-period]");
     if (insPeriod) { insiderFilter.period = insPeriod.getAttribute("data-ins-period"); var py = window.scrollY; render(); window.scrollTo(0, py); return; }
+    var insOwn = e.target.closest("[data-ins-own]");
+    if (insOwn) { insiderFilter.own = insOwn.getAttribute("data-ins-own") === "true"; var oy = window.scrollY; render(); window.scrollTo(0, oy); return; }
     var insKind = e.target.closest("[data-ins-kind]");
     if (insKind) { insiderFilter.kind = insKind.getAttribute("data-ins-kind"); var iy = window.scrollY; render(); window.scrollTo(0, iy); return; }
     var fundTab = e.target.closest("[data-fund-tab]");

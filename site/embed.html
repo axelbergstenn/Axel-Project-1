@@ -78,7 +78,7 @@ li b { white-space: nowrap; }
   }
   fetch("data/embed.json", { cache: "no-cache" }).then(function (r) { return r.json(); }).then(function (d) {
     var list = params.get("lista");
-    var rows = Object.keys(d.stocks).map(function (k) { var x = d.stocks[k]; return { isin: k, name: x[0], slug: x[1], f: x[2], flow: x[3], chg: x[4], own: x[5], ins: x[6], sh: x[7] }; });
+    var rows = Object.keys(d.stocks).map(function (k) { var x = d.stocks[k]; return { isin: k, name: x[0], slug: x[1], f: x[2], flow: x[3], chg: x[4], own: x[5], ins: x[6], sh: x[7], insClose: x[8] || 0 }; });
     if (list === "kopta" || list === "salda") {
       var buy = list === "kopta";
       var top = rows.filter(function (x) { return x.flow != null && (buy ? x.flow > 0 : x.flow < 0); })
@@ -95,7 +95,7 @@ li b { white-space: nowrap; }
     card.innerHTML = head(d.ql) + "<h1>" + esc(s.name) + '</h1><div class="grid">' +
       k("Fondernas nettoköp", '<span class="' + cls(s.flow) + '">' + sek(s.flow, true) + "</span>", s.chg != null ? "antal aktier " + pct(s.chg, true) : "") +
       k("Fonder som äger", nf0.format(s.f), s.own != null ? "äger " + pct(s.own) + " av aktierna" : "") +
-      k("Insiders, 90 dagar", s.ins == null ? "Ingen handel" : '<span class="' + cls(s.ins) + '">' + sek(s.ins, true) + "</span>", s.ins == null ? "" : s.ins >= 0 ? "köp minus sälj" : "sälj minus köp") +
+      k("Insiders, 90 dagar", s.ins == null ? "Ingen handel" : '<span class="' + cls(s.ins) + '">' + sek(s.ins, true) + "</span>", s.ins == null ? "" : (s.ins >= 0 ? "köp minus sälj" : "sälj minus köp") + (Math.abs(s.insClose) >= 0.5 * Math.abs(s.ins) ? ", mest via närstående" : "")) +
       (s.sh != null ? k("Blankning", nf1.format(s.sh) + " %", "av aktierna") : "") +
       "</div>" + foot(BASE + "/aktie/" + esc(s.slug) + "/", "Mer om " + esc(s.name));
   }).catch(function () { card.innerHTML = head("") + '<div class="msg">Datan kunde inte laddas.</div>'; });

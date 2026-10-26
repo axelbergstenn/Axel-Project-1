@@ -1406,11 +1406,15 @@ foreach ($x in @(@("data/index.json", "Vilka kvartal som finns"), @("data/$Q.jso
 
 # Nettoköp av insiders per bolag, de senaste 90 dagarna
 $insNet = @{}
+$insCloseNet = @{}  # den del av nettot som närstående (familj eller bolag) stod för
 if ($insider) {
   foreach ($r in $insider.rows) {
     $k = [string]$r[3]
     if (-not $k -or $null -eq $r[11]) { continue }
-    if ($r[7] -eq "Förvärv") { $insNet[$k] = [double]$insNet[$k] + [double]$r[11] } elseif ($r[7] -eq "Avyttring") { $insNet[$k] = [double]$insNet[$k] - [double]$r[11] }
+    $v = if ($r[7] -eq "Förvärv") { [double]$r[11] } elseif ($r[7] -eq "Avyttring") { -[double]$r[11] } else { 0.0 }
+    if ($v -eq 0) { continue }
+    $insNet[$k] = [double]$insNet[$k] + $v
+    if ($r[6]) { $insCloseNet[$k] = [double]$insCloseNet[$k] + $v }
   }
 }
 $shareCount = @{}
@@ -1419,14 +1423,15 @@ $shortPct = @{}
 try { foreach ($a in (ReadJson "shorts.json").aggregate) { if ($a[1]) { $shortPct[[string]$a[1]] = [double]$a[2] } } } catch { }
 
 # 1. data/embed.json: nyckeltal per svensk aktie för den inbäddningsbara rutan (site/embed.html)
-#    [namn, slug, fonder, nettoköp kr, förändring antal aktier, ägarandel, insiders netto 90 d kr, blankning %]
+#    [namn, slug, fonder, nettoköp kr, förändring antal aktier, ägarandel, insiders netto 90 d kr, blankning %, varav närstående kr]
 $embParts = foreach ($s in $pageStocks) {
   $own = if ($shareCount[$s.isin]) { ([math]::Min([double]1, [double]$s.h2 / $shareCount[$s.isin])).ToString("0.####", $Inv) } else { "null" }
   $fl = if ($null -ne $s.netFlow -and $s.price) { [math]::Round([double]$s.flow).ToString($Inv) } else { "null" }
   $ch = if ($null -ne $s.chg) { ([double]$s.chg).ToString("0.####", $Inv) } else { "null" }
   $iv = if ($insNet.ContainsKey($s.isin)) { [math]::Round($insNet[$s.isin]).ToString($Inv) } else { "null" }
   $sp = if ($shortPct.ContainsKey($s.isin)) { $shortPct[$s.isin].ToString("0.##", $Inv) } else { "null" }
-  (J $s.isin) + ":[" + (J $s.name) + "," + (J $s.slug) + "," + $s.f2 + "," + $fl + "," + $ch + "," + $own + "," + $iv + "," + $sp + "]"
+  $ic = if ($insCloseNet.ContainsKey($s.isin)) { [math]::Round($insCloseNet[$s.isin]).ToString($Inv) } else { "0" }
+  (J $s.isin) + ":[" + (J $s.name) + "," + (J $s.slug) + "," + $s.f2 + "," + $fl + "," + $ch + "," + $own + "," + $iv + "," + $sp + "," + $ic + "]"
 }
 Save "data/embed.json" ('{"q":' + (J $Q) + ',"ql":' + (J $QL) + ',"built":' + (J (Get-Date -Format "yyyy-MM-dd")) + ',"stocks":{' + (@($embParts) -join ",") + "}}")
 Write-Host "  inbäddning: $(@($embParts).Count) aktier"
@@ -1458,6 +1463,8 @@ $slugOf = @{}; foreach ($s in $pageStocks) { $slugOf[$s.isin] = $s.slug }
 function InsItem($r) {
   $kind = if ($r[7] -eq "Förvärv") { "köpte" } elseif ($r[7] -eq "Avyttring") { "sålde" } else { [string]$r[7] }
   $who = ([string]$r[4] -replace '\s+', ' ').Trim()
+  # Närstående (familj eller bolag som personen kontrollerar eller företräder) gjorde affären, inte personen själv
+  if ($r[6]) { $who = "Närstående till $who" }
   $amt = if ($null -ne $r[11]) { BigSek ([double]$r[11]) } else { "–" }
   $link = if ($slugOf.ContainsKey([string]$r[3])) { "/aktie/" + $slugOf[[string]$r[3]] + "/" } else { "/#/insyn" }
   return @{ title = "$($r[2]): $who $kind för $amt"; link = $link
@@ -1603,7 +1610,8 @@ if ($insider) {
     param($list)
     $t = NewList
     foreach ($r in @($list | Sort-Object { -[double]$_[11] } | Select-Object -First 20)) {
-      $t.Add(@((IssuerLink $r[3] $r[2]), (Esc (Plain $r[4])), (BigSek ([double]$r[11])), (Esc ([string]$r[0])), (Esc (Plain $r[5]))))
+      $who = if ($r[6]) { "Närstående till " + (Plain $r[4]) } else { Plain $r[4] }
+      $t.Add(@((IssuerLink $r[3] $r[2]), (Esc $who), (BigSek ([double]$r[11])), (Esc ([string]$r[0])), (Esc (Plain $r[5]))))
     }
     , $t
   }
@@ -1612,7 +1620,9 @@ if ($insider) {
     '<dl class="figures">' + (Fig "Insiderköp" (BigSek $insBuySum)) + (Fig "Insidersälj" (BigSek $insSellSum)) + (Fig "Köpaffärer" (Num0 $insBuyList.Count)) + (Fig "Säljaffärer" (Num0 $insSellList.Count)) + "</dl>" +
     (Block "Största köpen" (Table @("Bolag", "Person", "Värde", "Affärsdag", "Befattning") (& $insTable $insBuyList)) "section-gap") +
     (Block "Största försäljningarna" (Table @("Bolag", "Person", "Värde", "Affärsdag", "Befattning") (& $insTable $insSellList)) "section-gap") +
-    '<p class="desc section-gap">Insiders kan sälja av många skäl, till exempel skatt, lån eller en bostad. Ett köp med egna pengar säger ofta mer. ' + (A "/rss/insyn.xml" "Följ insynshandeln via RSS") + ".</p>"
+    '<p class="desc section-gap">Insiders kan sälja av många skäl, till exempel skatt, lån eller en bostad. Ett köp med egna pengar säger ofta mer. ' +
+    'Närstående är familjemedlemmar eller bolag som personen kontrollerar eller företräder, till exempel ett investmentbolag där personen är vd, och deras affärer kan vara mycket större än personens egna. ' +
+    (A "/rss/insyn.xml" "Följ insynshandeln via RSS") + ".</p>"
   Page "insyn/" "insyn" "Insynshandel – insiders köp och sälj i svenska bolag | Fondinsyn" `
     "Vd:ar, styrelseledamöter och andra insiders köp och sälj i sina egna bolag de senaste $($insider.days) dagarna, från Finansinspektionens insynsregister. Uppdateras varje morgon." `
     $defaultImg $content -Crumbs @("Insynshandel", "insyn/")
