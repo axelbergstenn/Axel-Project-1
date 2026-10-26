@@ -1724,15 +1724,16 @@ if ($insider) {
   foreach ($r in $insider.rows) {
     if ($null -eq $r[11] -or ($r[7] -ne "Förvärv" -and $r[7] -ne "Avyttring")) { continue }
     $k = [string]$r[3]
-    if (-not $insBy.ContainsKey($k)) { $insBy[$k] = @{ buy = 0.0; sell = 0.0 } }
+    if (-not $insBy.ContainsKey($k)) { $insBy[$k] = @{ buy = 0.0; sell = 0.0; close = 0.0 } }
     if ($r[7] -eq "Förvärv") { $insBy[$k].buy += [double]$r[11] } else { $insBy[$k].sell += [double]$r[11] }
+    if ($r[6]) { $insBy[$k].close += $(if ($r[7] -eq "Förvärv") { [double]$r[11] } else { -[double]$r[11] }) }
   }
   $dBuy = New-Object System.Collections.Generic.List[object]; $dSell = New-Object System.Collections.Generic.List[object]
   foreach ($s in $pageStocks) {
     if ($null -eq $s.netFlow -or -not $insBy.ContainsKey($s.isin)) { continue }
     $net = $insBy[$s.isin].buy - $insBy[$s.isin].sell
     if ([math]::Abs([double]$s.flow) -lt 1e6 -or [math]::Abs($net) -lt 5e5 -or (([double]$s.flow -gt 0) -ne ($net -gt 0))) { continue }
-    $x = [pscustomobject]@{ s = $s; net = $net }
+    $x = [pscustomobject]@{ s = $s; net = $net; close = $insBy[$s.isin].close }
     if ($s.flow -gt 0) { $dBuy.Add($x) } else { $dSell.Add($x) }
   }
   $dRows = { param($list) foreach ($x in $list) { ,@((A (StockUrl $x.s) $x.s.name), (Colored $x.s.flow (BigSek $x.s.flow -Sign)), (Colored $x.net (BigSek $x.net -Sign))) } }
@@ -1851,14 +1852,19 @@ if ($mkt) {
 if ($ratesLight) { $front.Add('"bonds":[' + [math]::Round([double]$ratesLight.totals[1]).ToString($Inv) + "," + [math]::Round([double]$ratesLight.totals[2]).ToString($Inv) + "]") }
 if ($insider) {
   $since30 = (Get-Date).AddDays(-30).ToString("yyyy-MM-dd"); $since14 = (Get-Date).AddDays(-14).ToString("yyyy-MM-dd")
-  $b30 = 0.0; $n30 = 0; $s30 = 0.0
-  foreach ($r in $insider.rows) { if ([string]$r[0] -ge $since30 -and $null -ne $r[11]) { if ($r[7] -eq "Förvärv") { $b30 += [double]$r[11]; $n30++ } elseif ($r[7] -eq "Avyttring") { $s30 += [double]$r[11] } } }
+  $b30 = 0.0; $n30 = 0; $s30 = 0.0; $cb30 = 0.0; $cs30 = 0.0
+  foreach ($r in $insider.rows) {
+    if ([string]$r[0] -ge $since30 -and $null -ne $r[11]) {
+      if ($r[7] -eq "Förvärv") { $b30 += [double]$r[11]; $n30++; if ($r[6]) { $cb30 += [double]$r[11] } }
+      elseif ($r[7] -eq "Avyttring") { $s30 += [double]$r[11]; if ($r[6]) { $cs30 += [double]$r[11] } }
+    }
+  }
   $big = @($insider.rows | Where-Object { $_[7] -eq "Förvärv" -and $null -ne $_[11] -and [double]$_[11] -ge 1e6 -and [string]$_[1] -ge $since14 } | Sort-Object { -[double]$_[11] } | Select-Object -First 12)
-  $bigJ = foreach ($r in $big) { "[" + (J $r[2]) + "," + (J $r[3]) + "," + (J (([string]$r[4]) -replace '\s+', ' ')) + "," + (J (([string]$r[5]) -replace '\s+', ' ')) + "," + [math]::Round([double]$r[11]).ToString($Inv) + "," + (J ([string]$r[0])) + "]" }
-  $front.Add('"insider":{"buy30":' + [math]::Round($b30).ToString($Inv) + ',"sell30":' + [math]::Round($s30).ToString($Inv) + ',"n30":' + $n30 + ',"top":[' + (@($bigJ) -join ",") + "]}")
+  $bigJ = foreach ($r in $big) { "[" + (J $r[2]) + "," + (J $r[3]) + "," + (J (([string]$r[4]) -replace '\s+', ' ')) + "," + (J (([string]$r[5]) -replace '\s+', ' ')) + "," + [math]::Round([double]$r[11]).ToString($Inv) + "," + (J ([string]$r[0])) + "," + $(if ($r[6]) { "1" } else { "0" }) + "]" }
+  $front.Add('"insider":{"buy30":' + [math]::Round($b30).ToString($Inv) + ',"sell30":' + [math]::Round($s30).ToString($Inv) + ',"close30":[' + [math]::Round($cb30).ToString($Inv) + ',' + [math]::Round($cs30).ToString($Inv) + '],"n30":' + $n30 + ',"top":[' + (@($bigJ) -join ",") + "]}")
 }
 if ($dBuy) {
-  $dj = foreach ($x in @($dBuy | Sort-Object net -Descending | Select-Object -First 6)) { "[" + (J $x.s.name) + "," + (J $x.s.isin) + "," + [math]::Round([double]$x.s.flow).ToString($Inv) + "," + [math]::Round([double]$x.net).ToString($Inv) + "]" }
+  $dj = foreach ($x in @($dBuy | Sort-Object net -Descending | Select-Object -First 6)) { "[" + (J $x.s.name) + "," + (J $x.s.isin) + "," + [math]::Round([double]$x.s.flow).ToString($Inv) + "," + [math]::Round([double]$x.net).ToString($Inv) + "," + [math]::Round([double]$x.close).ToString($Inv) + "]" }
   $front.Add('"double":{"buy":' + $dBuy.Count + ',"sell":' + $dSell.Count + ',"top":[' + (@($dj) -join ",") + "]}")
 }
 try {

@@ -113,7 +113,7 @@
         <label class="switch" title="Indexfonder följer ett index och gör inga egna val. Räkna bort dem för att se vad de aktivt förvaltade fonderna gör.">
           <input type="checkbox" id="excludeIndex" role="switch">
           <span class="switch-track" aria-hidden="true"></span>
-          <span class="switch-text">Utan indexfonder</span>
+          <span class="switch-text">Utan index<span class="hide-sm">fonder</span></span>
         </label>
       </div>
     </div>
@@ -197,6 +197,10 @@
   <div class="sheet-backdrop" id="moreBackdrop" hidden></div>
   <div class="mega" id="moreMenu" hidden>
     <div class="sheet-handle" aria-hidden="true"></div>
+    <button type="button" class="sheet-search" data-open-search>
+      <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.75" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      Sök aktie, fond eller emittent
+    </button>
     <div class="container mega-inner">
       <div class="mega-col">
         <h2>Aktier och marknad</h2>

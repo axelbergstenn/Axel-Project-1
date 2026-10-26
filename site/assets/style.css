@@ -689,6 +689,14 @@ a.btn { color: var(--fg-soft); }
 .ql-d { font-size: 12.5px; color: var(--fg-muted); line-height: 1.4; }
 .rc-next { font-size: 12.5px; color: var(--fg-muted); }
 
+/* Rullgardinen som ersätter flikarna på mobilen, och sökrutan överst i mobilmenyn */
+.subnav-pick { display: none; }
+.subnav-pick .sp-label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-muted); margin: 0 0 4px 2px; }
+.subnav-pick select { width: 100%; height: 40px; font-weight: 600; }
+.sheet-search { display: none; }
+.mega.sheet .sheet-search { display: flex; align-items: center; gap: 10px; width: calc(100% - 28px); margin: 2px 14px 8px; height: 44px; padding: 0 14px; font: inherit; font-size: 15px;
+  color: var(--fg-muted); text-align: left; background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }
+
 /* Flikar för avdelningen överst på sidan */
 .subnav { display: flex; flex-wrap: wrap; gap: 6px; margin: -8px 0 22px; }
 .subnav a { font-size: 13.5px; font-weight: 600; color: var(--fg-soft); padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg); transition: border-color 0.15s, background 0.15s, color 0.15s; }
@@ -1133,13 +1141,21 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .container { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
   .hide-sm { display: none !important; }
   .show-sm { display: block; }
-  h1 { font-size: 28px; }
-  h2 { font-size: 16.5px; }
+  /* Mobil: tätare och mindre inzoomat, ungefär som bankernas appar */
+  body { font-size: 14px; }
+  h1 { font-size: 24px; }
+  h2 { font-size: 15.5px; }
+  table { font-size: 13.5px; }
+  th, td { padding: 9px 10px; }
+  td .sub { font-size: 11.5px; }
+  .desc, .meta { font-size: 13px; }
 
-  .ticker { font-size: 12px; }
-  .ticker-inner { gap: 18px; height: 32px; }
-  .topbar-inner { min-height: 56px; gap: 10px; }
-  .brand { font-size: 19px; }
+  /* Kursremsan bara på startsidan, så att innehållet börjar högre upp */
+  .ticker { font-size: 12px; display: none; }
+  body[data-page="oversikt"] .ticker { display: block; }
+  .ticker-inner { gap: 18px; height: 30px; }
+  .topbar-inner { min-height: 52px; gap: 8px; }
+  .brand { font-size: 18px; }
   .mainnav, .menu-btn { display: none; }
   /* Sökknappen som en rund ikon i toppen (flikraden har Signaler i stället för Sök) */
   .search-btn { display: inline-flex; flex: none; width: 38px; padding: 0; justify-content: center; }
@@ -1147,26 +1163,32 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .select-sm { height: 38px; font-size: 16px; }
   .quarter-select { font-size: 15px; }
 
-  .subbar-inner { min-height: 0; padding-top: 10px; padding-bottom: 10px; font-size: 13px; gap: 8px; }
-  .subbar-controls { width: 100%; justify-content: space-between; margin-left: 0; }
+  /* Marknad och indexfonder på en rad; kvartalet syns redan i sidhuvudet */
+  .subbar-inner { min-height: 0; padding-top: 7px; padding-bottom: 7px; font-size: 13px; gap: 8px; }
+  .subbar-controls { width: 100%; justify-content: space-between; margin-left: 0; flex-wrap: nowrap; }
+  .summary { display: none; }
   .filter-label { display: none; }
   .quick { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .ql { padding: 12px 14px 13px; }
-  .ql-v { font-size: 18px; }
-  .subnav { margin: -4px 0 18px; gap: 6px; }
-  .subnav a { font-size: 13px; padding: 5px 12px; }
+  .ql { padding: 11px 13px 12px; }
+  .ql-v { font-size: 16px; }
+  /* Flikarna blir en rullgardin på mobilen (en rad i stället för flera) */
+  .subnav { display: none; }
+  .subnav-pick { display: block; margin: -4px 0 14px; }
   .lg { display: none; }
   .sp-parts { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .sig-cell .sig-meter { display: none; }
-  .rep-card { padding: 18px; border-radius: 18px; }
-  .about-card { padding: 16px 16px 14px; gap: 14px; }
-  .bt-answer { padding: 18px; }
-  .bt-verdict { font-size: 15px; }
-  .bt-duel b { font-size: 26px; }
+  .rep-card { padding: 16px; border-radius: 16px; }
+  .about-card { padding: 14px 14px 12px; gap: 10px; }
+  /* Uppdateringstakten tar mycket plats på en telefon och finns på Om-sidan */
+  .about-card .ac-freq, .about-card .ac-stamp { display: none; }
+  .ac-text p { font-size: 13.5px; }
+  .bt-answer { padding: 16px; }
+  .bt-verdict { font-size: 14.5px; }
+  .bt-duel b { font-size: 22px; }
   .ac-text { padding-right: 24px; }
   .ac-freq { padding-right: 0; gap: 10px 14px; }
   .ac-freq dd { font-size: 14px; }
-  .rc-title { font-size: 21px; }
+  .rc-title { font-size: 18px; }
   .rc-controls { width: 100%; }
   .rc-controls .seg { flex: 1 1 auto; }
   .rc-controls .seg-btn { flex: 1; }
@@ -1175,11 +1197,11 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .summary { text-align: left; }
   /* Startsidan och rapporten visar samma siffror i toppen, så sammanfattningen behövs inte där på mobil */
   body[data-page="oversikt"] .summary, body[data-page="rapport"] .summary { display: none; }
-  #marketSwitch { flex: 1 1 100%; }
-  #marketSwitch .seg-btn { flex: 1; padding: 5px 10px; }
+  #marketSwitch { flex: 1 1 auto; }
+  #marketSwitch .seg-btn { flex: 1; padding: 4px 8px; font-size: 12.5px; }
   .toast { bottom: calc(var(--tabbar-h) + var(--tabbar-gap) + 16px); }
-  .page-head > h1 { font-size: 32px; }
-  .rep-head h2 { font-size: 25px; }
+  .page-head > h1 { font-size: 25px; }
+  .rep-head h2 { font-size: 20px; }
   .rep-head { gap: 12px; }
   .rank-list { padding: 2px 14px; }
   .rank-list li { grid-template-columns: 18px minmax(0, 1fr) auto; gap: 10px; }
@@ -1220,23 +1242,23 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .mega-col a span { display: none; }
   .mega-about { border-left: 0; padding-left: 0; }
 
-  main { padding-top: 22px; padding-bottom: 32px; }
-  .page-head { margin-bottom: 16px; }
+  main { padding-top: 14px; padding-bottom: 28px; }
+  .page-head { margin-bottom: 12px; }
   .block-head { flex-direction: column; align-items: flex-start; gap: 2px; }
   .block-head .seg { align-self: stretch; }
   .block-head .pill { align-self: flex-start; margin-top: 4px; }
   .block-head .seg .seg-btn { flex: 1; }
-  .grid-2 { gap: 28px; }
-  .section-gap { margin-top: 30px; }
-  .lead { font-size: 15px; }
+  .grid-2 { gap: 22px; }
+  .section-gap { margin-top: 24px; }
+  .lead { font-size: 14px; }
 
   .hero { padding: 24px 20px 20px; border-radius: 22px; gap: 24px; margin-bottom: 4px; }
-  .hero h1 { font-size: 31px; line-height: 1.1; margin-bottom: 14px; }
+  .hero h1 { font-size: 25px; line-height: 1.15; margin-bottom: 12px; }
   .hero .intro { font-size: 15px; }
   .hero-links { margin-top: 20px; }
   .hero-links .btn { flex: 1 1 auto; }
   .hero-side { padding-top: 22px; gap: 18px; }
-  .hf-value { font-size: 46px; }
+  .hf-value { font-size: 38px; }
   .hero-stats dd { font-size: 16px; }
   .hero-stats { grid-template-columns: auto auto minmax(0, 1fr); gap: 0 14px; }
   .hero-stats div { padding-right: 0; }
@@ -1257,18 +1279,20 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .figures div + div::before { display: none; }
   .figures div:nth-child(even)::before { display: block; top: 14px; bottom: 14px; }
   .figures div:nth-last-child(-n+2):nth-child(odd), .figures div:last-child { border-bottom: 0; }
-  .figures dd { font-size: 21px; }
+  .figures div { padding-top: 10px; padding-bottom: 11px; }
+  .figures dd { font-size: 18px; }
 
   .highlights { grid-template-columns: minmax(0, 1fr); }
   .hl { border-bottom: 1px solid var(--border); padding: 14px 0; gap: 2px; }
   .hl + .hl::before { display: none; }
   .hl:last-child { border-bottom: 0; }
-  .hl-name { white-space: normal; font-size: 22px; }
+  .hl { padding: 11px 0; }
+  .hl-name { white-space: normal; font-size: 18px; }
 
   .mgr-grid { grid-template-columns: minmax(0, 1fr); }
   .chart-card { padding: 14px 10px 8px; }
-  .title-row .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; width: 100%; }
-  .title-row .actions .btn, .title-row .actions .star { flex: 1 1 auto; }
+  .title-row .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px; width: 100%; }
+  .title-row .actions .btn, .title-row .actions .star { flex: 1 1 auto; min-height: 36px; padding-top: 6px; padding-bottom: 6px; font-size: 13px; }
   .avatar { width: 40px; height: 40px; border-radius: 10px; font-size: 14px; }
   .title-main { gap: 12px; }
 
@@ -1293,9 +1317,9 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .mat-bar { font-size: 11px; }
   .panel { padding: 14px; }
 
-  .report h1 { font-size: 29px; }
-  .report .prose, .rep-lead { padding: 16px; }
-  .rep-lead p { font-size: 17px; }
+  .report h1 { font-size: 24px; }
+  .report .prose, .rep-lead { padding: 14px; }
+  .rep-lead p { font-size: 15px; }
   .newsletter { padding: 18px; }
   .glossary { grid-template-columns: minmax(0, 1fr); }
 

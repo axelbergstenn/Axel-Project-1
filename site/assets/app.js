@@ -839,16 +839,17 @@
       // Ett bolag en gång, med sitt största köp
       var insTop = ins.top.filter(function (r) { var k = r[1] || r[0]; if (seen[k]) return false; seen[k] = 1; return true; });
       out.push(mod("Insynshandel", "#/insyn", "Alla affärer",
-        "Insiders köpte för <b>" + bigSek(ins.buy30) + "</b> och sålde för " + bigSek(ins.sell30) + " de senaste 30 dagarna.",
+        "Insiders köpte för <b>" + bigSek(ins.buy30) + "</b>" + (ins.close30 ? closeNote(ins.buy30, ins.close30[0]) : "") + " och sålde för " + bigSek(ins.sell30) +
+          (ins.close30 ? closeNote(ins.sell30, ins.close30[1]) : "") + " de senaste 30 dagarna.",
         insTop.length ? '<ul class="mod-list">' + insTop.slice(0, 4).map(function (r) {
-          return "<li>" + name(r[0], r[1], esc(personName(r[2])) + (r[3] ? " · " + esc(r[3]) : "")) + '<span class="mod-v pos">' + bigSek(r[4]) + "</span></li>";
+          return "<li>" + name(r[0], r[1], (r[6] ? "Närstående till " : "") + esc(personName(r[2])) + (r[3] ? " · " + esc(r[3]) : "")) + '<span class="mod-v pos">' + bigSek(r[4]) + "</span></li>";
         }).join("") + "</ul>" : '<p class="desc">Inga större köp de senaste två veckorna.</p>'));
     }
     if (f.double) {
       out.push(mod("Dubbelsignal", "#/dubbelsignal", "Se listan",
         "<b>" + int(f.double.buy) + " aktier</b> köps av både fonder och bolagens egna insiders.",
         '<ul class="mod-list">' + f.double.top.slice(0, 4).map(function (r) {
-          return "<li>" + name(r[0], r[1], "Fonder " + bigSek(r[2], true) + " · insiders " + bigSek(r[3], true)) + "</li>";
+          return "<li>" + name(r[0], r[1], "Fonder " + bigSek(r[2], true) + " · insiders " + bigSek(r[3], true) + (r[4] != null ? closeNote(r[3], r[4]) : "")) + "</li>";
         }).join("") + "</ul>"));
     }
     if (f.shorts && f.shorts.length) {
@@ -920,7 +921,7 @@
     // Fondernas ägarandel finns för svenska bolag på Nasdaq Stockholm och First North
     var ownCol = !world && needShares() ? [{ key: "own", label: "Ägarandel", hideSm: true, cell: function (s) { return ownText(ownShare(s)); }, value: function (s) { return ownShare(s); } }] : [];
     var cols = [nameWithSub].concat(world ? [col.country] : [], [col.sector, col.funds, col.dFunds, col.value], ownCol, [col.flow, col.chg]);
-    $("stockTable").innerHTML = table("stocks-" + state.market, cols, rows, { csv: true, sort: { col: "flow", dir: -1 }, empty: "Inga aktier matchar filtret." });
+    $("stockTable").innerHTML = table("stocks-" + state.market, cols, rows, { csv: true, sort: { col: "flow", dir: -1 }, limit: 50, expand: true, empty: "Inga aktier matchar filtret." });
     $("stockCount").textContent = int(rows.length) + " aktier";
   }
 
@@ -1052,7 +1053,7 @@
     var typeOpts = opt(["", "Alla fonder"]) +
       '<optgroup label="Aktiefonder">' + [["equity", "Alla aktiefonder"], ["active", "Aktiva aktiefonder"], ["index", "Indexfonder"], ["closet", "Indexnära med hög avgift"]].map(opt).join("") + "</optgroup>" +
       '<optgroup label="Andra fonder">' + [["rante", "Räntefonder"], ["bland", "Blandfonder"], ["fof", "Fondandelsfonder"]].map(opt).join("") + "</optgroup>";
-    return '<div class="page-head"><div class="title-row"><h1>Fonder</h1><a class="btn" href="#/fondbolag">Alla fondbolag</a></div><p class="meta">Alla svenska värdepappersfonder, ' + quarterLabel(state.q) + ". Köp och sälj avser " + marketWord() + " aktier.</p></div>" +
+    return '<div class="page-head"><div class="title-row"><h1>Fonder</h1><a class="btn hide-sm" href="#/fondbolag">Alla fondbolag</a></div><p class="meta">Alla svenska värdepappersfonder, ' + quarterLabel(state.q) + ". Köp och sälj avser " + marketWord() + " aktier.</p></div>" +
       '<div class="toolbar">' +
       '<input class="input" type="search" id="fundSearch" aria-label="Filtrera fonderna" placeholder="Sök fond eller fondbolag" value="' + esc(fundFilter.q) + '" autocomplete="off">' +
       '<select class="select-sm" id="fundType" aria-label="Typ av fond">' + typeOpts + "</select>" +
@@ -1106,7 +1107,7 @@
       { key: "mv", label: (state.market === "se" ? "Sv." : "Utl.") + " aktier (mkr)", cell: function (r) { return mv(r) ? mkr(mv(r)) : "–"; }, value: mv },
       { key: "net", label: "Netto (mkr)", cell: function (r) { var v = net(r); return v == null ? "–" : '<span class="' + cls(v) + '">' + mkr(v, true) + "</span>"; }, value: net }
     ];
-    $("fundTable").innerHTML = table("funds-" + state.market, cols, rows, { csv: true, sort: { col: "mv", dir: -1 }, empty: "Inga fonder matchar filtret." });
+    $("fundTable").innerHTML = table("funds-" + state.market, cols, rows, { csv: true, sort: { col: "mv", dir: -1 }, limit: 50, expand: true, empty: "Inga fonder matchar filtret." });
     $("fundCount").textContent = int(rows.length) + " fonder";
   }
   // Räntefonder och fondandelsfonder får egna kolumner
@@ -3363,7 +3364,7 @@
       '<div class="toolbar"><label class="visually-hidden" for="insMin">Minsta värde</label><select id="insMin" class="select-sm">' +
       [[0, "Alla belopp"], [100000, "Över 100 000 kr"], [1000000, "Över 1 mkr"]].map(function (o) { return '<option value="' + o[0] + '"' + (f.min === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") +
       '</select><span class="count">' + int(list.length) + " affärer</span></div>" +
-      table("ins-latest", cols, list, { sort: { col: "d", dir: -1 }, limit: 150, csv: true }) + "</section>";
+      table("ins-latest", cols, list, { sort: { col: "d", dir: -1 }, limit: 50, expand: true, csv: true }) + "</section>";
     html += '<p class="desc section-gap"><b>Om närstående:</b> ' + CLOSE_INFO + " Registret säger inte vem den närstående är. Med <b>Bara egna</b> räknas bara personernas egna affärer" +
       (insiderFilter.period === "365" && insiderFilter.own ? " (för de senaste " + I.days + " dagarna, sammanställningen för tolv månader delar inte upp affärerna)" : "") + ".</p>" +
       '<p class="desc">Källa: Finansinspektionens insynsregister, publiceringar sedan ' + esc(I.from) + ". Bara affärer i aktier visas. " +
@@ -4334,7 +4335,7 @@
 
   // Kvartalsrapporten har egna flikar för marknaden
   var MARKET_PAGES = { oversikt: 1, aktier: 1, fonder: 1, fondbolag: 1 };
-  var NO_SUBBAR = { insyn: 1, blankning: 1, blankare: 1, uppkop: 1, sparande: 1, rantor: 1, emittent: 1, backtest: 1, om: 1, metod: 1, ordlista: 1, kontakt: 1, finnsinte: 1, data: 1, integritet: 1 };
+  var NO_SUBBAR = { risk: 1, insyn: 1, blankning: 1, blankare: 1, uppkop: 1, sparande: 1, rantor: 1, emittent: 1, backtest: 1, om: 1, metod: 1, ordlista: 1, kontakt: 1, finnsinte: 1, data: 1, integritet: 1 };
   // #/fonder/rantefonder öppnar fondlistan filtrerad på en fondtyp
   var FUND_TYPE_SLUGS = { aktiefonder: "equity", rantefonder: "rante", blandfonder: "bland", fondandelsfonder: "fof", indexfonder: "index" };
 
@@ -4425,9 +4426,13 @@
     var sec = SECTIONS[section];
     var onList = sec && sec.items.some(function (it) { return it[0] === navKey && r.page === navKey && !r.arg; });
     if (onList && html !== null) {
+      // På mobilen blir flikarna en rullgardin, så att de inte tar flera rader
       app.insertAdjacentHTML("afterbegin", '<nav class="subnav" aria-label="' + esc(sec.label) + '">' + sec.items.map(function (it) {
         return '<a href="' + it[2] + '"' + (it[0] === navKey ? ' aria-current="page"' : "") + ">" + it[1] + "</a>";
-      }).join("") + "</nav>");
+      }).join("") + "</nav>" +
+        '<div class="subnav-pick"><label class="sp-label" for="subnavPick">Välj sida i ' + esc(sec.label) + '</label><select id="subnavPick" class="select-sm">' + sec.items.map(function (it) {
+          return '<option value="' + it[2] + '"' + (it[0] === navKey ? " selected" : "") + ">" + it[1] + "</option>";
+        }).join("") + "</select></div>");
     }
     // Sidor som bara ligger i menyn markerar menyknappen (på dator om sidan saknas i menyraden, på mobil i flikraden)
     var inMenu = !!document.querySelector('#moreMenu [aria-current="page"]');
@@ -4769,6 +4774,7 @@
     }
     // Sök
     if (e.target.closest("#moreBtn, #moreBtnM")) { toggleMore(); return; }
+    if (e.target.closest("[data-open-search]")) { toggleMore(false); openSearch(); return; }
     if (moreOpen() && !e.target.closest("#moreMenu")) toggleMore(false);
     if (e.target.closest("#searchBtn, #searchBtnT")) { openSearch(); return; }
     if (e.target.closest("[data-search-close]")) { closeSearch(); return; }
@@ -4912,6 +4918,7 @@
   });
   document.addEventListener("change", function (e) {
     var id = e.target.id;
+    if (id === "subnavPick") { location.hash = e.target.value; return; }
     if (id === "insMin") { insiderFilter.min = +e.target.value; var my = window.scrollY; render(); window.scrollTo(0, my); return; }
     if (id === "stockSector") { stockFilter.sector = e.target.value; renderStockTable(); }
     if (id === "stockMin") { stockFilter.min = e.target.value; renderStockTable(); }
