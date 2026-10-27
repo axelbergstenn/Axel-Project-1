@@ -1089,6 +1089,7 @@
     var m = +p.slice(5, 7);
     return (m % 3 === 0 ? "Q" + m / 3 : MON[m - 1]) + "<br>" + p.slice(0, 4);
   }
+  function capFirst(s) { s = String(s || ""); return s.charAt(0).toUpperCase() + s.slice(1); }
   function change(now, before) {
     return now != null && before != null && before > 0 ? now / before - 1 : null;
   }
@@ -1220,20 +1221,46 @@
       if (q.ebit && q.ebit[0] != null) qtile(money(q.ebit[0], qcur), "rörelseresultat", was(q.ebit, money), q.ebit[0] < 0 ? "neg" : "");
       if (q.net && q.net[0] != null) qtile(money(q.net[0], qcur), q.net[0] >= 0 ? "vinst efter skatt" : "förlust efter skatt", was(q.net, money), q.net[0] < 0 ? "neg" : "");
       if (q.eps && q.eps[0] != null) qtile(perShare(q.eps[0], qcur), "resultat per aktie", was(q.eps, perShare), q.eps[0] < 0 ? "neg" : "");
+      // Orderingång: nya beställningar under kvartalet, orderstock: beställt men inte levererat än
+      var ord = q.orders || {};
+      if (ord["in"]) {
+        var og = change(ord["in"][0], ord["in"][1]);
+        qtile(money(ord["in"][0], qcur), "nya order (orderingång)", og != null ? '<span class="' + cls(og) + '">' + pct(og) + "</span> mot samma period i fjol" : "");
+        if (qrev && qrev[0] > 0) {
+          var bb = ord["in"][0] / qrev[0];
+          lead.push(bb >= 1.05 ? "Bolaget fick in fler nya beställningar än det levererade, vilket brukar betyda att försäljningen kan fortsätta växa."
+            : bb <= 0.95 ? "Bolaget fick in färre nya beställningar än det levererade, så orderböckerna krymper något." : "Nya beställningar och leveranser var ungefär lika stora.");
+        }
+      }
+      if (ord.book) {
+        var months = qrev && qrev[0] > 0 ? ord.book[0] / qrev[0] * (q.m || 3) : null;
+        qtile(money(ord.book[0], qcur), "i orderstock", months != null && months >= 1 ? "Beställt men inte levererat, motsvarar ungefär " + nf0.format(months) + " månaders försäljning" : "Beställt men inte levererat än");
+      }
+      // Bankernas egna mått, förklarade
+      var bk = q.bank || {};
+      if (bk.roe != null) qtile(nf1.format(bk.roe) + " %", "avkastning på eget kapital", "Så mycket vinst banken gör per år på ägarnas pengar", bk.roe < 0 ? "neg" : "");
+      if (bk.ci != null) qtile(nf2.format(bk.ci), "kostnad per intjänad krona", "Banken har " + nf0.format(bk.ci * 100) + " öre i kostnader för varje krona den tjänar in. Lägre är bättre.");
+      if (bk.cet1 != null) qtile(nf1.format(bk.cet1) + " %", "kapitalbuffert (kärnprimärkapital)", "Bankens buffert mot förluster i förhållande till utlåningens risk. Högre är tryggare.");
       var charts = "", insights = [];
       if (c.qs) {
         charts = (finance ? "" : quarterBars(c.qs, 1, "Försäljning", qcur)) + quarterBars(c.qs, finance ? 3 : 2, finance ? "Resultat" : "Rörelseresultat", qcur);
         insights = quarterInsights(c.qs, qcur, short, finance);
       }
-      html += '<div class="know-card know-q"><div class="kq-head"><h3>Senaste rapporten: ' + per + '</h3><span class="kq-date">Publicerad ' + dateText(q.date) + "</span></div>" +
+      var insHtml = insights.length ? '<div><h4 class="kq-sub">Det här visar kvartalen</h4><ul class="know-ins">' + insights.map(function (x) {
+        return '<li class="' + x.tone + '"><span class="ki-dot" aria-hidden="true"></span>' + x.text + "</li>";
+      }).join("") + "</ul></div>" : "";
+      var evHtml = q.events && q.events.length ? '<div><h4 class="kq-sub">Viktigt som hänt</h4><ul class="know-ins events">' + q.events.map(function (x) {
+        return '<li><span class="ki-dot" aria-hidden="true"></span>' + esc(x) + "</li>";
+      }).join("") + "</ul></div>" : "";
+      var voice = (q.quote && f.ceo ? '<blockquote class="know-quote"><p>”' + esc(q.quote) + '”</p><footer>' + esc(f.ceo) + ", vd</footer></blockquote>" : "") +
+        (q.outlook ? '<h4 class="kq-sub">Bolaget om framtiden</h4><p class="know-outlook">' + esc(q.outlook) + "</p>" : "");
+      var pair = function (a, b) { return a && b ? '<div class="kq-split">' + a + "<div>" + b + "</div></div>" : a || b; };
+      html += '<div class="know-card know-q"><div class="kq-head"><h3>Senaste rapporten <span class="kq-per">' + per + '</span></h3><span class="kq-date">Publicerad ' + dateText(q.date) + "</span></div>" +
         (lead.length ? '<p class="know-lead">' + lead.join(" ") + "</p>" : "") +
         (qt.length ? '<div class="know-tiles in-card">' + qt.join("") + "</div>" : "") +
-        (charts ? '<div class="qb-charts">' + charts + "</div>" : "") +
-        (insights.length ? '<h4 class="kq-sub">Det här visar kvartalen</h4><ul class="know-ins">' + insights.map(function (x) {
-          return '<li class="' + x.tone + '"><span class="ki-dot" aria-hidden="true"></span>' + x.text + "</li>";
-        }).join("") + "</ul>" : "") +
-        (q.quote && f.ceo ? '<blockquote class="know-quote"><p>”' + esc(q.quote) + '”</p><footer>' + esc(f.ceo) + ", vd</footer></blockquote>" : "") +
-        '<p class="kq-link"><a href="' + esc(q.url) + '" target="_blank" rel="noopener">Läs rapporten: ' + esc(q.title) + " ↗</a></p></div>";
+        pair(charts ? '<div class="qb-charts">' + charts + "</div>" : "", insHtml) +
+        pair(evHtml, voice) +
+        '<p class="kq-link"><a href="' + esc(q.url) + '" target="_blank" rel="noopener">Läs hela rapporten: ' + esc(q.title) + " ↗</a></p></div>";
     }
 
     // Kalendern: nästa rapport, årsstämman och utdelningen
@@ -1241,20 +1268,25 @@
     if (cal.next) calItems.push(["Nästa rapport", dateText(cal.next[0]) + ' <span class="muted">(' + esc(cal.next[1].replace(/\s+\d{4}(-Q\d)?$/, "").toLowerCase()) + ")</span>"]);
     if (cal.agm) calItems.push(["Årsstämma", dateText(cal.agm)]);
     if (cal.div && cal.div.length) {
-      var lastDate = cal.div[cal.div.length - 1][0];
-      var same = cal.div.filter(function (d) { return d[0] === lastDate; });
-      var ord = same.filter(function (d) { return d[3] === "ord"; }), extra = same.filter(function (d) { return d[3] !== "ord"; });
-      var amt = function (list) { return perShare(list.reduce(function (a, d) { return a + d[1]; }, 0), list[0][2]); };
-      var parts = (ord.length ? amt(ord) : "") + (extra.length ? (ord.length ? " + " : "") + amt(extra) + " extra" : "");
-      calItems.push(["Utdelning per aktie", parts + ' <span class="muted">(' + (lastDate >= new Date().toISOString().slice(0, 10) ? "x-dag " : "senast, x-dag ") + dateText(lastDate) + ")</span>"]);
+      // Allt som betalats ut (eller ska betalas ut) det senaste året, även när utdelningen delas upp på flera tillfällen
+      var lastDate = cal.div[cal.div.length - 1][0], dcur = cal.div[0][2];
+      var cutoff = new Date(new Date(lastDate).getTime() - 330 * 864e5).toISOString().slice(0, 10);
+      var divs = cal.div.filter(function (d) { return d[0] > cutoff; });
+      var sumOf = function (list) { return list.reduce(function (a, d) { return a + d[1]; }, 0); };
+      var all = sumOf(divs), extra = sumOf(divs.filter(function (d) { return d[3] !== "ord"; }));
+      var times = divs.map(function (d) { return d[0]; }).filter(function (d, i, a) { return a.indexOf(d) === i; }).length;
+      calItems.push(["Utdelning per aktie, senaste året", perShare(all, dcur) + ' <span class="muted">(' + (extra > 0 ? "varav " + perShare(extra, dcur) + " extra, " : "") +
+        (times > 1 ? "i " + times + " omgångar, " : "") + (lastDate >= new Date().toISOString().slice(0, 10) ? "nästa x-dag " : "senast x-dag ") + dateText(lastDate) + ")</span>"]);
     }
     if (calItems.length) {
       html += '<dl class="know-cal">' + calItems.map(function (x) { return "<div><dt>" + x[0] + "</dt><dd>" + x[1] + "</dd></div>"; }).join("") + "</dl>";
     }
 
-    // Affärsområden och marknader (helåret, ur årsredovisningen)
+    // Affärsområden (senaste kvartalet om rapporten har dem, annars helåret ur årsredovisningen) och marknader
     var cards = [];
-    var seg = !finance && r && r.seg;
+    var qseg = !finance && c.qseg && q ? c.qseg : null;
+    var seg = qseg || (!finance && r && r.seg);
+    var segCur = qseg ? q.cur : cur, segWhen = qseg ? capFirst(periodText(qseg.p, qseg.m)) : "Helåret " + (r ? r.fy : "");
     if (seg) {
       var items = seg.items.map(function (x) { return { name: x[0], rev: x[1], profit: x[2], share: x[3], margin: x[4], other: !!x[5] }; })
         .sort(function (a, b) { return (a.other - b.other) || (b.share - a.share); });
@@ -1270,11 +1302,11 @@
       }
       var metricNote = seg.metric && !/^rörelseresultat$/i.test(seg.metric) ? " Vinsten är bolagets mått " + esc(seg.metric.toLowerCase()) + "." : "";
       cards.push('<div class="know-card"><h3>Så tjänar ' + esc(short) + " pengar</h3>" +
-        '<p class="know-lead">' + segLead + metricNote + ' <span class="muted">Helåret ' + r.fy + ".</span></p>" +
+        '<p class="know-lead">' + segLead + metricNote + ' <span class="muted">' + segWhen + ".</span></p>" +
         '<ul class="know-rows">' + items.map(function (x) {
           var badges = (x === biggest ? '<span class="kr-badge big">Störst</span>' : "") + (x === best && best.margin > 0 ? '<span class="kr-badge best">Mest lönsamt</span>' : "");
           var sub = [];
-          if (x.rev != null) sub.push("Säljer för " + money(x.rev, cur));
+          if (x.rev != null) sub.push((qseg ? "Sålde för " : "Säljer för ") + money(x.rev, segCur));
           if (x.margin != null) sub.push(x.margin < 0 ? '<span class="neg">Går med förlust</span>' : "Vinstmarginal " + nf0.format(x.margin * 100) + " %");
           return '<li class="kr-row' + (x.other ? " other" : "") + '"><div class="kr-top"><span class="kr-name">' + esc(x.name) + badges + '</span><span class="kr-val">' + nf0.format(x.share * 100) + " %</span></div>" +
             '<div class="kr-bar"><span style="width:' + Math.max(1, x.share * 100).toFixed(1) + '%"></span></div>' +
@@ -1321,6 +1353,26 @@
       tile(money(rev / f.employees[0], cur), "i försäljning per anställd", "Med ca " + int(f.employees[0]) + " anställda");
     }
     if (tiles.length) html += '<h3 class="know-h">Helåret ' + r.fy + " i vardagliga mått</h3>" + '<div class="know-tiles">' + tiles.slice(0, 5).join("") + "</div>";
+
+    // Hur bolaget är finansierat: eget kapital mot lån och andra skulder (banker har alltid lite eget kapital, så inte för dem)
+    var eq = now("equity"), assets = now("assets");
+    if (!finance && eq != null && assets > 0 && eq <= assets) {
+      var share = eq / assets, debt = 1 - Math.max(0, share);
+      var eqBefore = before("equity") != null && before("assets") > 0 ? before("equity") / before("assets") : null;
+      var verdict = share < 0 ? "Bolaget har mer skulder än tillgångar (negativt eget kapital), vilket är en varningssignal."
+        : share >= 0.5 ? "Det är en hög andel egna pengar: bolaget har marginal om det blir sämre tider."
+        : share >= 0.3 ? "Det är en vanlig nivå för ett börsbolag."
+        : "Det är en låg andel egna pengar: bolaget är beroende av lån och är känsligare om det blir sämre tider.";
+      html += '<div class="know-card know-fin"><h3>Hur betalar ' + esc(short) + " för det de äger?</h3>" +
+        '<p class="know-lead">Bolaget äger saker för ' + money(assets, cur) + " (fabriker, lager, kundfordringar, kassa och annat). " +
+        (share >= 0 ? nf0.format(share * 100) + " % av det är betalt med ägarnas egna pengar och " + nf0.format(debt * 100) + " % med lån och andra skulder. " : "") +
+        verdict + (eqBefore != null && Math.abs(share - eqBefore) >= 0.03 ? " Ett år tidigare var andelen egna pengar " + nf0.format(eqBefore * 100) + " %." : "") +
+        ' <span class="muted">Helåret ' + r.fy + ".</span></p>" +
+        (share >= 0 ? '<div class="fin-bar" role="img" aria-label="' + nf0.format(share * 100) + ' % eget kapital, ' + nf0.format(debt * 100) + ' % skulder">' +
+          '<span class="fin-eq" style="width:' + (share * 100).toFixed(1) + '%"></span><span class="fin-debt" style="width:' + (debt * 100).toFixed(1) + '%"></span></div>' +
+          '<div class="fin-legend"><span><i class="fin-eq"></i>Egna pengar (eget kapital) ' + money(eq, cur) + '</span><span><i class="fin-debt"></i>Lån och andra skulder ' + money(assets - eq, cur) + "</span></div>" : "") +
+        "</div>";
+    }
 
     // Placering bland alla bolag på sajten
     var rk = c.rank || {}, ranks = [];

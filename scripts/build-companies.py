@@ -50,7 +50,7 @@ except ImportError:
 
 # Höjs när tolkningen av rapporterna ändras, så att alla rapporter läses om
 PARSER_VERSION = 6
-INTERIM_VERSION = 2  # samma sak för kvartalsrapporterna
+INTERIM_VERSION = 5  # samma sak för kvartalsrapporterna
 UA = "Fondinsyn/1.0 (https://www.fondinsyn.se)"
 TODAY = dt.date.today()
 
@@ -1221,8 +1221,12 @@ def about_text(body_html, body):
     t = next((lines[i + 1] for i, l in enumerate(lines[:-1])
               if re.fullmatch(r"(om|kort om|about) [^.]{2,50}", l, re.I) and len(lines[i + 1]) >= 120), None)
     if not t:
-        cands = [l for l in lines[len(lines) // 2:] if 120 <= len(l) <= 1600 and len(ABOUT_WORDS.findall(l)) >= 2
-                 and not re.search(r"@|tel\.|telefon|\+46|offentliggörande|marknadsmissbruk|webcast|telefonkonferens", l, re.I)]
+        # Utan rubrik: bara ett stycke efter kontaktuppgifterna som beskriver bolaget (inte vd:ns "vi" och "kvartalet")
+        start = max([i for i, l in enumerate(lines) if re.search(r"för (ytterligare|mer) information|denna information är sådan|kontaktperson|"
+                                                                    r"for further information", l, re.I)] or [len(lines) // 2])
+        cands = [l for l in lines[start:] if 120 <= len(l) <= 1600 and len(ABOUT_WORDS.findall(l)) >= 2
+                 and re.search(r"\b(är (en|ett|världens|nordens|sveriges|europas|den|det)|grundades|noterad|huvudkontor|erbjuder|utvecklar|tillverkar|levererar)\b", l, re.I)
+                 and not re.search(r"\b(vi|vår|våra|vårt|jag)\b|kvartalet|under perioden|@|tel\.|telefon|\+46|offentliggörande|marknadsmissbruk|webcast|telefonkonferens", l, re.I)]
         if not cands:
             return None
         t = cands[-1]
@@ -1391,13 +1395,21 @@ def read_interim(item, annual_rev):
     about = about_text(body_html, body)
     if about:
         res["about"] = about
+    events, outlook = events_and_outlook(body)
+    if events:
+        res["events"] = events
+    if outlook:
+        res["outlook"] = outlook
+    bank = bank_figures(body)
+    if bank and ("ci" in bank or "cet1" in bank):
+        res["bank"] = bank
     if not pdfium:
         return res
-    st = None
+    st = pdf_bytes = None
     for url in item["pdfs"][:3]:
         try:
-            b = cached_fetch(url, "application/pdf,*/*")
-            st = read_statement(b) if b else None
+            pdf_bytes = cached_fetch(url, "application/pdf,*/*")
+            st = read_statement(pdf_bytes) if pdf_bytes else None
         except Exception as e:
             if network_error(e):
                 raise
@@ -1437,7 +1449,350 @@ def read_interim(item, annual_rev):
         else:
             q[k] = [round(a * sc) if a is not None else None, round(b * sc) if b is not None else None]
     res["q"] = q
+    rev = (q.get("rev") or [None])[0]
+    if rev and rev > 0:
+        orders = order_figures(body, rev, cur, q["m"])
+        if orders:
+            res["orders"] = orders
+        try:
+            seg = read_segments(pdf_bytes, q)
+        except Exception as e:
+            print("  %s: affärsområdena gick inte att läsa (%s)" % (item["url"], e))
+            seg = None
+        if seg:
+            res["seg"] = seg
     return res
+
+
+# ---------- Mer ur rapporten: händelser, utsikter, orderingång och affärsområden ----------
+
+BORING_EVENT = re.compile(r"årsstämma|bolagsstämma|kallelse|valberedning|certified adviser|utdelning|bokslutskommuniké|delårsrapport|"
+                          r"kvartalsrapport|årsredovisning|finansiell kalender|lämnade .{0,20}rapport", re.I)
+
+
+def events_and_outlook(body):
+    """Väsentliga händelser (högst fyra punkter) och bolagets syn framåt, med bolagets egna ord."""
+    lines = [l.strip() for l in body.split("\n") if l.strip()]
+    events, outlook = [], None
+    for i, l in enumerate(lines):
+        if len(events) < 4 and len(l) <= 80 and re.match(r"(väsentliga |viktiga |övriga )?händelser\b", l, re.I) and not re.search(r"finansiella", l, re.I):
+            for x in lines[i + 1:i + 12]:
+                if len(x) < 30 and not re.match(r"[•●\-–]", x):
+                    if x is lines[i + 1] and len(x) < 40:
+                        continue  # underrubrik ("Andra kvartalet")
+                    break
+                if re.match(r"(väsentliga |viktiga )?händelser|vd har ordet|vd-ord|för ytterligare information|denna information", x, re.I):
+                    break
+                x = re.sub(r"^[•●\-–]\s*", "", x)
+                x = re.sub(r"^\d{1,2} (januari|februari|mars|april|maj|juni|juli|augusti|september|oktober|november|december)( \d{4})?:\s*", "", x, flags=re.I)
+                if BORING_EVENT.search(x) or not swedish(x + " och är av för"):
+                    continue
+                first = re.split(r"(?<=[a-zåäö0-9)])\.\s+(?=[A-ZÅÄÖ])", x)[0].rstrip(".")
+                if 25 <= len(first) <= 240 and first not in events:
+                    events.append(first)
+                if len(events) >= 4:
+                    break
+        if not outlook:
+            m = re.match(r"[-•●–]?\s*((?:framtids|marknads)?utsikter(?: för \d{4})?(?: \(\w+\))?|prioriteringar framåt och utsikter)\s*:?\s*(.*)$", l, re.I)
+            if m and len(m.group(1)) < 60:
+                text = m.group(2) if len(m.group(2)) >= 60 else next((x for x in lines[i + 1:i + 3] if len(x) >= 60), None)
+                if text and swedish(text) and not re.search(r"framtidsinriktade uttalanden|forward-looking", text, re.I):
+                    out = ""
+                    for s in re.split(r"(?<=[.!?])\s+", text):
+                        if out and len(out) + len(s) > 320:
+                            break
+                        out = (out + " " + s).strip()
+                    outlook = out
+    return events, outlook
+
+
+def bank_figures(body):
+    """Bankernas egna nyckeltal för kvartalet: avkastning på eget kapital (%), K/I-tal (kostnad per intjänad krona) och
+    kärnprimärkapitalrelation (%). Står som en rad i nyckeltalstabellen ("K/I-tal 0,41 0,43 …", första talet är
+    kvartalet) eller i en mening ("med en avkastning på eget kapital om 13,0 procent")."""
+    num = r"(-?\d{1,2},\d{1,2})"
+    specs = {
+        "roe": (r"(?:räntabilitet|avkastning)(?:en)? på eget kapital", -50, 60),
+        "ci": (r"k/i-tal(?:et)?", 0.1, 2),
+        "cet1": (r"kärnprimärkapital(?:relation|kvot)(?:en)?", 4, 45),
+    }
+    out = {}
+    lines = body.split("\n")
+    for key, (word, lo, hi) in specs.items():
+        v = None
+        for l in lines:
+            m = re.match(r"\s*%s(?:,\s*%%)?\s*[¹²³*]*\s+%s(?:\s|$)" % (word, num), l, re.I)
+            if m and not re.search(r"justera|exklusive|exkl\.", l[:m.end()], re.I):
+                v = float(m.group(1).replace(",", "."))
+                break
+        if v is None:
+            m = re.search(r"%s\s+(?:om|på|var|blev|uppgick till|landade på)\s+%s" % (word, num), body, re.I)
+            if m:
+                v = float(m.group(1).replace(",", "."))
+        if v is not None and lo <= v <= hi:
+            out[key] = v
+    return out or None
+
+
+def sv_amount(num, unit_word):
+    """"18 336" + "Mkr" -> belopp i valutan (kronor), "23,2" + "MdSEK" -> 23,2 miljarder."""
+    s = num.replace(" ", "").replace(" ", "")
+    if re.fullmatch(r"\d{1,3}(\.\d{3})+", s):
+        s = s.replace(".", "")
+    s = s.replace(",", ".")
+    try:
+        v = float(s)
+    except ValueError:
+        return None
+    w = (unit_word or "").lower()
+    sc = next((sc for u, sc, cur in TEXT_UNITS if re.fullmatch(u, w, re.I)), None)
+    return v * sc if sc else None
+
+
+def order_figures(body, rev, cur, months):
+    """Orderingång och orderstock för kvartalet: [nu, året innan]. Bara om beloppet står med enhet och jämförelsetal
+    och är rimligt stort jämfört med kvartalets omsättning (annars är det troligen niomånaderssiffran)."""
+    N = r"\d{1,3}(?:[  .]\d{3})+(?:,\d+)?|\d+(?:,\d+)?"
+    U = TEXT_UNIT_RE
+    pre = r"^(?:[^()\d\n]|\d+(?:[,.]\d+)?\s?(?:%|procent))*?"  # "ökade 29 % till"
+    patterns = [re.compile(pre + r"(?P<unit>%s)\s*(?P<x>%s)\s*\(\s*(?P<y>%s)\s*\)" % (U, N, N), re.I),   # MSEK 52 338 (40 517)
+                re.compile(pre + r"(?P<x>%s)\s*(?P<unit>%s)\s*\(\s*(?P<y>%s)\s*\)" % (N, U, N), re.I),   # 18 336 Mkr (13 183)
+                re.compile(pre + r"(?P<x>%s)\s*\(\s*(?P<y>%s)\s*\)\s*(?P<unit>%s)" % (N, N, U), re.I)]   # 14 129 (13 392) MSEK
+    out = {}
+    for key, word, lo, hi in (("in", r"orderingång(?:en)?", 0.2, 5), ("book", r"orderstock(?:en)?", 0.2, 40)):
+        for m in re.finditer(r"\b%s\b([^\n]{0,120})" % word, body, re.I):
+            rest = m.group(1)
+            if re.match(r"\s+i\s+[A-ZÅÄÖ]", rest) or re.match(r"\s+(i fast valuta|organisk|exklusive|justerad)", rest, re.I):
+                continue  # ett affärsområde, eller bara en procentsats
+            a = next((p.search(rest) for p in patterns if p.search(rest)), None)
+            if not a:
+                continue
+            unit, x, y = a.group("unit"), a.group("x"), a.group("y")
+            if cur != "SEK" and cur.lower() not in unit.lower():
+                break
+            v, p = sv_amount(x, unit), sv_amount(y, unit)
+            if v and p and lo <= v / rev <= hi:
+                out[key] = [round(v), round(p)]
+            break
+    return out or None
+
+
+SEG_HEAD = re.compile(r"^(?P<metric>(justerad |justerat |underliggande )?(nettoomsättning|intäkter|omsättning|försäljning|försäljningsintäkter|net sales|revenues?|"
+                      r"rörelseresultat|ebita|ebit|operating (profit|income)))\b.{0,40}?\b(per|by|för|fördelat på|och \w+ per)\s+(affärsområde|segment|division|"
+                      r"rörelsesegment|verksamhetsområde|business area|affärsenhet)", re.I)
+SEG_SKIP = re.compile(r"varav|i % av|^%|marginal|organisk|förändring|tillväxt|^-|valuta", re.I)
+SEG_TOTAL = re.compile(r"^(summa|totalt?|koncernen|gruppen|group|total)\b|(koncernen|group|totalt|total)\s*\d?\)?$", re.I)
+SEG_NOT = re.compile(r"eliminer|koncerngemensam|gruppgemensam|gemensamma|centrala|corporate|moderbolag|avyttrade|avvecklade|justering|övriga poster|"
+                     r"ofördelad|oallokerad|ej allokerad|unallocated", re.I)
+
+
+def read_segments(pdf_bytes, q):
+    """Affärsområdenas försäljning och resultat för kvartalet ur rapportens tabeller ("Intäkter per affärsområde").
+    Kolumnen väljs så att affärsområdenas summa blir kvartalets omsättning (som redan är kontrollerad)."""
+    if not pdf_bytes:
+        return None
+    rev_q, ebit_q = q["rev"][0], (q.get("ebit") or [None])[0]
+    pdf = pdfium.PdfDocument(pdf_bytes)
+    tables = []
+    try:
+        for pi in range(len(pdf)):
+            tp = pdf[pi].get_textpage()
+            txt = tp.get_text_range()
+            if not re.search(r"affärsområde|segment|division|business area|affärsenhet|verksamhetsområde", txt, re.I):
+                continue
+            dec = decimal_sep(txt)
+            lines = pdf_lines(tp)
+            for i, (y, cells) in enumerate(lines):
+                head = " ".join(c[2] for c in cells)
+                m = SEG_HEAD.match(head)
+                if not m or len(head) > 110 or re.search(r"marginal|%", head):
+                    continue
+                kind = "rev" if re.search(r"omsättning|intäkter|försäljning|sales|revenue", m.group("metric"), re.I) else "profit"
+                rows, total, misses, first = [], None, 0, None
+                for j in range(i + 1, min(len(lines), i + 45)):
+                    lab, vals = split_row(lines[j][1], dec)
+                    t = " ".join(c[2] for c in lines[j][1])
+                    if SEG_HEAD.match(t) and j > i + 1:
+                        break
+                    nums = [v for v in vals if v[1] is not None and not v[3]]
+                    if not lab or not vals:
+                        misses += 1
+                        if misses > 3 and rows:
+                            break
+                        continue
+                    misses = 0
+                    if re.fullmatch(r"(msek|mkr|sek ?m|tkr|tsek|ksek|meur|teur|keur|eur ?m|%)( \(per kvartal\))?", lab, re.I):
+                        continue  # rubrikraden med enheten
+                    first = first if first is not None else j
+                    lab = re.sub(r"\s*\d\)$|\s*[¹²³*]+$", "", lab).strip()
+                    if SEG_SKIP.search(lab):
+                        continue
+                    if SEG_TOTAL.search(lab):
+                        total = vals
+                        break
+                    if nums:
+                        rows.append((lab, vals))
+                if len(rows) >= 2:
+                    headers = " ".join(c[2] for _, cs in lines[i:first or i + 1] for c in cs)
+                    unit = next(((sc, cur) for rx, sc, cur in UNIT_HDR if rx.search(head + " " + headers + " " + txt[:3000])), None)
+                    tables.append({"kind": kind, "metric": re.sub(r"\s+", " ", m.group("metric")).strip(), "rows": rows, "total": total,
+                                   "lines": lines, "i": i, "first": first, "unit": unit})
+    finally:
+        pdf.close()
+
+    def at(vals, x):
+        return next((v[1] for v in vals if abs(v[0] - x) <= 14 and not v[3]), None)
+
+    found = by_rows(tables, rev_q, ebit_q, q, at)
+    return found or by_columns(pdf_bytes, rev_q, q)
+
+
+def seg_result(q, names, revs, profits, metric):
+    total = sum(revs)
+    items = []
+    for n, r, p in zip(names, revs, profits):
+        if p is not None and abs(p) > r:
+            p = None
+        items.append([n, round(r), round(p) if p is not None else None, round(r / total, 4), round(p / r, 4) if p is not None else None,
+                      1 if re.match(r"övrig|other", n, re.I) else 0])
+    metric = re.sub(r"\s+", " ", metric or "").strip()
+    if re.fullmatch(r"(segmentets |segmentens )?(rörelseresultat|operating (profit|income))", metric, re.I):
+        metric = "Rörelseresultat"
+    metric = metric.upper() if metric.lower() in ("ebita", "ebit") else metric[:1].upper() + metric[1:]
+    return {"p": q["p"], "m": q["m"], "metric": metric, "items": items}
+
+
+SEG_REV_ROW = re.compile(r"^(extern(a)? |summa |total )?(nettoomsättning|intäkter|omsättning|försäljning|försäljningsintäkter|net sales|revenues?)"
+                         r"( från externa kunder| externt| extern| totalt| total)?$|^intäkter från externa kunder$", re.I)
+SEG_PROFIT_ROW = re.compile(r"^(segmentets |segmentens )?(justerad |justerat )?(rörelseresultat|ebita|ebit|operating (profit|income)|resultat)( per segment)?$", re.I)
+
+
+def by_columns(pdf_bytes, rev_q, q):
+    """Affärsområden som kolumner ("Rapportering per division": en kolumn per division, raderna Nettoomsättning och
+    Rörelseresultat). Kolumnerna där summan blir kvartalets omsättning är affärsområdena."""
+    pdf = pdfium.PdfDocument(pdf_bytes)
+    try:
+        for pi in range(len(pdf)):
+            tp = pdf[pi].get_textpage()
+            txt = tp.get_text_range()
+            if not re.search(r"affärsområde|segment|division|business area|affärsenhet", txt, re.I):
+                continue
+            dec = decimal_sep(txt)
+            lines = pdf_lines(tp)
+            unit = next(((sc, cur) for rx, sc, cur in UNIT_HDR if rx.search(txt)), None)
+            for i, (y, cells) in enumerate(lines):
+                lab, vals = split_row(cells, dec)
+                lab = clean_row_label(lab)
+                if not SEG_REV_ROW.match(lab):
+                    continue
+                pts = [(v[0], v[1]) for v in vals if v[1] is not None and not v[3]]
+                if len(pts) < 3:
+                    continue
+                for sc in ((unit[0],) if unit else (1e6, 1e3, 1e9)):
+                    # en totalkolumn (koncernen) och kolumnerna före den, eller alla kolumner
+                    k = next((j for j, (x, v) in enumerate(pts) if abs(v * sc - rev_q) <= 0.015 * rev_q), None)
+                    seg_pts = pts[:k] if k is not None and k >= 2 else pts if abs(sum(v for _, v in pts) * sc - rev_q) <= 0.015 * rev_q else None
+                    if not seg_pts or len(seg_pts) < 2:
+                        continue
+                    xs = [x for x, _ in seg_pts]
+                    table_left = cells[0][0]
+                    label_right = max(c[1] for c in cells if c[1] < xs[0] - 2) if any(c[1] < xs[0] - 2 for c in cells) else None
+                    heads = header_columns(lines, i, xs, table_left, label_right)
+                    names = [re.sub(r"\b(\w+)( \1\b)+", r"\1", re.sub(r"\s+", " ", heads[x]).strip()) for x in xs]
+                    # perioder eller tal i rubriken betyder att kolumnerna inte är affärsområden
+                    if any(not n or classify_header(n)[1] or classify_header(n)[2] or re.search(r"\d", n) for n in names):
+                        continue
+                    keep = [j for j, n in enumerate(names) if not SEG_NOT.search(n) and not SEG_TOTAL.search(n) and seg_pts[j][1] > 0]
+                    if len(keep) < 2 or len(set(names)) < len(names):
+                        continue
+                    # det som inte är affärsområden (centralt, elimineringar) får inte vara en stor del av försäljningen
+                    if sum(v for t, (x, v) in enumerate(seg_pts) if t not in keep and v > 0) * sc > 0.1 * rev_q:
+                        continue
+                    # resultatraden längre ned i samma tabell
+                    profits, metric = [None] * len(keep), None
+                    for j in range(i + 1, min(len(lines), i + 30)):
+                        plab, pvals = split_row(lines[j][1], dec)
+                        plab = clean_row_label(plab)
+                        if SEG_PROFIT_ROW.match(plab):
+                            cand = [next((v[1] for v in pvals if abs(v[0] - xs[t]) <= 14 and not v[3]), None) for t in keep]
+                            if all(c is not None for c in cand):
+                                profits, metric = [c * sc for c in cand], plab
+                                break
+                    return seg_result(q, [names[t] for t in keep], [seg_pts[t][1] * sc for t in keep], profits, metric)
+    finally:
+        pdf.close()
+    return None
+
+
+def by_rows(tables, rev_q, ebit_q, q, at):
+    def columns(t):
+        xs = sorted({round(v[0]) for _, vals in t["rows"] for v in vals})
+        cl = []
+        for x in xs:
+            if cl and x - cl[-1][-1] <= 14:
+                cl[-1].append(x)
+            else:
+                cl.append([x])
+        return [sum(c) / len(c) for c in cl]
+
+    for t in (t for t in tables if t["kind"] == "rev"):
+        for x in columns(t):
+            # "–" betyder noll (en avyttrad verksamhet), och ett affärsområde utan värde i kolumnen är inte med
+            vals_all = [at(vals, x) or 0 for _, vals in t["rows"]]
+            segs = [(n, vals) for n, vals in t["rows"] if not SEG_NOT.search(n) and at(vals, x)]
+            if len(segs) < 2 or not any(vals_all):
+                continue
+            total = at(t["total"], x) if t["total"] else None
+            for sc in ((t["unit"][0],) if t["unit"] else (1e6, 1e3, 1e9, 1)):
+                ok = (total is not None and abs(total * sc - rev_q) <= 0.015 * rev_q) or abs(sum(vals_all) * sc - rev_q) <= 0.015 * rev_q
+                if not ok:
+                    continue
+                seg_rev = {n: at(vals, x) * sc for n, vals in segs}
+                if any(v <= 0 for v in seg_rev.values()) or rev_q - sum(seg_rev.values()) > 0.1 * rev_q:
+                    break  # det som inte är affärsområden får inte vara en stor del av försäljningen
+                # resultatet: samma kolumn i en resultattabell med samma affärsområden, eller en resultatkolumn i samma tabell
+                profit, metric = {}, None
+                for pt in (p for p in tables if p["kind"] == "profit"):
+                    names = {n: vals for n, vals in pt["rows"]}
+                    if not all(n in names for n, _ in segs):
+                        continue
+                    if pt["lines"] is t["lines"] or len(columns(pt)) == len(columns(t)):
+                        cand = {n: at(names[n], x) for n, _ in segs}
+                        if all(v is not None for v in cand.values()):
+                            profit, metric = {n: v * sc for n, v in cand.items()}, pt["metric"]
+                            break
+                    if pt["total"] and ebit_q:
+                        for px in columns(pt):
+                            tv = at(pt["total"], px)
+                            if tv is not None and abs(tv * sc - ebit_q) <= 0.03 * abs(ebit_q):
+                                cand = {n: at(names[n], px) for n, _ in segs}
+                                if all(v is not None for v in cand.values()):
+                                    profit, metric = {n: v * sc for n, v in cand.items()}, pt["metric"]
+                                break
+                    if profit:
+                        break
+                if not profit:
+                    # Trelleborg: "Extern | Intern | Summa | EBITA" i samma tabell
+                    head_cells = [c for _, cs in t["lines"][t["i"] + 1:t["first"]] for c in cs]
+                    pcol = next(((c[0] + c[1]) / 2 for c in head_cells if re.fullmatch(r"(justerad |justerat )?(ebita|ebit|rörelseresultat)", c[2], re.I)), None)
+                    if pcol:
+                        cand = {n: at(vals, pcol) for n, vals in segs}
+                        if all(v is not None for v in cand.values()):
+                            profit, metric = {n: v * sc for n, v in cand.items()}, next(c[2] for c in head_cells if abs((c[0] + c[1]) / 2 - pcol) < 1)
+                total_rev = sum(seg_rev.values())
+                items = []
+                for n, _ in segs:
+                    r, p = seg_rev[n], profit.get(n)
+                    if p is not None and abs(p) > r:
+                        p = None
+                    items.append([n, round(r), round(p) if p is not None else None, round(r / total_rev, 4),
+                                  round(p / r, 4) if p is not None else None, 1 if re.match(r"övrig|other", n, re.I) else 0])
+                metric = metric or ""
+                if re.fullmatch(r"rörelseresultat|operating (profit|income)", metric, re.I):
+                    metric = "Rörelseresultat"
+                return {"p": q["p"], "m": q["m"], "metric": metric.upper() if metric.lower() in ("ebita", "ebit") else metric[:1].upper() + metric[1:],
+                        "items": items}
+    return None
 
 
 def sane_quarter(q, annual):
@@ -1456,6 +1811,24 @@ def sane_quarter(q, annual):
     return q
 
 
+def sane_segments(seg):
+    """Affärsområden ur kvartalsrapporten som går att visa: riktiga namn (inte "Miljoner euro", "Kvartal" eller
+    flera rubriker som klistrats ihop) och avstavningar ihopsatta ("Commun- ications")."""
+    if not seg:
+        return None
+    items = [list(i) for i in seg["items"]]
+    for i in items:
+        i[0] = re.sub(r"(\w)- (?=[a-zåäö])", r"\1", i[0]).strip()
+    names = [i[0] for i in items]
+    if any(re.match(r"(miljoner|tusen|msek|mkr|tkr|meur|teur|kvartal|nettoomsättning|intäkter|försäljning|förvärv|organisk|valuta|summa|totalt|"
+                    r"jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)\b", n, re.I) or len(n) < 2 or len(n) > 60 for n in names):
+        return None
+    for a in names:
+        if any(b != a and len(b) >= 4 and b in a for b in names) and len(a.split()) >= 2:
+            return None  # "Husvagnar Tillbehör Husbilar": rubriker som hamnat i samma cell
+    return dict(seg, items=items)
+
+
 def calendar_facts(cal, ticker):
     """Nästa rapport, nästa årsstämma och utdelningarna det senaste året ur MFN-kalendern."""
     today = TODAY.isoformat()
@@ -1469,10 +1842,10 @@ def calendar_facts(cal, ticker):
     divs = []
     year_ago = (TODAY - dt.timedelta(days=380)).isoformat()
     for d, text in cal:
-        m = re.match(r"x-dag (ordinarie |extra |bonus)?(?:utdelning)\s+(.+?)\s+([\d.,]+)(?:\s+([A-Z]{3}))?$", text, re.I)
+        m = re.match(r"x-dag (ordinarie |extra |bonus|halvårs|kvartals|special|extra)?(?:utdelning)\s+(.+?)\s+([\d.,]+)(?:\s+([A-Z]{3}))?$", text, re.I)
         if not m or d < year_ago or not ticker or m.group(2).strip().upper() != ticker.upper():
             continue
-        kind = "extra" if m.group(1) and m.group(1).strip().lower() in ("extra", "bonus") else "ord"
+        kind = "extra" if m.group(1) and m.group(1).strip().lower() in ("extra", "bonus", "special") else "ord"
         amount = float(m.group(3).replace(",", "."))
         if amount > 0:
             divs.append([d, amount, m.group(4) or "SEK", kind])
@@ -1497,7 +1870,7 @@ def company_facts_from_text(desc, about):
     f = {}
     for text in (about or "", desc or ""):
         if "founded" not in f:
-            y = re.search(r"(?:grundades|grundad|grundat|grundlades|startades|bildades)\D{0,30}?\b(1[5-9]\d\d|20[0-2]\d)\b", text)
+            y = re.search(r"(?:grundades|grundad|grundat|grundlades|startades|bildades|skapades)\D{0,40}?\b(1[5-9]\d\d|20[0-2]\d)\b", text)
             if y:
                 f["founded"] = int(y.group(1))
         if "hq" not in f:
@@ -1531,6 +1904,7 @@ def main():
     ap.add_argument("--max-mfn", type=int, default=250, help="högst så många bolagssidor på MFN per körning")
     ap.add_argument("--max-interim", type=int, default=80, help="högst så många nya kvartalsrapporter per körning")
     ap.add_argument("--interim-depth", type=int, default=4, help="så många av de senaste kvartalsrapporterna läses per bolag")
+    ap.add_argument("--reinterim", action="store_true", help="läs om sparade kvartalsrapporter ur --raw-cache (efter att INTERIM_VERSION höjts)")
     args = ap.parse_args()
     global FILE_CACHE
     FILE_CACHE = args.raw_cache
@@ -1703,6 +2077,23 @@ def main():
 
     due = sorted((p, s) for s, p in ((s, priority(s)) for s in slugs) if p is not None)
     pages = interims = failures = 0
+    if args.reinterim:
+        # Läs om de sparade kvartalsrapporterna (ur --raw-cache) utan att hämta bolagssidorna igen
+        due = []
+        for slug in slugs:
+            reps = (mfn.get(slug) or {}).get("reports") or {}
+            for url, r in list(reps.items()):
+                if r.get("v") == INTERIM_VERSION or out_of_time():
+                    continue
+                item = {"url": url, "date": r["date"], "title": r["title"], "pdfs": [r["pdf"]] if r.get("pdf") else []}
+                try:
+                    nr = read_interim(item, annual.get(slug))
+                except Exception as e:
+                    print("  %s: fel vid tolkning (%s)" % (url, e))
+                    continue
+                nr["v"] = INTERIM_VERSION
+                reps[url] = nr
+                interims += 1
     for _, slug in due:
         if out_of_time() or pages >= args.max_mfn:
             break
@@ -1815,7 +2206,13 @@ def main():
             q = dict(checked[u], title=r["title"], date=r["date"], url=u)
             if r.get("quote") and latest == m["recent"][0]:
                 q["quote"] = r["quote"]
+            for k in ("events", "outlook", "orders", "bank"):
+                if r.get(k):
+                    q[k] = r[k]
             doc["q"] = q
+            # Affärsområdena senaste kvartalet (samma valuta och samma rapport som siffrorna ovan)
+            if r.get("seg") and r["seg"]["p"] == q["p"] and sane_segments(r["seg"]):
+                doc["qseg"] = sane_segments(r["seg"])
             pts = {}
             for x in (checked.get(u) for u, _ in m["reps"]):
                 if x and x["m"] == 3 and x["cur"] == q["cur"] and x["p"] not in pts:

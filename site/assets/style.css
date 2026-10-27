@@ -827,6 +827,21 @@ a.btn { color: var(--fg-soft); }
 .ki-dot { position: absolute; left: 2px; top: 0.55em; width: 8px; height: 8px; border-radius: 50%; background: var(--bar-neutral); }
 .know-ins li.pos .ki-dot { background: var(--bar-pos); }
 .know-ins li.neg .ki-dot { background: var(--bar-neg); }
+.know-outlook { margin: 0; font-size: 14px; line-height: 1.55; color: var(--fg-soft); max-width: 80ch; }
+.kq-per { display: inline-block; margin-left: 8px; padding: 1px 10px; border-radius: 999px; background: var(--brand-soft); color: var(--brand-ink);
+  font-size: 13px; font-weight: 650; vertical-align: 2px; letter-spacing: 0; }
+.kq-split { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 8px 32px; align-items: start; }
+.kq-split .qb-charts { grid-template-columns: minmax(0, 1fr); }
+.kq-split > div > .kq-sub:first-child, .kq-split > div > .know-quote:first-child { margin-top: 20px; }
+.know-facts > div { background: var(--bg-subtle); border-radius: var(--radius); padding: 10px 12px; min-width: 0; }
+.know-card + .know-card, .know-card + .know-cal, .know-cal + .know-grid { margin-top: 16px; }
+.know-fin { margin-top: 16px; }
+.fin-bar { display: flex; gap: 2px; height: 14px; border-radius: 4px; overflow: hidden; }
+.fin-bar span { display: block; height: 100%; }
+.fin-eq { background: var(--brand); }
+.fin-debt { background: var(--bar-neutral); }
+.fin-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 8px; font-size: 12.5px; color: var(--fg-muted); }
+.fin-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
 /* Kalendern */
 .know-cal { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px 20px; margin: 16px 0 0; padding: 14px 20px;
   background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
@@ -836,6 +851,8 @@ a.btn { color: var(--fg-soft); }
 @media (max-width: 760px) {
   .know-card { padding: 16px; }
   .know-cal { grid-template-columns: 1fr; padding: 12px 16px; gap: 8px; }
+  .kq-split { grid-template-columns: minmax(0, 1fr); }
+  .know-facts > div { padding: 8px 10px; }
   .qb-area { height: 70px; }
   .qb-plot { gap: 3px; }
   .know-about { font-size: 14.5px; }
