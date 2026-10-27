@@ -2088,6 +2088,7 @@ def main():
     ap.add_argument("--interim-depth", type=int, default=4, help="så många av de senaste kvartalsrapporterna läses per bolag")
     ap.add_argument("--reinterim", action="store_true", help="läs om sparade kvartalsrapporter ur --raw-cache (efter att INTERIM_VERSION höjts)")
     ap.add_argument("--retext", action="store_true", help="läs bara om pressmeddelandenas text ur --raw-cache (snabbt, utan PDF:erna)")
+    ap.add_argument("--health", default=None, help="fil där hälsokollen sparas (problem blir ett ärende på GitHub)")
     args = ap.parse_args()
     global FILE_CACHE
     FILE_CACHE = args.raw_cache
@@ -2260,7 +2261,7 @@ def main():
         return 2 if days_since(checked) > 30 else None
 
     due = sorted((p, s) for s, p in ((s, priority(s)) for s in slugs) if p is not None)
-    pages = interims = failures = 0
+    pages = interims = failures = failed_pages = empty_pages = 0
     if args.retext:
         due = []
         for slug in slugs:
@@ -2302,9 +2303,12 @@ def main():
         except Exception as e:
             print("  %s: kunde inte hämta bolagssidan på MFN (%s)" % (slug, e))
             failures += 1
+            failed_pages += 1
             continue
         failures = 0
         pages += 1
+        if not pg["items"] and not pg.get("desc"):
+            empty_pages += 1  # sidan gick att hämta men innehöll varken rapporter eller beskrivning
         if pages % 25 == 0:
             save_state()
         m = mfn.setdefault(slug, {})
@@ -2337,6 +2341,28 @@ def main():
         state["mfnRun"] = today
     with_q = sum(1 for s in slugs if any(r.get("q") for r in (mfn.get(s, {}).get("reports") or {}).values()))
     print("  MFN: %d bolag, %d sidor hämtade, %d nya kvartalsrapporter, %d bolag med kvartalssiffror" % (len(slugs), pages, interims, with_q))
+
+    # Hälsokoll: fungerar hämtningen och läsningen fortfarande? Problemen blir ett ärende på GitHub (se update.yml).
+    problems = []
+    if pdfium is None:
+        problems.append("PDF-läsaren pypdfium2 saknas, så inga kvartalssiffror läses.")
+    if failed_pages >= 5 and failed_pages > pages:
+        problems.append("MFN svarade inte: %d bolagssidor gick inte att hämta (%d gick bra)." % (failed_pages, pages))
+    if pages >= 5 and empty_pages >= 0.8 * pages:
+        problems.append("MFN:s sidor ser annorlunda ut: %d av %d bolagssidor saknade både rapporter och beskrivning." % (empty_pages, pages))
+    # Bolag som enligt kalendern rapporterade för 2–6 dagar sedan ska ha fått sina siffror inlästa
+    lo, hi = (TODAY - dt.timedelta(days=6)).isoformat(), (TODAY - dt.timedelta(days=2)).isoformat()
+    expected = [s for s in slugs if any(lo <= d <= hi for d, t in (mfn.get(s, {}).get("cal") or [])
+                                        if re.match(r"(kvartalsrapport|bokslutskommuniké|delårsrapport|halvårsrapport)", t, re.I))]
+    read_ok = [s for s in expected if any(lo <= r["date"] <= hi and r.get("q") for r in (mfn.get(s, {}).get("reports") or {}).values())]
+    if len(expected) >= 8 and len(read_ok) < 0.25 * len(expected):
+        problems.append("Kvartalsrapporterna läses inte: bara %d av %d bolag som rapporterat de senaste dagarna fick sina siffror inlästa." % (len(read_ok), len(expected)))
+    health = {"date": today, "pages": pages, "failedPages": failed_pages, "emptyPages": empty_pages, "newReports": interims,
+              "expected": len(expected), "readOk": len(read_ok), "withQuarter": with_q, "problems": problems}
+    if args.health:
+        json.dump(health, open(args.health, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    for p in problems:
+        print("  LARM: " + p)
 
     # 4. En fil per aktie, plus placering bland alla bolag (störst försäljning, flest anställda, äldst)
     merged = {}

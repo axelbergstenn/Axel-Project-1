@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
   pages: write
   id-token: write
   actions: write
@@ -81,11 +82,21 @@ jobs:
       # helåret ur årsredovisningarna (ESEF). Nya rapporter hämtas när de kommer, resten sparas i repot.
       # pypdfium2 läser kvartalsrapporternas PDF:er.
       - name: Bygg bolagsfakta
+        id: bolag
         continue-on-error: true
         timeout-minutes: 25
         run: |
           python3 -m pip install --user --break-system-packages -q pypdfium2==5.1.0
-          python3 scripts/build-companies.py
+          python3 scripts/build-companies.py --health "$RUNNER_TEMP/bolag-health.json"
+
+      # Larm: slutar hämtningen eller läsningen av rapporterna att fungera öppnas ett ärende på GitHub (GitHub mejlar),
+      # och det stängs när det fungerar igen. Stoppar aldrig publiceringen.
+      - name: Larm om bolagsfakta
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUTCOME: ${{ steps.bolag.outcome }}
+        run: bash scripts/company-alarm.sh "$RUNNER_TEMP/bolag-health.json"
 
       # Spararnas nettoflöden per fondtyp (Fondbolagens förening, månadsvis) och uppskattade flöden per fond (ur FI-datan)
       - name: Bygg fondsparandet
