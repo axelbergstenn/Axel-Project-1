@@ -77,12 +77,15 @@ jobs:
         continue-on-error: true
         run: ./scripts/build-shares.ps1
 
-      # "Känn bolaget" på aktiesidan: affärsområden, marknader och nyckeltal ur årsredovisningarna (ESEF),
-      # fakta från Wikidata och en beskrivning från Wikipedia. Nya rapporter hämtas när de kommer, resten sparas i repot.
+      # "Känn bolaget" på aktiesidan: senaste kvartalsrapporten och kalendern från MFN, affärsområden, marknader och
+      # helåret ur årsredovisningarna (ESEF). Nya rapporter hämtas när de kommer, resten sparas i repot.
+      # pypdfium2 läser kvartalsrapporternas PDF:er.
       - name: Bygg bolagsfakta
         continue-on-error: true
         timeout-minutes: 25
-        run: python3 scripts/build-companies.py
+        run: |
+          python3 -m pip install --user --break-system-packages -q pypdfium2==5.1.0
+          python3 scripts/build-companies.py
 
       # Spararnas nettoflöden per fondtyp (Fondbolagens förening, månadsvis) och uppskattade flöden per fond (ur FI-datan)
       - name: Bygg fondsparandet

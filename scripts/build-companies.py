@@ -2,21 +2,27 @@
 """
 Bygger data/bolag/<ISIN>.json: en lättläst bild av varje svenskt bolag som fonderna äger ("Känn bolaget" på aktiesidan).
 
-Tre öppna källor, utan nycklar:
+Bara bolagens egna rapporter och pressmeddelanden, utan nycklar:
   - Årsredovisningen i ESEF-format (maskinläsbar, obligatorisk för bolag på reglerad marknad), via filings.xbrl.org.
-    Därifrån kommer omsättning, resultat, utdelning, affärsområden (segmentsnoten) och försäljning per land.
-    ISIN kopplas till bolagets LEI-kod via GLEIF.
-  - Wikidata: grundår, grundare, huvudkontor, anställda, vd, kända produkter och varumärken.
-  - Svenska Wikipedia: en kort beskrivning av bolaget (CC BY-SA 4.0, med källa och länk på sajten).
+    Därifrån kommer helårets omsättning, resultat, utdelning, anställda, affärsområden (segmentsnoten) och
+    försäljning per land. ISIN kopplas till bolagets LEI-kod via GLEIF.
+  - Kvartalsrapporterna på MFN (mfn.se): resultaträkningen läses ur rapportens PDF (omsättning, rörelseresultat,
+    resultat och resultat per aktie för senaste kvartalet och samma kvartal året innan), pressmeddelandet ger vd:ns
+    namn och kommentar och bolagets egen beskrivning ("Om oss"). MFN:s kalender ger nästa rapport, årsstämman och
+    utdelningarna, och bolagssidan grundår och huvudkontor.
 
-Affärsområden och länder läses ur tabeller som ser olika ut hos olika bolag. Varje tabell kontrolleras mot bolagets
-totala omsättning: går summan inte ihop (inom 10 %) används den inte. Hellre ingen uppgift än en felaktig.
+Tabellerna ser olika ut hos olika bolag, så allt kontrolleras innan det används. Affärsområden och länder måste
+gå ihop med bolagets totala omsättning (inom 10 %). Kvartalets siffror måste gå att hitta i pressmeddelandet
+(eller omsättningen stämma ungefär med årsredovisningen). Hellre ingen uppgift än en felaktig.
 
-Allt ändras sällan, så varje del hämtas om med långa mellanrum och bara så mycket som hinns med per körning:
-  - LEI-koden en gång (saknas den, en gång i månaden),
+Allt hämtas om bara när det behövs, och bara så mycket som hinns med per körning:
+  - LEI-koden och bolaget på MFN en gång (saknas de, en gång i månaden),
   - nya årsredovisningar en gång i veckan per bolag, och bara nya rapporter laddas ner och läses,
-  - Wikidata och Wikipedia en gång i månaden.
+  - bolagets sida på MFN när kalendern säger att en rapport har kommit eller MFN listar en ny rapport,
+    annars en gång i månaden. Bara nya kvartalsrapporter laddas ner.
 Läget sparas i data/bolag-state.json i repot (utanför site/, så att det inte publiceras).
+
+Kräver pypdfium2 för att läsa PDF:erna (pip install pypdfium2). Utan den hämtas allt utom kvartalssiffrorna.
 
   python3 scripts/build-companies.py
   py -I scripts/build-companies.py --raw-cache .cache/esef --only SE0000667891    (lokalt, sparar nedladdade rapporter)
@@ -24,6 +30,7 @@ Läget sparas i data/bolag-state.json i repot (utanför site/, så att det inte 
 import argparse
 import datetime as dt
 import gzip
+import hashlib
 import html
 import json
 import os
@@ -35,8 +42,15 @@ import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
 
+try:
+    import pypdfium2 as pdfium
+    import pypdfium2.raw as pdfraw
+except ImportError:
+    pdfium = pdfraw = None
+
 # Höjs när tolkningen av rapporterna ändras, så att alla rapporter läses om
 PARSER_VERSION = 6
+INTERIM_VERSION = 2  # samma sak för kvartalsrapporterna
 UA = "Fondinsyn/1.0 (https://www.fondinsyn.se)"
 TODAY = dt.date.today()
 
@@ -709,157 +723,793 @@ def read_report(slim, period_end):
             "geo": [[n, round(v)] for n, v in geo] if geo else None, "about": about}
 
 
-# ---------- Wikidata och Wikipedia ----------
+# ---------- Kvartalsrapporten (PDF) ----------
+# Resultaträkningen läses tecken för tecken med positioner: tal som står på samma höjd som en rad hör till raden, och
+# kolumnrubrikerna ovanför ("Jul–sep 2026", "Kv 3 2025") avgör vilken kolumn som är det senaste kvartalet.
 
-def wikidata_ids(isins, leis):
-    """ISIN eller LEI till Wikidata-id."""
-    out = {}
-    keys = [("P946", i) for i in isins] + [("P1278", l) for l in leis if l]
-    for i in range(0, len(keys), 120):
-        part = keys[i:i + 120]
-        for prop in ("P946", "P1278"):
-            ids = [v for p, v in part if p == prop]
-            if not ids:
-                continue
-            q = 'SELECT ?id ?item WHERE { VALUES ?id { %s } ?item wdt:%s ?id . }' % (" ".join('"%s"' % x for x in ids), prop)
-            r = fetch_json("https://query.wikidata.org/sparql?format=json&query=" + urllib.parse.quote(q), accept="application/sparql-results+json")
-            for b in (r or {}).get("results", {}).get("bindings", []):
-                out.setdefault(b["id"]["value"], b["item"]["value"].rsplit("/", 1)[1])
-            time.sleep(1)
+def pdf_lines(tp):
+    """Rader med celler [(x0, x1, text)]. Ett mellanrum större än ungefär en halv teckenhöjd delar cellen
+    (kolumngräns), mindre mellanrum (tusentalsavgränsare, ordmellanrum) gör det inte."""
+    chars = []
+    for i in range(tp.count_chars()):
+        u = pdfraw.FPDFText_GetUnicode(tp.raw, i)
+        if u in (0, 2, 10, 13, 32, 0xA0, 0x202F, 0x2009, 0xFFFE, 0xFEFF):
+            continue
+        ch = chr(u)
+        if not ch.strip():
+            continue
+        l, b, r, t = tp.get_charbox(i, loose=True)
+        if t - b <= 0.1:
+            continue
+        chars.append(((b + t) / 2, l, r, t - b, ch))
+    lines = []
+    for c in sorted(chars, key=lambda c: -c[0]):
+        if lines and abs(lines[-1][0] - c[0]) < min(c[3], lines[-1][2]) * 0.35:
+            lines[-1][1].append(c)
+        else:
+            lines.append([c[0], [c], c[3]])
+    out = []
+    for y, cs, h in lines:
+        cs.sort(key=lambda c: c[1])
+        cells = []
+        for yc, l, r, hh, ch in cs:
+            if cells:
+                gap = l - cells[-1][1]
+                if gap < -hh * 0.3 and abs(l - cells[-1][3]) < 0.5:
+                    continue  # samma tecken två gånger (fetstil ritad dubbelt)
+                if gap <= max(hh * 0.5, 2.2):
+                    cells[-1][2] += (" " if gap > hh * 0.12 else "") + ch
+                    cells[-1][1] = max(cells[-1][1], r)
+                    cells[-1][3] = l
+                    continue
+            cells.append([l, r, ch, l])
+        out.append((y, [(c[0], c[1], c[2]) for c in cells]))
     return out
 
 
-def company_name(name):
-    """Bolagsnamnet utan aktieslag och bolagsform: "EPIROC A" blir "EPIROC", "Dustin Group AB" blir "Dustin Group"."""
-    n = re.sub(r"\s*\(publ\)", "", name or "", flags=re.I)
-    n = re.sub(r"[\s-]+(ser\.?\s*|series\s+|class\s+)?[A-D]\d?(\s+shs)?$", "", n, flags=re.I)
-    n = re.sub(r"\s+shs$", "", n, flags=re.I)
-    n = re.sub(r"[\s-]+(AB|Aktiebolag|Ab)$", "", n)
-    return n.strip()
+NUM_CELL = re.compile(r"^\(?[-−–]?\s?\d{1,3}(?:[ ,.]\d{3})*(?:[.,]\d+)?\)?\s?%?$|^\(?[-−–]?\s?\d+(?:[.,]\d+)?\)?\s?%?$")
+DASH = {"-", "–", "—", "−", "neg", "n/a", "n.a.", "nm", "n.m.", "neg.", ">100", ">100%", ">200"}
 
 
-def norm_name(n):
-    n = re.sub(r"\(publ\)|\b(ab|aktiebolag|group|holding|ltd|plc|asa|oyj|inc|the)\b|[^\wåäöéü]+", " ", (n or "").lower())
-    return re.sub(r"\s+", " ", n).strip()
+def pdf_number(s, dec):
+    s = s.strip().replace("−", "-").replace("–", "-")
+    neg = s.startswith("(") and s.endswith(")")
+    s = s.strip("()").strip()
+    if s.startswith("-"):
+        neg = True
+        s = s[1:].strip()
+    if dec == ",":
+        if not re.fullmatch(r"\d{1,3}([ .]\d{3})+(,\d+)?|\d+(,\d+)?", s):
+            return None
+        s = s.replace(" ", "").replace(".", "").replace(",", ".")
+    else:
+        if not re.fullmatch(r"\d{1,3}([ ,]\d{3})+(\.\d+)?|\d+(\.\d+)?", s):
+            return None
+        s = s.replace(" ", "").replace(",", "")
+    v = float(s)
+    return -v if neg else v
 
 
-def wikidata_by_name(stock_name):
-    """Wikidata-id för ett bolag via namnsökning. Bara om namnet (eller ett alternativt namn) stämmer exakt och posten
-    ser ut som ett bolag (har huvudkontor, bransch, börs, anställda eller organisationsnummer)."""
-    q = company_name(stock_name)
-    if len(norm_name(q)) < 3:
-        return None
-    r = fetch_json("https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=sv&uselang=sv&type=item&limit=7&search="
-                   + urllib.parse.quote(q))
-    cands = [x["id"] for x in (r or {}).get("search", [])]
-    if not cands:
-        return None
-    ents = wd_entities(cands, props="claims|labels|aliases")
-    want = norm_name(q)
-    for qid in cands:
-        e = ents.get(qid) or {}
-        names = set()
-        for lang in ("sv", "en"):
-            if e.get("labels", {}).get(lang):
-                names.add(norm_name(e["labels"][lang]["value"]))
-            for a in e.get("aliases", {}).get(lang, []):
-                names.add(norm_name(a["value"]))
-        if want not in names:
+def decimal_sep(text):
+    """Svenska rapporter skriver "1 234,5", engelska "1,234.5"."""
+    sv = len(re.findall(r"(?<![\d,.])\d{1,3}(?: \d{3})+(?![\d,.])", text)) + len(re.findall(r"(?<![\d,.])\d+,\d{1,2}(?![\d,.])", text))
+    en = len(re.findall(r"(?<![\d,.])\d{1,3}(?:,\d{3})+(?![\d,.])", text)) + len(re.findall(r"(?<![\d,.])\d+\.\d{1,2}(?![\d,.])", text))
+    return "," if sv >= en else "."
+
+
+def split_row(cells, dec):
+    """(etikett, [(xmitt, värde eller None, text, procent)])"""
+    label, vals = [], []
+    for x0, x1, s in cells:
+        st = s.strip()
+        if not vals and not NUM_CELL.match(st) and st.lower() not in DASH:
+            # siffror som hamnat i samma cell som etiketten ("Intäkter 29 218"): dela vid talet
+            m = re.match(r"^(.*?[A-Za-zÅÄÖåäöé\)\.:])\s+(\(?[-−–]?\d[\d ,.]*\)?)$", st)
+            if m and pdf_number(m.group(2), dec) is not None and len(m.group(1)) > 2:
+                w = (x1 - x0) / max(len(st), 1)
+                label.append(m.group(1))
+                xs = x0 + w * (len(st) - len(m.group(2)))
+                vals.append(((xs + x1) / 2, pdf_number(m.group(2), dec), m.group(2), False))
+                continue
+            label.append(st)
             continue
-        claims = e.get("claims", {})
-        if any(p in claims for p in ("P414", "P452", "P159", "P1128", "P2139", "P946", "P1278")):
-            return qid
+        if st.lower() in DASH:
+            vals.append(((x0 + x1) / 2, None, st, False))
+            continue
+        v = pdf_number(st.rstrip("%").strip(), dec)
+        if v is None:
+            if vals:
+                if re.search(r"[A-Za-zÅÄÖåäö]{3}", st):
+                    break  # en ny etikett efter talen: nästa tabell på samma rad
+                continue
+            label.append(st)
+            continue
+        vals.append(((x0 + x1) / 2, v, st, st.endswith("%")))
+    return re.sub(r"\s+", " ", " ".join(label)).strip(), vals
+
+
+Q_ROWS = {
+    "rev": re.compile(r"^(summa |totala? |total )?(nettoomsättning(en)?|net ?sales|revenues?|net revenues?|intäkter|rörelsens intäkter|totala intäkter|"
+                      r"rörelseintäkter|omsättning|försäljningsintäkter|sales)( och övriga rörelseintäkter| m ?m| totalt| total)?$", re.I),
+    "ebit": re.compile(r"^(rörelseresultat(et)?|operating (profit|income|result|earnings)|ebit|rörelseresultat \(ebit\)|ebit \(rörelseresultat\)|"
+                       r"resultat före finansiella poster( och (inkomst)?skatt(er)?)?( \(ebit\))?|rörelseresultat,? \(?ebit\)?|operating profit/loss|"
+                       r"rörelseresultat/ebit|resultat före räntor och skatt(er)?( \(ebit\))?)$", re.I),
+    "net": re.compile(r"^(periodens (net(to)?)?resultat|periodens vinst|periodens resultat efter skatt|resultat efter skatt|nettoresultat|årets resultat|"
+                      r"profit for the (period|year)|net (profit|income|result)( for the period)?|income for the period|result for the period|"
+                      r"profit/loss for the period|periodens vinst/förlust)$", re.I),
+    "eps": re.compile(r"^(resultat per aktie|earnings per share|vinst per aktie|basic earnings per share)(,? (före|före och efter|efter) utspädning)?"
+                      r"(,? (kr|kronor|sek|eur))?( \((kr|kronor|sek|eur)\))?$", re.I),
+}
+STATEMENT_HEAD = re.compile(r"(koncernens resultaträkning|resultaträkning|income statement|statement of (comprehensive )?income|"
+                            r"rapport över (koncernens )?(total)?resultat|statement of profit or loss|resultatrapport)", re.I)
+UNIT_HDR = [
+    (re.compile(r"\b(msek|mkr|sek ?m|sekm|mnkr|mn ?sek|sek ?million|mln ?sek|miljoner kronor|sek mn|sek miljoner|miljoner sek)\b", re.I), 1e6, "SEK"),
+    (re.compile(r"\b(tsek|ksek|tkr|kkr|sek ?thousands?|sek ?000|sek ?k|tusen kronor|tusentals kronor|kr ?000)\b", re.I), 1e3, "SEK"),
+    (re.compile(r"\b(mdkr|sek ?bn|sek ?billion|mdsek|sek miljarder|miljarder kronor|mdr kr|mdr sek)\b", re.I), 1e9, "SEK"),
+    (re.compile(r"\b(meur|eur ?m|eurm|eur ?million|mn ?eur|eur ?mn|m ?eur)\b", re.I), 1e6, "EUR"),
+    (re.compile(r"\b(teur|keur|eur ?thousands?|eur ?000|eur ?k)\b", re.I), 1e3, "EUR"),
+    (re.compile(r"\b(musd|usd ?m|usdm|usd ?million|usd ?mn)\b", re.I), 1e6, "USD"),
+    (re.compile(r"\b(tusd|kusd|usd ?thousands?)\b", re.I), 1e3, "USD"),
+    (re.compile(r"\b(mnok|nok ?m|nok ?million)\b", re.I), 1e6, "NOK"),
+    (re.compile(r"\b(tnok|knok|nok ?thousands?)\b", re.I), 1e3, "NOK"),
+    (re.compile(r"\b(mdkk|dkk ?m|dkk ?million)\b", re.I), 1e6, "DKK"),
+]
+MONTH_NO = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "maj": 5, "may": 5, "jun": 6, "jul": 7, "aug": 8, "sep": 9, "okt": 10, "oct": 10, "nov": 11, "dec": 12}
+MONTH_RANGE = re.compile(r"\b(jan|feb|mar|apr|maj|may|jun|jul|aug|sep|okt|oct|nov|dec)[a-zé]*\.?\s*[-–—]\s*(?:\d{1,2}\s)?"
+                         r"(jan|feb|mar|apr|maj|may|jun|jul|aug|sep|okt|oct|nov|dec)", re.I)
+
+
+def classify_header(t):
+    """Kolumnrubrik -> (typ, antal månader, år, kvartal) där typ är "pct", "note" eller "per" (en period)."""
+    tl = t.lower()
+    if re.search(r"%|förändr|change|\bδ|diff\b|utveckling", tl):
+        return ("pct", None, None, None)
+    if re.fullmatch(r"\s*(not|note|noter|notes)\s*", tl):
+        return ("note", None, None, None)
+    years = [int(y) for y in re.findall(r"(?<!\d)(20\d\d)(?:/\d\d)?(?!\d)", tl)]
+    if not years:
+        # tvåsiffrigt år efter kvartal eller månader: "Q3 26", "jan-sep 26"
+        years = [2000 + int(y) for y in re.findall(r"(?:\bq[1-4]|kv\.? ?[1-4]|[a-zé]{3})\.?\s(\d\d)(?![\d-])", tl) if 15 <= int(y) <= 40]
+    months = None
+    q = re.search(r"\b(?:q|kv\.?|kvartal)\s?([1-4])\b|\b([1-4])\s?(?:kv|q)\b|\b20\d\d:([1-4])\b", tl)
+    qnum = int(next(g for g in q.groups() if g)) if q else None
+    d = re.findall(r"(?<!\d)(20)?(\d\d)-(\d\d)-\d\d(?!\d)", tl)
+    if len(d) >= 2:
+        (c1, y1, m1), (c2, y2, m2) = d[0], d[1]
+        months = (int(y2) * 12 + int(m2)) - (int(y1) * 12 + int(m1)) + 1
+        return ("per", months if 1 <= months <= 12 else None, 2000 + int(y2), qnum)
+    m = MONTH_RANGE.search(tl)
+    qq = re.search(r"\b(?:kvartal|kv\.?|q)\s?([1-4])\s?[-–]\s?(?:kvartal|kv\.?|q)?\s?([1-4])\b", tl)
+    if qq:
+        months = (int(qq.group(2)) - int(qq.group(1)) + 1) * 3
+        qnum = None
+    elif m:
+        months = (MONTH_NO[m.group(2)] - MONTH_NO[m.group(1)]) % 12 + 1
+    elif re.search(r"\b(q|kv|kv\.|kvartal)\s?[1-4]\b|\b[1-4]\s?(kv|q)\b|kvartal(et)?\b|quarter|\b3 ?(mån|months)|tre ?mån|\b20\d\d:[1-4]\b", tl):
+        months = 3
+    elif re.search(r"\b6 ?(mån|months)|sex ?mån|halvår|six months|half[- ]year|\bh[12]\b", tl):
+        months = 6
+    elif re.search(r"\b9 ?(mån|months)|nio ?mån|nine months", tl):
+        months = 9
+    elif re.search(r"helår|full[- ]year|\b12 (mån|months)|rullande|rolling|ltm|r12|räkenskapsår", tl):
+        months = 12
+    return ("per", months, max(years) if years else None, qnum)
+
+
+def clean_row_label(lab):
+    lab = re.sub(r"\s*[\*¹²³⁴⁵]+$|\s*\(?(not|note)\s*\d+\)?", "", lab, flags=re.I)
+    lab = re.sub(r"\s+\d{1,2}(\)|(,\s?\d{1,2})*)$", "", lab)
+    lab = re.sub(r"\s*,?\s*\(?(mkr|msek|sek ?m|tkr|ksek|tsek)\)?$", "", lab, flags=re.I)
+    return lab.strip(" :*,")
+
+
+def statement_rows(lines, dec):
+    rows = {}
+    for idx, (y, cells) in enumerate(lines):
+        lab, vals = split_row(cells, dec)
+        lab = clean_row_label(lab)
+        if len(vals) < 2 or not any(v[1] is not None for v in vals):
+            continue
+        for k, rx in Q_ROWS.items():
+            if k not in rows and rx.match(lab):
+                rows[k] = (lab, vals, idx)
+    return rows
+
+
+def header_columns(lines, top, xs, table_left, label_right):
+    """Rubriker ovanför tabellen, per kolumn (x-mitt). Bara korta rader direkt ovanför räknas: brödtext och
+    tabellrubriker stoppar. Varje rubrikcell hör till de kolumner som ligger närmast den, så att en grupprubrik
+    ("Q3" över två kolumner) hamnar på båda."""
+    heads = {x: [] for x in xs}
+    left = (label_right + 4) if label_right else min(xs) - 20
+    right = max(xs) + 30
+    spacing = (max(xs) - min(xs)) / max(len(xs) - 1, 1) if len(xs) > 1 else 50
+
+    def near(x0, x1):
+        return min(abs((x0 + x1) / 2 - x) for x in xs) <= (x1 - x0) / 2 + 45
+
+    taken = []
+    for y, cells in reversed(lines[max(0, top - 6):top]):
+        # inte en annan tabell bredvid (balansräkningen, totalresultatet)
+        cells = [c for c in cells if table_left - 15 <= c[0] <= right]
+        vcells, straddle = [], False
+        for x0, x1, s in cells:
+            if x1 <= left:
+                continue
+            if x0 < left:
+                # cellen börjar i etikettkolumnen ("Rapport över totalresultat 2026-04-01 - 2026-06-30"): bara delen till höger
+                cut = int(len(s) * (left - x0) / max(x1 - x0, 1))
+                rest = s[cut:]
+                rest = rest[rest.find(" ") + 1:] if " " in rest and cut else rest
+                if not re.search(r"\d", rest):
+                    continue  # en etikett som råkar sticka ut ("Resultaträkningar, msek")
+                x0, s, straddle = left, rest.strip(), True
+            if re.fullmatch(r"\(?(msek|mkr|tkr|tsek|ksek|sek ?m|meur|teur|keur|eur ?m|not|note|noter)\)?", s, re.I):
+                continue
+            if s:
+                vcells.append((x0, x1, s))
+        if any(x1 - x0 > 1.6 * spacing and not re.search(r"\d|jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec|kvartal|quarter|mån|month|helår|year|halvår", s, re.I)
+               for x0, x1, s in vcells):
+            break  # en tabellrubrik ovanför kolumnerna ("Koncernens rapport över totalresultat")
+        if not vcells:
+            label = " ".join(s for _, _, s in cells)
+            if cells and (re.search(r"koncern|rapport|sammandrag|räkning|finansiell|statement|consolidated|summary", label, re.I)
+                          or (label.isupper() and len(label) > 14)):
+                break  # tabellens rubrik ("Koncernen i sammandrag"): ovanför den är det något annat
+            continue  # en mellanrubrik i tabellen ("Rörelsens intäkter")
+        if any(len(s) > 30 for _, _, s in vcells) or not all(near(x0, x1) for x0, x1, _ in vcells):
+            break  # brödtext eller något som inte står ovanför kolumnerna
+        if straddle and len(vcells) == 1:
+            break
+        taken.append(vcells)
+    for cells in reversed(taken):
+        mids = [((x0 + x1) / 2, (x1 - x0) / 2, s) for x0, x1, s in cells]
+        for x in xs:
+            best = min(mids, key=lambda m: abs(m[0] - x))
+            if abs(best[0] - x) <= best[1] + 45:
+                heads[x].append(best[2])
+    return {x: " ".join(v) for x, v in heads.items()}
+
+
+def pick_columns(rows, lines):
+    """Kolumnen för den senaste perioden (det kortaste perioden, senaste året) och samma period året innan."""
+    first_idx = min(r[2] for r in rows.values())
+    # tabellens kolumner är den första radens. Tal längre till höger hör till en annan tabell på samma rad.
+    main = min(rows.values(), key=lambda r: r[2])
+    lo, hi = min(v[0] for v in main[1]) - 30, max(v[0] for v in main[1]) + 30
+    for k in list(rows):
+        lab, vals, idx = rows[k]
+        rows[k] = (lab, [v for v in vals if lo <= v[0] <= hi], idx)
+        if not rows[k][1]:
+            del rows[k]
+    clusters = []
+    for x in sorted({round(v[0]) for r in rows.values() for v in r[1]}):
+        if clusters and x - clusters[-1][-1] <= 14:
+            clusters[-1].append(x)
+        else:
+            clusters.append([x])
+    centers = [sum(c) / len(c) for c in clusters]
+    table_left = min(lines[r[2]][1][0][0] for r in rows.values())
+    # etikettkolumnens högerkant: det som står till vänster om den i rubrikraderna är inte kolumnrubriker
+    label_right = None
+    for r in rows.values():
+        first_val = min(v[0] for v in r[1])
+        lab_cells = [c for c in lines[r[2]][1] if c[1] < first_val - 2]
+        if lab_cells:
+            label_right = max(label_right or 0, max(c[1] for c in lab_cells))
+    if label_right and label_right > min(centers) - 8:
+        label_right = None
+    # tabellens översta rad: uppåt så länge raderna har tal i samma kolumner (eller är mellanrubriker)
+    top = first_idx
+    for i in range(first_idx - 1, max(-1, first_idx - 40), -1):
+        cells = [c for c in lines[i][1] if table_left - 15 <= c[0] <= max(centers) + 30]
+        nums = [c for c in cells if NUM_CELL.match(c[2].strip()) and any(abs((c[0] + c[1]) / 2 - x) <= 14 for x in centers)
+                and not re.fullmatch(r"(19|20)\d\d", c[2].strip())]  # årtal är rubriker, inte värden
+        labels_only = cells and all(c[1] <= (label_right or min(centers) - 20) + 4 for c in cells)
+        if len(nums) >= 2:
+            top = i
+        elif labels_only and not re.search(r"koncern|rapport|sammandrag|räkning|finansiell|statement|consolidated", " ".join(c[2] for c in cells), re.I):
+            continue
+        else:
+            break
+    heads = header_columns(lines, top, centers, table_left, label_right)
+
+    usable = []
+    for c in centers:
+        h = classify_header(heads[c])
+        vs = [v for r in rows.values() for v in r[1] if abs(v[0] - c) <= 14]
+        nums = [v[1] for v in vs if v[1] is not None]
+        if h[0] != "per" or any(v[3] for v in vs):
+            continue  # procent- och notkolumner
+        if nums and all(0 < v <= 40 for v in nums) and (len(vs) < len(rows) or c == centers[0] and len(centers) > 2) \
+                and (all(float(v).is_integer() for v in nums) or c == centers[0]):
+            continue  # notkolumn utan rubrik ("2" eller "2,3" längst till vänster)
+        usable.append((c, h, heads[c]))
+    if len(usable) < 2:
+        return None
+    months = [h[1] for c, h, t in usable]
+    years = [h[2] for c, h, t in usable]
+    known = [m for m in months if m]
+    short = min(known) if known else None
+    cand = [i for i in range(len(usable)) if short is None or months[i] == short]
+    loose = [i for i in range(len(usable)) if months[i] in (short, None)]
+    cur = prev = None
+    ys = [years[i] for i in cand if years[i]]
+    if ys:
+        ymax = max(ys)
+        cur = next(i for i in cand if years[i] == ymax)
+        qn = usable[cur][1][3]
+        prev = next((i for i in cand if years[i] == ymax - 1 and (qn is None or usable[i][1][3] in (None, qn))), None)
+        if prev is None:
+            # en kolumn utan känd periodlängd: inte helåret ("Q1 2026, Q1 2025, Helår 2025" där "Q1" bara står en gång)
+            def plausible(i):
+                if "rev" not in rows:
+                    return True
+                a = next((v[1] for v in rows["rev"][1] if abs(v[0] - usable[cur][0]) <= 14), None)
+                b = next((v[1] for v in rows["rev"][1] if abs(v[0] - usable[i][0]) <= 14), None)
+                return not (a and b and a > 0 and b / a > 2.5)
+            prev = next((i for i in loose if i > cur and years[i] == ymax - 1 and plausible(i)), None)
+    if cur is None:
+        cur = cand[0]
+    if prev is None:
+        rest = [i for i in cand if i > cur]
+        prev = rest[0] if rest else None
+    if prev is None:
+        return None
+    return {"cur": usable[cur][0], "prev": usable[prev][0], "months": months[cur], "head": usable[cur][2]}
+
+
+def read_statement(pdf_bytes):
+    """Resultaträkningen i en kvartalsrapport: {rad: (aktuell period, samma period året innan)}, enhet och rubrik."""
+    pdf = pdfium.PdfDocument(pdf_bytes)
+    best = None
+    try:
+        for pi in range(len(pdf)):
+            tp = pdf[pi].get_textpage()
+            txt = tp.get_text_range()
+            if not re.search(r"nettoomsättning|net sales|intäkter|revenue|rörelseresultat|operating", txt, re.I):
+                continue
+            dec = decimal_sep(txt)
+            lines = pdf_lines(tp)
+            rows = statement_rows(lines, dec)
+            if not rows:
+                continue
+            first = min(r[2] for r in rows.values())
+            near = " ".join(c[2] for _, cells in lines[max(0, first - 8):first + 1] for c in cells)
+            # Koncernens resultaträkning före nyckeltalstabeller, segmentstabeller och moderbolagets siffror
+            score = len(rows) + (2 if STATEMENT_HEAD.search(txt) else 0) + (2 if STATEMENT_HEAD.search(near) else 0) + (1 if "eps" in rows and "net" in rows else 0)
+            if re.search(r"segment|översikt|overview|per kvartal|by quarter|quarterly", near, re.I):
+                score -= 4
+            if re.search(r"moderbolag|parent company", near, re.I):
+                score -= 8
+            if best is None or score > best[0]:
+                best = (score, rows, lines, near, txt)
+    finally:
+        pdf.close()
+    if not best:
+        return None
+    _, rows, lines, near, txt = best
+    cols = pick_columns(rows, lines)
+    if not cols:
+        return None
+
+    def at(row, x):
+        return next((v[1] for v in row[1] if abs(v[0] - x) <= 14), None)
+
+    unit = None
+    for text in (near, txt):
+        unit = next(((sc, cur) for rx, sc, cur in UNIT_HDR if rx.search(text)), None)
+        if unit:
+            break
+    return {"vals": {k: [at(r, cols["cur"]), at(r, cols["prev"])] for k, r in rows.items()},
+            "all": {k: [v[1] for v in r[1] if v[1] is not None and not v[3]] for k, r in rows.items()},
+            "months": cols["months"], "head": cols["head"], "unit": unit}
+
+
+# ---------- Pressmeddelandet: belopp, vd, "om bolaget" ----------
+
+TEXT_UNITS = [
+    (r"miljarder kronor|mdkr|mdr kr|miljarder sek|sek miljarder|sek ?bn|sek billion|billion sek|mdsek|bnsek", 1e9, "SEK"),
+    (r"miljoner kronor|mkr|msek|mnkr|mn kr|miljoner sek|sek ?m\b|sek ?million|sek ?mn|sekm|mln sek|sek mln", 1e6, "SEK"),
+    (r"tusen kronor|tkr|tsek|ksek|kkr|sek ?thousand|sek ?k\b|tusen sek", 1e3, "SEK"),
+    (r"miljarder euro|eur ?bn|eur billion", 1e9, "EUR"),
+    (r"miljoner euro|meur|eur ?m\b|eur ?million|eur ?mn|mn eur|m eur|eurm|eur ?mln|euro million", 1e6, "EUR"),
+    (r"tusen euro|teur|keur|eur thousand|eur ?k\b", 1e3, "EUR"),
+    (r"miljoner dollar|musd|usd ?m\b|usd ?million|usd ?mn|usdm", 1e6, "USD"),
+    (r"tusen dollar|tusd|kusd|usd thousand", 1e3, "USD"),
+    (r"mnok|nok ?m\b|nok million|miljoner norska kronor", 1e6, "NOK"),
+    (r"mdkk|dkk ?m\b|dkk million", 1e6, "DKK"),
+    (r"miljarder(?![a-zåäö])|mdr(?![a-zåäö])", 1e9, "SEK"),
+    (r"miljoner(?![a-zåäö])|mn(?![a-zåäö])|mln(?![a-zåäö])", 1e6, "SEK"),
+    (r"kronor|sek", 1, "SEK"),
+]
+TEXT_UNIT_RE = "|".join("(?:%s)" % u for u, _, _ in TEXT_UNITS)
+TEXT_NUM = re.compile(r"(?<![\w.,])[-−–]?\d{1,3}(?:[  .,]\d{3})*(?:[.,]\d+)?(?![\w])|(?<![\w.,])[-−–]?\d+(?:[.,]\d+)?(?![\w])")
+
+
+def readings(s):
+    """Möjliga tolkningar av ett tal i löptext, med halva avrundningssteget: "14.693" kan vara 14 693 eller 14,693."""
+    s = s.replace("−", "-").replace("–", "-")
+    neg = s.startswith("-")
+    s = s.lstrip("-").replace(" ", " ")
+    res = []
+    if re.fullmatch(r"\d+", s):
+        res.append((float(s), 0.5))
+    if re.fullmatch(r"\d{1,3}( \d{3})+([.,]\d+)?", s):
+        a = s.replace(" ", "")
+        if "," in a or "." in a:
+            ip, fp = re.split(r"[.,]", a)
+            res.append((float(ip + "." + fp), 0.5 * 10 ** -len(fp)))
+        else:
+            res.append((float(a), 0.5))
+    for sep, other in ((",", "."), (".", ",")):
+        if re.fullmatch(r"\d+\%s\d+" % sep, s):
+            ip, fp = s.split(sep)
+            res.append((float(ip + "." + fp), 0.5 * 10 ** -len(fp)))
+            if len(fp) == 3:
+                res.append((float(ip + fp), 0.5))
+        if re.fullmatch(r"\d{1,3}(\%s\d{3})+(\%s\d+)?" % (sep, other), s):
+            a = s.replace(sep, "")
+            if other in a:
+                ip, fp = a.split(other)
+                res.append((float(ip + "." + fp), 0.5 * 10 ** -len(fp)))
+            else:
+                res.append((float(a), 0.5))
+    return [(-v if neg else v, h) for v, h in res]
+
+
+def text_amounts(text):
+    """Belopp med enhet i pressmeddelandet: [(belopp, halvt avrundningssteg, valuta, texten)]. Ett tal inom parentes
+    direkt efter ett belopp ("119,5 miljarder kronor (110,7)") har samma enhet."""
+    out, last = [], None
+    for m in TEXT_NUM.finditer(text):
+        s, after, before = m.group(0), text[m.end():m.end() + 30], text[max(0, m.start() - 14):m.start()]
+        if re.match(r"\s*(%|procent|percent|st\b|aktier|personer|anställda|medarbetare)", after):
+            last = None
+            continue
+        unit = None
+        # enheten kan stå efter jämförelsetalet: "59,5 (56,2) miljarder"
+        for mm in (re.match(r"\s*(?:\(\s*[-−–]?[\d  .,]+\s*\)\s*)?(%s)" % TEXT_UNIT_RE, after, re.I), re.search(r"(%s)\s*$" % TEXT_UNIT_RE, before, re.I)):
+            if mm:
+                w = mm.group(1).lower()
+                unit = next(((sc, cur) for u, sc, cur in TEXT_UNITS if re.fullmatch(u, w, re.I)), None)
+                if unit:
+                    break
+        if unit is None and last and re.match(r"\s*\)", after) and re.search(r"\(\s*$", before):
+            unit = last
+        if unit is None:
+            continue
+        last = unit
+        for v, half in readings(s):
+            out.append((v * unit[0], half * unit[0], unit[1], s))
+    return out
+
+
+def confirmations(values, amounts):
+    """Skalor (1, tusen, miljoner, miljarder) där tabellens tal också står i pressmeddelandet: {(skala, valuta): {tal}}."""
+    hits = {}
+    for v in values:
+        if v is None or abs(v) < 1:
+            continue
+        for sc in (1, 1e3, 1e6, 1e9):
+            for a, half, cur, s in amounts:
+                # minst tre siffror, annars är det för lätt att träffa av en slump
+                if len(re.sub(r"\D", "", s)) >= 3 and abs(a - v * sc) <= half * 1.0001:
+                    hits.setdefault((sc, cur), set()).add(s)
+    return hits
+
+
+def html_text(s):
+    s = re.sub(r"<script.*?</script>|<style.*?</style>", "", s, flags=re.S)
+    s = re.sub(r"<br\s*/?>|</p>|</div>|</h\d>|</li>|</tr>", "\n", s)
+    s = html.unescape(re.sub(r"<[^>]+>", "", s)).replace("\xa0", " ")
+    s = re.sub(r"[ \t]+", " ", s)
+    return re.sub(r"\n\s*\n*", "\n", s).strip()
+
+
+ABOUT_WORDS = re.compile(r"grundades|grundat|noterad|huvudkontor|medarbetare|anställda|verksam|marknader|länder|koncernen|bolaget", re.I)
+
+
+def about_text(body_html, body):
+    """Bolagets egen beskrivning ("Om oss") i slutet av pressmeddelandet."""
+    m = re.search(r'<div class="mfn-footer mfn-about[^"]*">(.*?)</div>', body_html, re.S)
+    if m:
+        t = re.sub(r"^\s*(om oss|om [^\n]{2,40}|about [^\n]{2,40})\n", "", html_text(m.group(1)), flags=re.I)
+        t = re.sub(r"\s*\n\s*", " ", re.sub(r"\n\s*www\.\S+\s*$", "", t)).strip()
+        return t if len(t) >= 120 else None
+    lines = [l.strip() for l in body.split("\n")]
+    t = next((lines[i + 1] for i, l in enumerate(lines[:-1])
+              if re.fullmatch(r"(om|kort om|about) [^.]{2,50}", l, re.I) and len(lines[i + 1]) >= 120), None)
+    if not t:
+        cands = [l for l in lines[len(lines) // 2:] if 120 <= len(l) <= 1600 and len(ABOUT_WORDS.findall(l)) >= 2
+                 and not re.search(r"@|tel\.|telefon|\+46|offentliggörande|marknadsmissbruk|webcast|telefonkonferens", l, re.I)]
+        if not cands:
+            return None
+        t = cands[-1]
+    # rubriken kan sitta ihop med texten: "Sandvik-koncernen Sandvik är …", "Om Peab Peab är …"
+    t = re.sub(r"^[A-ZÅÄÖ][\w&.\-]*-(?:koncernen|gruppen)\s+(?=[A-ZÅÄÖ])", "", t)
+    return re.sub(r"^(?:Om|Kort om)\s+([A-ZÅÄÖ][\w&\-]+)\s+(?=\1)", "", t)
+
+
+def ceo_name(body):
+    m = re.search(r"(?:säger|kommenterar|says)\s+([A-ZÅÄÖ][a-zåäöéü\-]+(?:\s[A-ZÅÄÖ][a-zåäöéü\-]+){1,2}),?\s+(?:tillförordnad\s+|tf\.?\s+|t\.f\.\s+)?"
+                  r"(?:vd|VD|Vd|verkställande direktör|koncernchef|CEO|President)", body)
+    if m:
+        return m.group(1)
+    m = re.search(r"\n([A-ZÅÄÖ][a-zåäöéü\-]+(?:\s[A-ZÅÄÖ][a-zåäöéü\-]+){1,2})\n(?:vd|VD|Vd|verkställande direktör|Verkställande direktör)", body)
+    return m.group(1) if m else None
+
+
+def ceo_quote(body, ceo):
+    """Vd:ns kommentar, de första meningarna."""
+    if not ceo:
+        return None
+    for l in body.split("\n"):
+        i = l.find(ceo)
+        if i < 0 or not re.search(r"(säger|kommenterar)\s+$", l[:i]):
+            continue
+        q = re.sub(r"[,–—-]?\s*(säger|kommenterar)\s+$", "", l[:i]).strip().strip("\"”“'-–— ,")
+        if len(q) < 60:
+            continue
+        sents = re.split(r"(?<=[.!?])\s+", q)
+        out = ""
+        for s in sents:
+            if len(out) + len(s) > 320 and out:
+                break
+            out = (out + " " + s).strip()
+        return out
     return None
 
 
-def wd_entities(qids, props="claims|sitelinks|labels"):
-    out = {}
-    qids = list(dict.fromkeys(qids))
-    for i in range(0, len(qids), 50):
-        url = ("https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&languages=sv|en&props=%s&ids=%s"
-               % (urllib.parse.quote(props), "|".join(qids[i:i + 50])))
-        r = fetch_json(url) or {}
-        out.update(r.get("entities", {}))
-        time.sleep(0.5)
+# ---------- MFN: bolaget, kalendern och rapporterna ----------
+
+MFN = "https://mfn.se"
+MFN_REPORTS = '(and(or(.properties.tags@>["sub:report"]))(or(.properties.lang="%s")))'
+NOT_INTERIM = re.compile(r"årsredovisning|annual report|hållbarhet|sustainability|bolagsstyrning|kallelse|inbjudan|invitation|presentation|"
+                         r"webcast|telefonkonferens|conference call|prospekt|ersättningsrapport", re.I)
+
+
+FILE_CACHE = None  # mapp för pressmeddelanden och PDF:er (lokalt, --raw-cache), så att de kan läsas om utan att hämtas igen
+
+
+def cached_fetch(url, accept, keep=True):
+    path = None
+    if FILE_CACHE and keep:
+        path = os.path.join(FILE_CACHE, "mfn", hashlib.md5(url.encode()).hexdigest())
+        if os.path.exists(path):
+            return open(path, "rb").read()
+    b = fetch(url, accept=accept, timeout=120)
+    time.sleep(0.5)
+    if path and b:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        open(path, "wb").write(b)
+    return b
+
+
+def network_error(e):
+    """Nätet borta eller servern svarar inte (inte ett svar som 403 eller 404): försök igen nästa gång."""
+    return isinstance(e, (urllib.error.URLError, TimeoutError, ConnectionError, OSError)) and not isinstance(e, urllib.error.HTTPError)
+
+
+def mfn_get(url, keep=False):
+    b = cached_fetch(url if url.startswith("http") else MFN + url, "text/html,application/json,*/*", keep)
+    return b.decode("utf-8", "replace") if b else ""
+
+
+def mfn_company(isin):
+    for c in json.loads(mfn_get("/search/companies?limit=5&query=" + isin, keep=True) or "[]"):
+        if isin in c.get("isins", []):
+            return {"slug": c["slug"], "tickers": [t.split(":", 1)[1] for t in c.get("tickers", []) if t.split(":")[0] in ("XSTO", "FNSE", "XNGM", "XSAT", "NSME")]}
+    return None
+
+
+def mfn_page(slug, lang="sv"):
+    """Bolagets sida på MFN: beskrivning, kalender och de senaste rapporterna."""
+    t = mfn_get("/all/a/%s?%s" % (slug, urllib.parse.urlencode({"filter": MFN_REPORTS % lang, "limit": 20})))
+    out = {"items": [], "cal": []}
+    m = re.search(r'class="description-tray">(.*?)</div>', t, re.S)
+    if m:
+        for k, v in re.findall(r"<th>(.*?)</th>\s*<td>(.*?)</td>", m.group(1)):
+            out[html.unescape(k).strip()] = html.unescape(v).strip()
+        out["desc"] = re.sub(r"\s+", " ", html_text(re.sub(r"<table.*?</table>", "", m.group(1), flags=re.S)))
+    m = re.search(r'<table class="table-calender">(.*?)</table>', t, re.S)
+    if m:
+        for row in re.findall(r"<tr[^>]*>(.*?)</tr>", m.group(1), re.S):
+            cells = [re.sub(r"\s+", " ", html_text(c)) for c in re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)]
+            if len(cells) == 3 and re.match(r"\d{4}-\d\d-\d\d$", cells[0]):
+                out["cal"].append([cells[0], cells[2]])
+    for blk in re.split(r'<div class="short-item compressible"', t)[1:]:
+        d = re.search(r'compressed-date">([^<]+)', blk)
+        a = re.search(r'title-link item-link" href="([^"]+)" title="([^"]*)"', blk)
+        if d and a:
+            pdfs = [u for u in re.findall(r'class="attachment-icon" title="[^"]*" href="([^"]+)"', blk) if u.lower().split("?")[0].endswith(".pdf")]
+            out["items"].append({"date": d.group(1).strip(), "url": MFN + a.group(1), "title": html.unescape(a.group(2)), "pdfs": pdfs})
     return out
 
 
-def claim_values(ent, prop):
-    """Värden för en egenskap: föredragna först, utgångna (med sluttid) bort."""
-    res = []
-    for c in ent.get("claims", {}).get(prop, []):
-        if c.get("rank") == "deprecated":
-            continue
-        q = c.get("qualifiers", {})
-        if "P582" in q:  # sluttid: inte längre aktuellt (t.ex. tidigare vd)
-            continue
-        dv = c.get("mainsnak", {}).get("datavalue", {})
-        when = None
-        for pt in q.get("P585", []):
-            when = pt.get("datavalue", {}).get("value", {}).get("time")
-        res.append((c.get("rank") == "preferred", when or "", dv.get("value")))
-    res.sort(key=lambda x: (not x[0], ""), reverse=False)
+def mfn_fresh_slugs(since):
+    """Bolag med nya rapporter på MFN sedan ett datum (en sida med de senaste rapporterna från alla nordiska bolag)."""
+    t = mfn_get("/all/s/nordic?" + urllib.parse.urlencode({"filter": '(and(or(.properties.tags@>["sub:report"])))', "limit": 300}))
+    out = set()
+    for blk in re.split(r'<div class="short-item compressible"', t)[1:]:
+        d = re.search(r'compressed-date">([^<]+)', blk)
+        a = re.search(r'title-link item-link" href="/(?:[a-z]+/)?a/([^/"]+)/', blk)
+        if d and a and d.group(1).strip() >= since:
+            out.add(a.group(1))
+    return out
+
+
+def period_end(pub_date, head, title):
+    """Sista dagen i rapportens period. Månaden kommer ur kolumnrubriken eller rubriken ("januari–september",
+    "Q3"), året är det senaste som slutar före publiceringen."""
+    month = None
+    for text in (head or "", title or ""):
+        ms = list(MONTH_RANGE.finditer(text.lower()))
+        if ms:
+            month = MONTH_NO[ms[-1].group(2)]
+            break
+    if month is None:
+        q = re.search(r"\b(?:q|kv\.?|kvartal)\s?([1-4])\b|(första|andra|tredje|fjärde) kvartalet|(bokslutskommuniké|year-end)|(halvårsrapport)", (title or "").lower())
+        if q:
+            month = (int(q.group(1)) * 3 if q.group(1) else {"första": 3, "andra": 6, "tredje": 9, "fjärde": 12}[q.group(2)] if q.group(2)
+                     else 12 if q.group(3) else 6)
+    pub = dt.date.fromisoformat(pub_date)
+    latest = pub - dt.timedelta(days=3)
+    if month is None:
+        # senaste kvartalsskiftet minst en vecka före publiceringen
+        latest = pub - dt.timedelta(days=7)
+        month = (latest.month - 1) // 3 * 3 or 12
+        if month == 12 and latest.month < 12:
+            return dt.date(latest.year - 1, 12, 31)
+    year = latest.year
+    end = dt.date(year, month, 28) + dt.timedelta(days=4)
+    end = end - dt.timedelta(days=end.day)
+    if end > latest:
+        end = dt.date(year - 1, month, 28) + dt.timedelta(days=4)
+        end = end - dt.timedelta(days=end.day)
+    return end if (pub - end).days <= 200 else None
+
+
+def read_interim(item, annual_rev):
+    """En kvartalsrapport: pressmeddelandet och PDF:en. Siffrorna godkänns bara om de går att bekräfta:
+    samma tal står i pressmeddelandet, eller omsättningen stämmer ungefär med årsredovisningen."""
+    page = mfn_get(item["url"], keep=True)
+    m = re.search(r'<div class="content s-[a-z]+">(.*?)</article>', page, re.S)
+    body_html = m.group(1) if m else ""
+    body = html_text(body_html)
+    res = {"date": item["date"], "title": item["title"]}
+    ceo = ceo_name(body)
+    if ceo:
+        res["ceo"] = ceo
+        quote = ceo_quote(body, ceo)
+        if quote:
+            res["quote"] = quote
+    about = about_text(body_html, body)
+    if about:
+        res["about"] = about
+    if not pdfium:
+        return res
+    st = None
+    for url in item["pdfs"][:3]:
+        try:
+            b = cached_fetch(url, "application/pdf,*/*")
+            st = read_statement(b) if b else None
+        except Exception as e:
+            if network_error(e):
+                raise
+            print("  %s: PDF:en gick inte att läsa (%s)" % (item["url"], e))
+            st = None
+        if st:
+            res["pdf"] = url
+            break
+    if not st or not st["months"]:
+        return res
+    amounts = text_amounts(body)
+    conf = confirmations([v for k in ("rev", "ebit", "net") for v in st["all"].get(k, [])], amounts)
+    unit, via = st["unit"], None
+    if unit and unit in conf:
+        via = "text"
+    elif not unit:
+        best = max(conf.items(), key=lambda kv: len(kv[1]), default=None)
+        if best and len(best[1]) >= 2:
+            unit, via = best[0], "text"
+    if not via and unit and annual_rev and st["vals"].get("rev", [None])[0]:
+        ratio = st["vals"]["rev"][0] * unit[0] * 12 / st["months"] / annual_rev
+        if 0.5 <= ratio <= 2:
+            via = "annual"
+    if not via:
+        return res
+    end = period_end(item["date"], st["head"], item["title"])
+    if not end:
+        return res
+    sc, cur = unit
+    q = {"p": end.isoformat()[:7], "m": st["months"], "cur": cur, "via": via}
+    for k, (a, b) in st["vals"].items():
+        if k == "rev" and ((a is not None and a < 0) or (b is not None and b < 0)):
+            continue  # negativ omsättning betyder att det är fel rad
+        if k == "eps":
+            if all(x is None or abs(x) < 1000 for x in (a, b)):
+                q[k] = [a, b]
+        else:
+            q[k] = [round(a * sc) if a is not None else None, round(b * sc) if b is not None else None]
+    res["q"] = q
     return res
 
 
-def label(ent):
-    """(namn, språk): svenska i första hand, annars engelska."""
-    l = ent.get("labels", {})
-    for lang in ("sv", "en"):
-        if l.get(lang):
-            return (l[lang]["value"], lang)
+def sane_quarter(q, annual):
+    """Sista kontrollen av ett kvartal mot årsredovisningen (valuta, omsättning). Ett stort bolags kvartal som inte går
+    ihop med helåret visas inte alls, och en jämförelsekolumn som egentligen är helåret tas bort."""
+    if not annual or annual[0] != q["cur"] or not annual[1] or annual[1] <= 0:
+        return q
+    a, rev = annual[1], q.get("rev") or [None, None]
+    if rev[0] and a >= 1e9 and not 1 / 3 <= rev[0] * 12 / q["m"] / a <= 3:
+        return None
+    if q["m"] == 3 and rev[0] and rev[1] and 0.7 <= rev[1] / a <= 1.4 and rev[1] / rev[0] > 2.5:
+        q = dict(q)
+        for k in ("rev", "ebit", "net", "eps"):
+            if q.get(k):
+                q[k] = [q[k][0], None]
+    return q
+
+
+def calendar_facts(cal, ticker):
+    """Nästa rapport, nästa årsstämma och utdelningarna det senaste året ur MFN-kalendern."""
+    today = TODAY.isoformat()
+    out = {}
+    cal = sorted(cal)
+    for d, text in cal:
+        if d >= today and "next" not in out and re.match(r"(kvartalsrapport|bokslutskommuniké|delårsrapport|halvårsrapport)", text, re.I):
+            out["next"] = [d, text]
+        if d >= today and "agm" not in out and re.match(r"årsstämma", text, re.I):
+            out["agm"] = d
+    divs = []
+    year_ago = (TODAY - dt.timedelta(days=380)).isoformat()
+    for d, text in cal:
+        m = re.match(r"x-dag (ordinarie |extra |bonus)?(?:utdelning)\s+(.+?)\s+([\d.,]+)(?:\s+([A-Z]{3}))?$", text, re.I)
+        if not m or d < year_ago or not ticker or m.group(2).strip().upper() != ticker.upper():
+            continue
+        kind = "extra" if m.group(1) and m.group(1).strip().lower() in ("extra", "bonus") else "ord"
+        amount = float(m.group(3).replace(",", "."))
+        if amount > 0:
+            divs.append([d, amount, m.group(4) or "SEK", kind])
+    if divs:
+        out["div"] = sorted(divs)
+    return out
+
+
+def share_ticker(tickers, stock_name):
+    """Kortnamnet för just den här aktien ("VOLV B") bland bolagets aktieslag."""
+    if len(tickers) == 1:
+        return tickers[0]
+    m = re.search(r"(?:\bser\.?\s*|\bclass\s+|[\s-])([A-D])(?:\s+shs)?$", stock_name or "", re.I)
+    if m:
+        same = [t for t in tickers if t.upper().endswith(" " + m.group(1).upper())]
+        if len(same) == 1:
+            return same[0]
     return None
 
 
-def wiki_facts(ent, labels):
-    def items(prop, n, sv_only=False):
-        vals = []
-        for _, _, v in claim_values(ent, prop):
-            lab = labels.get(v["id"]) if isinstance(v, dict) and v.get("id") else None
-            if not lab or (sv_only and lab[1] != "sv"):
-                continue
-            if not re.match(r"^Q\d+$", lab[0]) and lab[0] not in vals:
-                vals.append(lab[0])
-        return vals[:n]
-
+def company_facts_from_text(desc, about):
     f = {}
-    # Grundår: det tidigaste (Sandvik grundades 1862, aktiebolaget bildades 1897)
-    years = []
-    for _, _, v in claim_values(ent, "P571"):
-        if isinstance(v, dict) and v.get("time"):
-            m = re.match(r"\+(\d{4})", v["time"])
-            if m:
-                years.append(int(m.group(1)))
-    if years:
-        f["founded"] = min(years)
-    emp = [(when, v) for _, when, v in claim_values(ent, "P1128") if isinstance(v, dict) and v.get("amount")]
-    if emp:
-        when, v = max(emp, key=lambda x: x[0])
-        f["employees"] = [int(float(v["amount"])), when[1:5] if when else None]
-    for key, prop, n, sv_only in (("founders", "P112", 4, False), ("hq", "P159", 1, False), ("ceo", "P169", 1, False),
-                                  ("chair", "P488", 1, False), ("products", "P1056", 8, True), ("brands", "P1716", 8, False),
-                                  ("industry", "P452", 3, True), ("owners", "P127", 3, False)):
-        v = items(prop, n, sv_only)
-        if v:
-            f[key] = v if n > 1 else v[0]
-    for _, _, v in claim_values(ent, "P856"):
-        if isinstance(v, str) and v.startswith("http"):
-            f["web"] = v
-            break
-    sl = ent.get("sitelinks", {}).get("svwiki")
-    if sl:
-        f["svwiki"] = sl["title"]
+    for text in (about or "", desc or ""):
+        if "founded" not in f:
+            y = re.search(r"(?:grundades|grundad|grundat|grundlades|startades|bildades)\D{0,30}?\b(1[5-9]\d\d|20[0-2]\d)\b", text)
+            if y:
+                f["founded"] = int(y.group(1))
+        if "hq" not in f:
+            h = re.search(r"huvudkontor(?:et)?\s+(?:ligger\s+)?i\s+([A-ZÅÄÖ][\wåäöé\-]+(?:\s[A-ZÅÄÖ][\wåäöé\-]+)?)", text)
+            if h and h.group(1) not in ("Sverige", "Sweden", "Norge", "Danmark", "Finland", "Europa", "Norden"):
+                f["hq"] = h.group(1)
+    # "närmare 100.000 medarbetare", "cirka 23 400 anställda"
+    e = re.search(r"(?:cirka|ca\.?|omkring|närmare|drygt|över|knappt|runt|nästan)?\s*(\d{1,3}(?:[  .]\d{3})+|\d{2,6})\s+(?:medarbetare|anställda)", about or "")
+    if e:
+        n = int(re.sub(r"\D", "", e.group(1)))
+        if n >= 5:
+            f["employees"] = n
+    w = re.search(r"\b(www\.[a-z0-9\-]+(?:\.[a-z0-9\-]+)+)", about or "", re.I)
+    if w and not re.search(r"cision|mfn\.se|nasdaq|outlook", w.group(1), re.I):
+        f["web"] = "https://" + w.group(1).lower().rstrip(".")
     return f
-
-
-def wiki_summary(title):
-    r = fetch_json("https://sv.wikipedia.org/api/rest_v1/page/summary/" + urllib.parse.quote(title.replace(" ", "_")))
-    if not r or r.get("type") == "disambiguation":
-        return None
-    t = (r.get("extract") or "").strip()
-    if len(t) < 60:
-        return None
-    return {"text": first_sentences(t, 520), "url": r.get("content_urls", {}).get("desktop", {}).get("page")}
 
 
 # ---------- Huvudprogrammet ----------
@@ -874,7 +1524,12 @@ def main():
     ap.add_argument("--only", default=None, help="kommaseparerade ISIN")
     ap.add_argument("--reparse", action="store_true", help="läs om alla rapporter ur --raw-cache")
     ap.add_argument("--state", default="data/bolag-state.json", help="läget mellan körningarna (sparas i repot, publiceras inte)")
+    ap.add_argument("--max-mfn", type=int, default=250, help="högst så många bolagssidor på MFN per körning")
+    ap.add_argument("--max-interim", type=int, default=80, help="högst så många nya kvartalsrapporter per körning")
+    ap.add_argument("--interim-depth", type=int, default=4, help="så många av de senaste kvartalsrapporterna läses per bolag")
     args = ap.parse_args()
+    global FILE_CACHE
+    FILE_CACHE = args.raw_cache
     started = time.time()
     out_dir = os.path.join(args.out, "bolag")
     os.makedirs(out_dir, exist_ok=True)
@@ -887,11 +1542,22 @@ def main():
         except ValueError:
             print("  Kunde inte läsa %s, börjar om" % state_file)
     st = state.setdefault("isin", {})
-    reports = state.setdefault("reports", {})   # per LEI: senast lästa rapport och resultatet
-    wiki = state.setdefault("wiki", {})         # per Wikidata-id: fakta och beskrivning
+    reports = state.setdefault("reports", {})   # per LEI: senast lästa årsredovisning och resultatet
+    mfn = state.setdefault("mfn", {})           # per bolag på MFN: kalender, beskrivning och kvartalsrapporterna
+    # Wikidata och Wikipedia används inte längre
+    state.pop("wiki", None)
+    for s in st.values():
+        for k in ("wd", "wdChecked", "wdNameChecked"):
+            s.pop(k, None)
 
     def out_of_time():
         return time.time() - started > args.max_minutes * 60
+
+    def save_state():
+        # sparas också under körningen, så att inget går förlorat om den avbryts
+        tmp = state_file + ".tmp"
+        json.dump(state, open(tmp, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+        os.replace(tmp, state_file)
 
     index = json.load(open(os.path.join(args.out, "index.json"), encoding="utf-8"))
     latest = index["quarters"][0]["id"]
@@ -983,68 +1649,137 @@ def main():
         time.sleep(0.3)
     print("  Rapporter: %d kontrollerade, %d nedladdade, %d bolag med rapport" % (checks, downloads, sum(1 for l in leis if reports.get(l, {}).get("data"))))
 
-    # 3. Wikidata och Wikipedia (en gång i månaden per bolag)
-    if not out_of_time():
-        missing_ids = [i for i in stocks if "wd" not in st.get(i, {}) or (st[i]["wd"] is None and days_since(st[i].get("wdChecked")) > 30)]
-        if missing_ids:
-            ids = wikidata_ids(missing_ids, [st.get(i, {}).get("lei") for i in missing_ids])
-            for i in missing_ids:
-                s = st.setdefault(i, {})
-                s["wd"] = ids.get(i) or ids.get(s.get("lei") or "-")
-                s["wdChecked"] = TODAY.isoformat()
-        # Många bolag finns på Wikidata utan ISIN och LEI (Epiroc, AAK, Bilia): sök på namnet i stället
-        by_name = [i for i in stocks if not st.get(i, {}).get("wd") and days_since(st[i].get("wdNameChecked")) > 30]
-        found_names = 0
-        for i in by_name:
-            if out_of_time():
+    # 3. MFN: bolaget, kalendern och kvartalsrapporterna
+    if pdfium is None:
+        print("  pypdfium2 saknas: kvartalsrapporternas siffror läses inte")
+    for isin in stocks:
+        s = st.setdefault(isin, {})
+        if out_of_time():
+            break
+        if s.get("mfn") or days_since(s.get("mfnChecked")) <= 30:
+            continue
+        try:
+            c = mfn_company(isin)
+        except Exception as e:
+            print("  %s: kunde inte söka på MFN (%s)" % (isin, e))
+            if network_error(e):
+                break
+            continue
+        s["mfnChecked"] = TODAY.isoformat()
+        if c:
+            s["mfn"] = c["slug"]
+            mfn.setdefault(c["slug"], {})["tickers"] = c["tickers"]
+        if sum(1 for x in st.values() if x.get("mfnChecked") == TODAY.isoformat()) % 50 == 0:
+            save_state()
+    slugs = sorted({st[i]["mfn"] for i in stocks if st.get(i, {}).get("mfn")})
+    # Årets omsättning ur årsredovisningen, för att kontrollera kvartalets
+    annual = {}
+    for i in stocks:
+        rep = reports.get(st.get(i, {}).get("lei") or "-", {}).get("data") or {}
+        rev = (rep.get("fin") or {}).get("rev", [None])[0]
+        if rev and st[i].get("mfn"):
+            annual[st[i]["mfn"]] = rev
+    fresh = set()
+    if state.get("mfnRun") and not out_of_time():
+        try:
+            fresh = mfn_fresh_slugs(min(state["mfnRun"], (TODAY - dt.timedelta(days=3)).isoformat()))
+        except Exception as e:
+            print("  Kunde inte hämta MFN:s senaste rapporter (%s)" % e)
+    today = TODAY.isoformat()
+
+    def priority(slug):
+        m = mfn.get(slug, {})
+        checked = m.get("checked")
+        if not checked:
+            return 1
+        if checked < today and (slug in fresh or any(checked <= d <= today for d, t in m.get("cal", [])
+                                                     if re.match(r"(kvartalsrapport|bokslutskommuniké|delårsrapport|halvårsrapport)", t, re.I))):
+            return 0  # en ny rapport har kommit
+        return 2 if days_since(checked) > 30 else None
+
+    due = sorted((p, s) for s, p in ((s, priority(s)) for s in slugs) if p is not None)
+    pages = interims = failures = 0
+    for _, slug in due:
+        if out_of_time() or pages >= args.max_mfn:
+            break
+        if failures >= 10:
+            print("  MFN svarar inte (nätet borta?), resten tas nästa gång")
+            break
+        try:
+            pg = mfn_page(slug)
+            if sum(1 for i in pg["items"] if not NOT_INTERIM.search(i["title"])) < 2:
+                # bolag som bara skriver på engelska
+                dates = {i["date"] for i in pg["items"]}
+                pg["items"] += [i for i in mfn_page(slug, "en")["items"] if i["date"] not in dates]
+        except Exception as e:
+            print("  %s: kunde inte hämta bolagssidan på MFN (%s)" % (slug, e))
+            failures += 1
+            continue
+        failures = 0
+        pages += 1
+        if pages % 25 == 0:
+            save_state()
+        m = mfn.setdefault(slug, {})
+        m.update({"checked": today, "cal": pg["cal"], "desc": pg.get("desc"), "industry": pg.get("Industri"), "list": pg.get("Lista")})
+        reps = m.setdefault("reports", {})
+        chosen, dates = [], set()
+        for it in sorted((i for i in pg["items"] if not NOT_INTERIM.search(i["title"])), key=lambda i: i["date"], reverse=True):
+            if it["date"] not in dates:  # en rapport per dag (den svenska om båda finns)
+                dates.add(it["date"])
+                chosen.append(it)
+        for it in chosen[:args.interim_depth]:
+            if reps.get(it["url"], {}).get("v") == INTERIM_VERSION:
+                continue
+            if out_of_time() or interims >= args.max_interim:
                 break
             try:
-                st[i]["wd"] = wikidata_by_name(stocks[i])
-            except Exception:
-                continue
-            st[i]["wdNameChecked"] = TODAY.isoformat()
-            found_names += 1 if st[i]["wd"] else 0
-        if by_name:
-            print("  Wikidata: %d av %d hittade på namnet" % (found_names, len(by_name)))
-        qids = sorted({st[i]["wd"] for i in stocks if st.get(i, {}).get("wd")})
-        due_q = [q for q in qids if days_since(wiki.get(q, {}).get("checked")) > 30][:400]
-        if due_q:
-            ents = wd_entities(due_q)
-            refs = set()
-            for e in ents.values():
-                for prop in ("P112", "P159", "P169", "P488", "P1056", "P1716", "P452", "P127"):
-                    for _, _, v in claim_values(e, prop):
-                        if isinstance(v, dict) and v.get("id"):
-                            refs.add(v["id"])
-            labels = {q: label(e) for q, e in wd_entities(sorted(refs), props="labels").items()} if refs else {}
-            for q in due_q:
-                e = ents.get(q)
-                if not e or out_of_time():
-                    continue
-                facts = wiki_facts(e, labels)
-                summary = None
-                if facts.get("svwiki"):
-                    try:
-                        summary = wiki_summary(facts["svwiki"])
-                    except Exception:
-                        summary = None
-                    time.sleep(0.2)
-                wiki[q] = {"checked": TODAY.isoformat(), "facts": facts, "summary": summary}
-        print("  Wikidata: %d bolag, %d med beskrivning från Wikipedia" % (len(qids), sum(1 for q in qids if (wiki.get(q) or {}).get("summary"))))
+                r = read_interim(it, annual.get(slug))
+            except Exception as e:
+                print("  %s: fel vid tolkning (%s)" % (it["url"], e))
+                if network_error(e):
+                    failures += 1
+                    break  # försöks igen nästa gång
+                r = {"date": it["date"], "title": it["title"]}
+            r["v"] = INTERIM_VERSION
+            reps[it["url"]] = r
+            interims += 1
+        for k in sorted(reps, key=lambda k: reps[k]["date"], reverse=True)[8:]:
+            del reps[k]
+    if not out_of_time():
+        state["mfnRun"] = today
+    with_q = sum(1 for s in slugs if any(r.get("q") for r in (mfn.get(s, {}).get("reports") or {}).values()))
+    print("  MFN: %d bolag, %d sidor hämtade, %d nya kvartalsrapporter, %d bolag med kvartalssiffror" % (len(slugs), pages, interims, with_q))
 
     # 4. En fil per aktie, plus placering bland alla bolag (störst försäljning, flest anställda, äldst)
     merged = {}
     for isin in stocks:
         s = st.get(isin, {})
         rep = reports.get(s.get("lei") or "-", {}).get("data")
-        w = wiki.get(s.get("wd") or "-") or {}
-        if not rep and not w.get("facts") and not w.get("summary"):
+        mm = mfn.get(s.get("mfn") or "-") or {}
+        reps = sorted(((u, r) for u, r in (mm.get("reports") or {}).items()), key=lambda x: x[1]["date"], reverse=True)
+        recent = [(u, r) for u, r in reps if days_since(r["date"]) <= 200]
+        about = next(((u, r["about"]) for u, r in reps if r.get("about") and swedish(r["about"])), None)
+        f = company_facts_from_text(mm.get("desc"), about[1] if about else None)
+        if f.get("employees"):
+            f["employees"] = [f["employees"], int(mm["reports"][about[0]]["date"][:4])]
+        emp = (rep or {}).get("fin", {}).get("employees", [None])[0]
+        if emp:
+            f["employees"] = [round(emp), rep["fy"]]
+        ceo = next((r["ceo"] for u, r in recent[:2] if r.get("ceo")), None)
+        if ceo:
+            f["ceo"] = ceo
+        if mm.get("industry"):
+            f["industry"] = mm["industry"]
+        if mm.get("list"):
+            f["list"] = mm["list"]
+        if not rep and not recent and not f:
             continue
-        merged[isin] = {"lei": s.get("lei"), "report": rep, "facts": w.get("facts") or {}, "wiki": w.get("summary")}
+        merged[isin] = {"lei": s.get("lei"), "report": rep, "facts": f, "mm": mm, "reps": reps, "recent": recent, "about": about,
+                        "slug": s.get("mfn")}
 
     by_company = {}
     for isin, m in merged.items():
-        by_company.setdefault(m["lei"] or isin, m)
+        by_company.setdefault(m["lei"] or m["slug"] or isin, m)
     def rank(getter):
         vals = sorted(((getter(m), k) for k, m in by_company.items() if getter(m) is not None), reverse=True)
         return {k: [n + 1, len(vals)] for n, (_, k) in enumerate(vals)}
@@ -1054,29 +1789,45 @@ def main():
 
     written = set()
     for isin, m in merged.items():
-        key = m["lei"] or isin
+        key = m["lei"] or m["slug"] or isin
         doc = {"built": TODAY.isoformat()}
         if m["report"]:
             doc["report"] = m["report"]
-        f = dict(m["facts"])
-        f.pop("svwiki", None)
-        f.pop("industry", None)  # Wikidatas branschord är ofta för snäva ("järnframställning" för Sandvik)
-        # Står grundåret i Wikipedias text gäller det: Wikidata har ibland året då aktiebolaget bildades (Sandvik 1897
-        # i stället för 1862) eller ett år från ett annat bolag (Desenio 1905 i stället för 2008)
-        if m["wiki"]:
-            ys = [int(y) for y in re.findall(r"(?:grundades|grundat|grundlades|startades|bildades)\D{0,40}?\b(1[5-9]\d\d|20[0-2]\d)\b", m["wiki"]["text"])]
-            if ys:
-                f["founded"] = min(ys)
-        # "Göteborgs kommun" blir "Göteborg", "Borås kommun" blir "Borås"
-        if f.get("hq"):
-            hq = re.sub(r"\s+(kommun|stad)$", "", f["hq"])
-            if hq != f["hq"] and re.search(r"[^aeiouyåäöAEIOUYÅÄÖs]s$", hq):
-                hq = hq[:-1]
-            f["hq"] = hq
-        if f:
-            doc["facts"] = f
-        if m["wiki"]:
-            doc["wiki"] = m["wiki"]
+        if m["facts"]:
+            doc["facts"] = m["facts"]
+        # Beskrivningen med bolagets egna ord: ur pressmeddelandet, annars ur årsredovisningen
+        if m["about"]:
+            doc["about"] = {"text": first_sentences(m["about"][1], 600), "src": "pm", "url": m["about"][0]}
+        elif m["report"] and m["report"].get("about"):
+            doc["about"] = {"text": m["report"]["about"], "src": "ar", "url": m["report"].get("url")}
+        # Senaste kvartalet (bara om rapporten är från det senaste halvåret) och kvartalen innan
+        annual_rev = None
+        if m["report"] and (m["report"].get("fin") or {}).get("rev", [None])[0]:
+            annual_rev = (m["report"]["cur"], m["report"]["fin"]["rev"][0])
+        checked = {u: sane_quarter(r["q"], annual_rev) for u, r in m["reps"] if r.get("q")}
+        latest = next(((u, r) for u, r in m["recent"] if checked.get(u)), None)
+        if latest:
+            u, r = latest
+            q = dict(checked[u], title=r["title"], date=r["date"], url=u)
+            if r.get("quote") and latest == m["recent"][0]:
+                q["quote"] = r["quote"]
+            doc["q"] = q
+            pts = {}
+            for x in (checked.get(u) for u, _ in m["reps"]):
+                if x and x["m"] == 3 and x["cur"] == q["cur"] and x["p"] not in pts:
+                    pts[x["p"]] = [x.get(k, [None])[0] for k in ("rev", "ebit", "net")]
+            for xq in (checked.get(u) for u, _ in m["reps"]):
+                if xq and xq["m"] == 3 and xq["cur"] == q["cur"]:
+                    prev = "%04d%s" % (int(xq["p"][:4]) - 1, xq["p"][4:])
+                    pts.setdefault(prev, [xq.get(k, [None, None])[1] for k in ("rev", "ebit", "net")])
+            series = [[p] + v for p, v in sorted(pts.items())][-8:]
+            if len(series) >= 4:
+                doc["qs"] = series
+        cal = calendar_facts(m["mm"].get("cal") or [], share_ticker(m["mm"].get("tickers") or [], stocks.get(isin)))
+        if cal:
+            doc["cal"] = cal
+        if m["slug"]:
+            doc["mfn"] = m["slug"]
         rk = {k: v[key] for k, v in (("rev", rev_rank), ("emp", emp_rank), ("age", age_rank)) if key in v}
         if rk:
             doc["rank"] = rk
@@ -1102,7 +1853,7 @@ def main():
     # Vilka aktier som har en fil, så att sajten inte frågar efter filer som inte finns
     have = sorted(n[:-5] for n in os.listdir(out_dir) if n.endswith(".json") and not n.startswith("_"))
     json.dump({"built": TODAY.isoformat(), "isins": have}, open(os.path.join(out_dir, "_index.json"), "w", encoding="utf-8"), separators=(",", ":"))
-    json.dump(state, open(state_file, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    save_state()
     with_seg = sum(1 for m in by_company.values() if m["report"] and m["report"].get("seg"))
     with_geo = sum(1 for m in by_company.values() if m["report"] and m["report"].get("geo"))
     print("  Klart: %d aktier har bolagsfakta, %d bolag med affärsområden, %d med länder (%.0f s)" % (len(written), with_seg, with_geo, time.time() - started))
