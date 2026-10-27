@@ -4872,16 +4872,15 @@
 
   // Avdelningarna i menyraden och sidorna i varje avdelning (flikarna överst på sidan)
   var SECTIONS = {
-    aktier: { label: "Aktier och marknad", items: [["aktier", "Alla aktier", "#/aktier"], ["agarandel", "Fondernas ägarandel", "#/agarandel"], ["sparande", "Fondsparandet", "#/sparande"],
-      ["rantor", "Räntor", "#/rantor"]] },
+    aktier: { label: "Aktier och marknad", items: [["aktier", "Alla aktier", "#/aktier"], ["agarandel", "Fondernas ägarandel", "#/agarandel"], ["sparande", "Fondsparandet", "#/sparande"]] },
     fonder: { label: "Fonder", items: [["fonder", "Alla fonder", "#/fonder"], ["risk", "Risk och avkastning", "#/risk"], ["avgifter", "Avgiftskollen", "#/avgifter"],
       ["jamfor", "Jämför fonder", "#/jamfor"], ["fondbolag", "Fondbolag", "#/fondbolag"], ["forvaltare", "Kända förvaltare", "#/forvaltare"], ["backtest", "Följ fonderna", "#/backtest"]] },
     signaler: { label: "Signaler", items: [["signaler", "Samlad signal", "#/signaler"], ["insyn", "Insynshandel", "#/insyn"], ["dubbelsignal", "Dubbelsignal", "#/dubbelsignal"],
       ["blankning", "Blankning", "#/blankning"], ["uppkop", "Uppköp", "#/uppkop"]] },
     om: { label: "Om Fondinsyn", items: [["om", "Om datan", "#/om"], ["metod", "Metodrapport", "#/metod"], ["ordlista", "Ordlista", "#/ordlista"], ["kontakt", "Kontakt", "#/kontakt"]] }
   };
-  // Sidor som hör till en avdelning i menyraden (Sparande och Räntor ligger under Aktier och marknad)
-  var PAGE_SECTION = { aktie: "aktier", agarandel: "aktier", sparande: "aktier", rantor: "aktier", emittent: "aktier", fond: "fonder", risk: "fonder", fondbolag: "fonder",
+  // Sidor som hör till en avdelning i menyraden (Sparande ligger under Aktier och marknad, emittenterna under Räntor)
+  var PAGE_SECTION = { aktie: "aktier", agarandel: "aktier", sparande: "aktier", rantor: "rantor", emittent: "rantor", fond: "fonder", risk: "fonder", fondbolag: "fonder",
     forvaltare: "fonder", avgifter: "fonder", jamfor: "fonder", backtest: "fonder", insyn: "signaler", dubbelsignal: "signaler", blankning: "signaler",
     blankare: "signaler", uppkop: "signaler", ordlista: "om", kontakt: "om", metod: "om" };
 

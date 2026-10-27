@@ -302,13 +302,14 @@ body.scrolled .topbar { box-shadow: 0 1px 0 var(--border), 0 8px 24px rgba(12, 2
 @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
   .mega { background: var(--glass-strong); backdrop-filter: saturate(180%) blur(28px); -webkit-backdrop-filter: saturate(180%) blur(28px); }
 }
-.mega-inner { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, 0.85fr); gap: 32px; padding-top: 28px; padding-bottom: 32px; }
+.mega-inner { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 0.85fr); gap: 28px; padding-top: 28px; padding-bottom: 32px; }
 .mega-col { display: flex; flex-direction: column; gap: 2px; min-width: 0; opacity: 0; transform: translateY(6px); transition: opacity 0.12s, transform 0.12s; }
 /* Innehållet glider in strax efter panelen, en grupp i taget */
 .mega.is-open .mega-col { opacity: 1; transform: none; transition: opacity 0.34s ease-out, transform 0.55s var(--spring); }
 .mega.is-open .mega-col:nth-child(2) { transition-delay: 0.035s; }
 .mega.is-open .mega-col:nth-child(3) { transition-delay: 0.07s; }
 .mega.is-open .mega-col:nth-child(4) { transition-delay: 0.105s; }
+.mega.is-open .mega-col:nth-child(5) { transition-delay: 0.14s; }
 .mega-col h2 { font-size: 11.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--fg-muted); margin: 0 0 8px 10px; }
 .mega-col a { display: flex; flex-direction: column; padding: 9px 12px; border-radius: 12px; color: var(--fg); transition: background 0.2s, transform 0.25s var(--spring); }
 .mega-col a:hover { background: var(--bg-hover); text-decoration: none; }
@@ -1262,7 +1263,7 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
 .footer-brand .brand-mark { fill: #fff; }
 .footer-brand .brand-mark .bm-a { fill: var(--logo-dot); }
 .footer-brand p { margin-top: 14px; color: var(--navy-muted); font-size: 14px; line-height: 1.6; max-width: 34ch; }
-.footer-links { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px; }
+.footer-links { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 24px; }
 .footer-links div { display: flex; flex-direction: column; gap: 9px; }
 .footer-links h2 { font-size: 11.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: #fff; margin-bottom: 4px; }
 .footer-links a { color: var(--navy-muted); font-size: 14px; transition: color 0.15s; }
@@ -1401,8 +1402,8 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
 
   /* Flikrad längst ner */
   /* Flikraden svävar som en glasrad ovanför sidan, med en markering som glider mellan flikarna */
-  .tabbar { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); position: fixed; left: 12px; right: 12px; bottom: var(--tabbar-gap); z-index: 46; padding: 0 4px; border-radius: 26px; background: var(--glass-strong); backdrop-filter: saturate(180%) blur(22px); -webkit-backdrop-filter: saturate(180%) blur(22px); box-shadow: var(--glass-shadow), 0 18px 40px -16px rgba(12, 20, 36, 0.35); }
-  .tab-ind { position: absolute; left: 4px; top: 5px; bottom: 5px; width: calc((100% - 8px) / 5); border-radius: 21px; background: var(--brand-soft); box-shadow: inset 0 0 0 0.5px var(--brand-border); transform: translateX(calc(var(--ti, 0) * 100%)); transition: transform 0.5s var(--spring), opacity 0.2s; opacity: 0; pointer-events: none; }
+  .tabbar { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); position: fixed; left: 12px; right: 12px; bottom: var(--tabbar-gap); z-index: 46; padding: 0 4px; border-radius: 26px; background: var(--glass-strong); backdrop-filter: saturate(180%) blur(22px); -webkit-backdrop-filter: saturate(180%) blur(22px); box-shadow: var(--glass-shadow), 0 18px 40px -16px rgba(12, 20, 36, 0.35); }
+  .tab-ind { position: absolute; left: 4px; top: 5px; bottom: 5px; width: calc((100% - 8px) / 6); border-radius: 21px; background: var(--brand-soft); box-shadow: inset 0 0 0 0.5px var(--brand-border); transform: translateX(calc(var(--ti, 0) * 100%)); transition: transform 0.5s var(--spring), opacity 0.2s; opacity: 0; pointer-events: none; }
   .tabbar.has-ind .tab-ind { opacity: 1; }
   .tabbar a, .tabbar button { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; height: var(--tabbar-h); font: inherit; font-size: 10.5px; font-weight: 600; color: var(--fg-muted); background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: color 0.2s, transform 0.2s var(--spring); }
   .tabbar a:active, .tabbar button:active { transform: scale(0.92); }

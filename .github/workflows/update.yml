@@ -213,3 +213,14 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v5
+
+      # IndexNow: Bing (och andra sökmotorer som använder IndexNow) får veta att sidorna har uppdaterats och läser om
+      # dem, så att träfflistan visar aktuell titel, beskrivning och logga. En gång om dagen, med sidorna i sitemap.
+      # Nyckeln ligger som site/fb549666c6643d6c6533a786ad60cc79.txt.
+      - name: Meddela sökmotorerna (IndexNow)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        run: |
+          curl -sf https://www.fondinsyn.se/sitemap.xml -o sitemap.xml
+          python3 -c 'import json, re; k = "fb549666c6643d6c6533a786ad60cc79"; u = re.findall(r"<loc>([^<]+)</loc>", open("sitemap.xml", encoding="utf-8").read()); print(json.dumps({"host": "www.fondinsyn.se", "key": k, "keyLocation": "https://www.fondinsyn.se/" + k + ".txt", "urlList": u[:10000]}))' > indexnow.json
+          curl -s -o /dev/null -w "IndexNow svarade %{http_code}\n" -X POST https://api.indexnow.org/indexnow -H "Content-Type: application/json; charset=utf-8" --data @indexnow.json
