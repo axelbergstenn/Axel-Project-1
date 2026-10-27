@@ -1226,8 +1226,12 @@ def about_text(body_html, body):
         if not cands:
             return None
         t = cands[-1]
+    return tidy_about(t)
+
+
+def tidy_about(t):
     # rubriken kan sitta ihop med texten: "Sandvik-koncernen Sandvik är …", "Om Peab Peab är …"
-    t = re.sub(r"^[A-ZÅÄÖ][\w&.\-]*-(?:koncernen|gruppen)\s+(?=[A-ZÅÄÖ])", "", t)
+    t = re.sub(r"^[A-ZÅÄÖ][\w&.\-]*-(?:koncernen|gruppen)\s+(?=[A-ZÅÄÖ])", "", t.strip())
     return re.sub(r"^(?:Om|Kort om)\s+([A-ZÅÄÖ][\w&\-]+)\s+(?=\1)", "", t)
 
 
@@ -1797,7 +1801,7 @@ def main():
             doc["facts"] = m["facts"]
         # Beskrivningen med bolagets egna ord: ur pressmeddelandet, annars ur årsredovisningen
         if m["about"]:
-            doc["about"] = {"text": first_sentences(m["about"][1], 600), "src": "pm", "url": m["about"][0]}
+            doc["about"] = {"text": first_sentences(tidy_about(m["about"][1]), 600), "src": "pm", "url": m["about"][0]}
         elif m["report"] and m["report"].get("about"):
             doc["about"] = {"text": m["report"]["about"], "src": "ar", "url": m["report"].get("url")}
         # Senaste kvartalet (bara om rapporten är från det senaste halvåret) och kvartalen innan
