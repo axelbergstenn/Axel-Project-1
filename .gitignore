@@ -48,3 +48,4 @@ site/blankning/
 site/uppkop/
 site/avgifter/
 site/risk/
+__pycache__/
