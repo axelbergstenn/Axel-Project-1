@@ -1633,7 +1633,12 @@ def report_headline(title, body):
     cands.append(first)
     for c in cands:
         c = c.strip().strip('"”“').rstrip(".")
-        if 15 <= len(c) <= 110 and not report_words.search(c) and swedish(c + " och är av för") and not re.search(r"\d{4}-\d\d", c):
+        if 15 <= len(c) <= 110 and not report_words.search(c) and swedish(c + " och är av för") and not re.search(r"\d{4}-\d\d", c) \
+                and len(re.findall(r"\d+", c)) < 2 \
+                and not re.search(r"\b(AB|ASA|Oyj|plc|publ|Group|Holding)\b|^sammanfattning", c, re.I):
+            # en nyckeltalsrad ("Orderingång 36 948 Mkr (30 769)") eller ett bolagsnamn är ingen rubrik
+            if c == c.upper():
+                c = c[:1] + c[1:].lower()
             return c[:1].upper() + c[1:]
     return None
 

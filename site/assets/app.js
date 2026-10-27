@@ -1111,6 +1111,82 @@
       }).join("") + "</div></div>";
   }
 
+  // Bolagets rubrik på rapporten, men inte nyckeltalsrader ("Orderingång 36 948 Mkr (30 769)"), bolagsnamn eller "Sammanfattning"
+  function headlineText(h) {
+    if (!h || (h.match(/\d+/g) || []).length >= 2 || /\b(AB|ASA|Oyj|plc|publ|Group|Holding)\b|^sammanfattning/i.test(h)) return null;
+    return h === h.toUpperCase() ? h.charAt(0) + h.slice(1).toLowerCase() : h;
+  }
+
+  // Rapporten på 30 sekunder: det bästa, det sämsta och något att hålla koll på, räknat ur rapportens siffror
+  function quickTake(c, q, finance, short) {
+    var good = [], bad = [], cur = q.cur;
+    var add = function (list, w, text) { list.push({ w: w, t: text }); };
+    var rev = !finance && q.rev ? q.rev : null;
+    var g = rev ? change(rev[0], rev[1]) : null;
+    if (g != null && g >= 0.03) add(good, g, "Försäljningen växte med " + nf0.format(g * 100) + " % jämfört med samma period i fjol" + (q.organic != null && q.organic > 0 ? ", varav " + nf0.format(q.organic) + " % utan förvärv och valuta." : "."));
+    if (g != null && g <= -0.03) add(bad, -g, "Försäljningen minskade med " + nf0.format(-g * 100) + " % jämfört med samma period i fjol.");
+    if (rev && rev[0] > 0 && rev[1] > 0 && q.ebit && q.ebit[0] != null && q.ebit[1] != null) {
+      var m0 = q.ebit[0] / rev[0], m1 = q.ebit[1] / rev[1], md = m0 - m1;
+      if (md >= 0.01) add(good, md * 4, "Lönsamheten blev bättre: av varje 100 kronor blev " + nf0.format(m0 * 100) + " kronor rörelsevinst, mot " + nf0.format(Math.max(0, m1) * 100) + " ett år tidigare.");
+      if (md <= -0.01) add(bad, -md * 4, "Lönsamheten blev sämre: av varje 100 kronor blev " + nf0.format(Math.max(0, m0) * 100) + " kronor rörelsevinst, mot " + nf0.format(m1 * 100) + " ett år tidigare.");
+      if (q.ebit[0] < 0) add(bad, 1, "Verksamheten gick med förlust: rörelseresultatet blev " + money(q.ebit[0], cur) + ".");
+    }
+    var res = q.ebit && q.ebit[0] != null && q.ebit[1] > 0 ? q.ebit : q.net && q.net[0] != null && q.net[1] > 0 ? q.net : null;
+    if (res) {
+      var rg = res[0] / res[1] - 1, what = res === q.ebit ? "Rörelseresultatet" : "Vinsten";
+      if (rg >= 0.1) add(good, Math.min(rg, 2) * 0.8, what + " ökade med " + nf0.format(rg * 100) + " % till " + money(res[0], cur) + ".");
+      if (rg <= -0.1) add(bad, Math.min(-rg, 2) * 0.8, what + " minskade med " + nf0.format(-rg * 100) + " % till " + money(res[0], cur) + ".");
+    }
+    var ord = q.orders && q.orders["in"];
+    if (ord && rev && rev[0] > 0) {
+      var bb = ord[0] / rev[0], og = ord[1] ? ord[0] / ord[1] - 1 : null;
+      if (bb >= 1.05 || (og != null && og >= 0.1)) add(good, Math.max(bb - 1, og || 0) + 0.05, "Nya order för " + money(ord[0], cur) + (og != null ? " (" + pct(og) + ")" : "") + (bb >= 1.05 ? ", mer än bolaget levererade. Det talar för fortsatt växande försäljning." : "."));
+      if (bb <= 0.95 || (og != null && og <= -0.1)) add(bad, Math.max(1 - bb, -(og || 0)) + 0.05, "Färre nya order: " + money(ord[0], cur) + (og != null ? " (" + pct(og) + ")" : "") + (bb <= 0.95 ? ", mindre än bolaget levererade." : "."));
+    }
+    if (q.cash && q.cash[0] != null) {
+      if (q.cash[0] < 0) add(bad, 0.3, "Verksamheten drog inte in pengar i kvartalet: kassaflödet var " + money(q.cash[0], cur) + ".");
+      else if (q.cash[1] != null && q.cash[0] > q.cash[1] * 1.2 && q.cash[1] > 0) add(good, 0.25, "Starkt kassaflöde: verksamheten drog in " + money(q.cash[0], cur) + ", mer än ett år tidigare.");
+    }
+    if (q.react != null && Math.abs(q.react) >= 2) {
+      if (q.react > 0) add(good, q.react / 25, "Börsen gillade rapporten: aktien steg " + nf1.format(q.react) + " % samma dag.");
+      else add(bad, -q.react / 25, "Börsen var besviken: aktien föll " + nf1.format(-q.react) + " % samma dag.");
+    }
+    // Det senaste året (fyra kvartal) mot året innan, om åtta kvartal i följd finns
+    var qs = c.qs || [];
+    if (rev && qs.length >= 8) {
+      var mi = function (p) { return +p.slice(0, 4) * 12 + +p.slice(5, 7); }, last8 = qs.slice(-8), ok = true;
+      for (var i = 1; i < 8; i++) if (mi(last8[i][0]) - mi(last8[i - 1][0]) !== 3 || last8[i][1] == null) ok = false;
+      if (ok && last8[0][1] != null) {
+        var s1 = 0, s0 = 0;
+        for (i = 0; i < 4; i++) { s0 += last8[i][1]; s1 += last8[i + 4][1]; }
+        var yg = s1 / s0 - 1;
+        if (yg >= 0.05) add(good, yg * 0.6, "Det senaste året sålde " + esc(short) + " för " + money(s1, cur) + ", " + nf0.format(yg * 100) + " % mer än året innan.");
+        if (yg <= -0.02) add(bad, -yg * 0.6 + 0.02, "Det senaste året sålde " + esc(short) + " för " + money(s1, cur) + ", " + nf0.format(-yg * 100) + " % mindre än året innan.");
+      }
+    }
+    var bk = q.bank || {};
+    if (bk.roe != null && bk.roe >= 12) add(good, 0.2, "Banken tjänar bra på ägarnas pengar: " + nf1.format(bk.roe) + " % avkastning på eget kapital.");
+    if (bk.ci != null && bk.ci >= 0.6) add(bad, 0.2, "Höga kostnader: banken har " + nf0.format(bk.ci * 100) + " öre i kostnader per intjänad krona.");
+    // Något att hålla koll på: bolagets egen syn framåt, det rapporten pratar mest om, eller nästa rapport
+    var watch = null;
+    if (q.outlook) watch = "Bolaget om framtiden: " + ((q.outlook.match(/^[\s\S]*?[.!?](?=\s|$)/) || [q.outlook])[0]);
+    else if (q.events && q.events.length) watch = "Viktigt i kvartalet: " + q.events[0] + ".";
+    else if (q.themes && q.themes.length && q.themes[0][1] >= 8) {
+      var tn = q.themes[0][0], tl = /^(AI|USA|Kina)$/.test(tn) ? tn : tn.toLowerCase();
+      watch = "Rapporten tar ofta upp " + tl + " (" + q.themes[0][1] + " gånger), värt att följa.";
+    }
+    if (c.cal && c.cal.next) watch = (watch ? watch + " " : "") + "Nästa rapport kommer " + dateText(c.cal.next[0]) + ".";
+    var best = good.sort(function (a, b) { return b.w - a.w; })[0], worst = bad.sort(function (a, b) { return b.w - a.w; })[0];
+    if (!best && !worst) return "";
+    var card = function (cls, icon, title, text) {
+      return '<div class="qt ' + cls + '"><div class="qt-head"><span class="qt-ic" aria-hidden="true">' + icon + "</span>" + title + '</div><p>' + text + "</p></div>";
+    };
+    return '<div class="qt-wrap"><h4 class="kq-sub qt-title">Rapporten på 30 sekunder</h4><div class="qt-grid">' +
+      card("pos", "+", "Det bästa", best ? best.t : "Inget som stack ut positivt i siffrorna.") +
+      card("neg", "−", "Det sämsta", worst ? worst.t : "Inget tydligt negativt i siffrorna.") +
+      (watch ? card("watch", "→", "Håll koll på", esc(watch)) : "") + "</div></div>";
+  }
+
   // Snabbkoll: ja/nej-frågor om rapporten med bock eller kryss
   function scoreCard(items) {
     if (items.length < 2) return "";
@@ -1363,7 +1439,8 @@
       if (q.react != null) sc.push({ q: "Gillade börsen rapporten?", a: (q.react > 0 ? "Ja, aktien steg " : q.react < 0 ? "Nej, aktien föll " : "Aktien stod still ") + fixMinus(nf1.format(Math.abs(q.react))) + " %", tone: cls(q.react) });
       var thHtml = themesHtml(q.themes, q.tone);
       html += '<div class="know-card know-q"><div class="kq-head"><h3>Senaste rapporten <span class="kq-per">' + per + '</span></h3><span class="kq-date">Publicerad ' + dateText(q.date) + "</span></div>" +
-        (q.headline ? '<p class="kq-headline">”' + esc(q.headline) + "”</p>" : "") +
+        (headlineText(q.headline) ? '<p class="kq-headline">”' + esc(headlineText(q.headline)) + "”</p>" : "") +
+        quickTake(c, q, finance, short) +
         scoreCard(sc) +
         (lead.length ? '<p class="know-lead">' + lead.join(" ") + "</p>" : "") +
         (qt.length ? '<div class="know-tiles in-card">' + qt.join("") + "</div>" : "") +
