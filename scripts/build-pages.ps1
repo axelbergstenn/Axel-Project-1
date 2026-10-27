@@ -736,6 +736,128 @@ function ChangeText($h) {
   return Colored $c (PctChange $c)
 }
 
+# "Känn bolaget" i den fasta aktiesidan, för sökmotorer och läsare utan JavaScript: beskrivning, fakta, senaste
+# kvartalsrapporten, affärsområdena och nästa rapport, ur data/bolag/<ISIN>.json (scripts/build-companies.py).
+$KnowMon = @("jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec")
+function KnowMoney($v, $cur) {
+  if ($null -eq $v) { return "–" }
+  if (-not $cur -or $cur -eq "SEK") { return BigSek $v }
+  $unit = @{ EUR = "euro"; USD = "dollar"; NOK = "norska kronor"; DKK = "danska kronor" }[[string]$cur]
+  if (-not $unit) { $unit = $cur }
+  $a = [math]::Abs([double]$v)
+  if ($a -ge 1e9) { return (Fmt ([double]$v / 1e9) 1) + " md $unit" }
+  if ($a -ge 1e6) { return (Fmt ([double]$v / 1e6) 0) + " mn $unit" }
+  return (Fmt $v 0) + " $unit"
+}
+# "2026-09" och 3 månader: "jul–sep 2026"
+function KnowPeriod($p, $m) {
+  $mo = [int]$p.Substring(5, 2)
+  if (-not $m) { $m = 3 }
+  $start = ((($mo - [int]$m) % 12) + 12) % 12
+  return $KnowMon[$start] + "–" + $KnowMon[$mo - 1] + " " + $p.Substring(0, 4)
+}
+# "VOLVO AB SER. B" blir "Volvo", som i appen
+function KnowShort($name) {
+  $n = [regex]::Replace([string]$name, '(?i)\s*\(publ\)', '')
+  $n = [regex]::Replace($n, '(?i)[\s-]+(ser\.?|series|class)?\s*[A-D](\s+shs)?$', '')
+  $n = [regex]::Replace($n, '(?i)\s+(AB|ASA|Oyj|AS|plc|SDB)$', '')
+  # "HENNES & MAURITZ" blir "Hennes & Mauritz", korta ord ("SEB", "ABB") behålls
+  if ($n -ceq $n.ToUpper()) {
+    $n = (@($n.Trim().Split(" ") | ForEach-Object { if ($_.Length -gt 3) { $_.Substring(0, 1) + $_.Substring(1).ToLower() } else { $_ } }) -join " ")
+  }
+  return $n.Trim()
+}
+function KnowBlocks($s) {
+  $path = Join-Path $DataDir "bolag/$($s.isin).json"
+  if (-not (Test-Path $path)) { return $null }
+  $k = [System.IO.File]::ReadAllText($path, $Utf8) | ConvertFrom-Json
+  $name = KnowShort $s.name
+  $finance = $s.sector -eq "Finans"
+  $html = ""
+  # Om bolaget
+  $inner = ""
+  if ($k.about) { $inner += '<p class="lead">' + (Esc $k.about.text) + "</p>" }
+  $f = $k.facts
+  $figs = ""
+  if ($f) {
+    if ($f.founded) { $figs += Fig "Grundat" ([string]$f.founded) }
+    if ($f.hq) { $figs += Fig "Huvudkontor" (Esc $f.hq) }
+    if ($f.employees) { $figs += Fig "Anställda" ("ca " + (Num0 $f.employees[0])) }
+    if ($f.ceo) { $figs += Fig "Vd" (Esc $f.ceo) }
+    if ($f.industry) { $figs += Fig "Bransch" (Esc $f.industry) }
+    if ($f.list) { $figs += Fig "Handlas på" (Esc $f.list) }
+  }
+  if ($figs) { $inner += '<dl class="figures">' + $figs + "</dl>" }
+  if ($inner) { $html += Block ("Känn " + (Esc $name)) $inner "section-gap" }
+  # Senaste kvartalsrapporten
+  $kr = $k.q
+  $sentence = $null
+  if ($kr) {
+    $cur = $kr.cur
+    $per = KnowPeriod $kr.p $kr.m
+    $txt = @()
+    if (-not $finance -and $kr.rev -and $null -ne $kr.rev[0]) {
+      $t = "Under $per sålde $name för " + (KnowMoney $kr.rev[0] $cur)
+      if ($null -ne $kr.rev[1] -and [double]$kr.rev[1] -gt 0) {
+        $g = [double]$kr.rev[0] / [double]$kr.rev[1] - 1
+        $t += ", " + (Fmt ([math]::Abs($g) * 100) 0) + " % " + $(if ($g -ge 0) { "mer" } else { "mindre" }) + " än samma period året innan"
+      }
+      $txt += $t + "."
+      $sentence = $txt[0]
+    }
+    if ($kr.ebit -and $null -ne $kr.ebit[0]) {
+      $txt += "Rörelseresultatet blev " + (KnowMoney $kr.ebit[0] $cur) + $(if ($null -ne $kr.ebit[1]) { " (" + (KnowMoney $kr.ebit[1] $cur) + " ett år tidigare)" } else { "" }) + "."
+    }
+    if ($kr.net -and $null -ne $kr.net[0]) {
+      $txt += $(if ([double]$kr.net[0] -ge 0) { "Vinsten" } else { "Förlusten" }) + " efter skatt blev " + (KnowMoney ([math]::Abs([double]$kr.net[0])) $cur) + "."
+    }
+    if ($kr.eps -and $null -ne $kr.eps[0]) { $txt += "Resultat per aktie: " + (Fmt $kr.eps[0] 2) + " " + $(if ($cur -eq "SEK") { "kr" } else { $cur }) + "." }
+    if ($kr.orders -and $kr.orders.'in') { $txt += "Nya order (orderingång): " + (KnowMoney $kr.orders.'in'[0] $cur) + "." }
+    if ($null -ne $kr.react) {
+      $rv = [double]$kr.react
+      $txt += "Aktien " + $(if ($rv -ge 0) { "steg " } else { "föll " }) + (Fmt ([math]::Abs($rv)) 1) + " % den dag rapporten kom."
+    }
+    $inner = ""
+    $hl = [string]$kr.headline
+    if ($hl -and ([regex]::Matches($hl, '\d+')).Count -lt 2 -and $hl -notmatch '(?i)\b(AB|ASA|Oyj|plc|publ|Group|Holding)\b|^sammanfattning') {
+      $rq = [string][char]0x201D  # citattecknet ” skrivet som tecken, PowerShell läser det annars som ett vanligt "
+      $inner += '<p class="lead">' + $rq + (Esc $hl) + $rq + "</p>"
+    }
+    if ($txt.Count) { $inner += "<p>" + (Esc ($txt -join " ")) + "</p>" }
+    if ($kr.events) { $inner += "<h3>Viktigt i kvartalet</h3><ul>" + ((@($kr.events) | ForEach-Object { "<li>" + (Esc $_) + "</li>" }) -join "") + "</ul>" }
+    if ($kr.outlook) { $inner += "<h3>Bolaget om framtiden</h3><p>" + (Esc $kr.outlook) + "</p>" }
+    $inner += '<p class="desc">Publicerad ' + (DateText $kr.date) + ". " + '<a href="' + (Esc $kr.url) + '" target="_blank" rel="noopener">Läs rapporten: ' + (Esc $kr.title) + "</a></p>"
+    $html += Block ("Senaste kvartalsrapporten, " + $per) $inner "section-gap"
+  }
+  # Affärsområdena: senaste kvartalet om det finns, annars helåret
+  $seg = $null; $segWhen = $null; $segCur = "SEK"
+  if ($k.qseg -and $kr) { $seg = $k.qseg; $segWhen = KnowPeriod $k.qseg.p $k.qseg.m; $segCur = $kr.cur }
+  elseif ($k.report -and $k.report.seg) { $seg = $k.report.seg; $segWhen = "helåret " + $k.report.fy; $segCur = $k.report.cur }
+  if ($seg -and -not $finance) {
+    $items = @($seg.items | Sort-Object { [double]$_[3] } -Descending)
+    $rows = @($items | ForEach-Object {
+        $line = "<li><strong>" + (Esc $_[0]) + "</strong>: " + (Fmt ([double]$_[3] * 100) 0) + " % av försäljningen"
+        if ($null -ne $_[1]) { $line += ", " + (KnowMoney $_[1] $segCur) }
+        if ($null -ne $_[4]) { $line += ", vinstmarginal " + (Fmt ([double]$_[4] * 100) 0) + " %" }
+        $line + "</li>"
+      })
+    $html += Block ("Så tjänar " + (Esc $name) + " pengar") ('<p class="desc">Affärsområdena under ' + $segWhen + ".</p><ul>" + ($rows -join "") + "</ul>") "section-gap"
+  }
+  # Ett bolag i strukturerade data
+  $ld = '{"@context":"https://schema.org","@type":"Corporation","name":' + (J $name)
+  if ($k.about) { $ld += ',"description":' + (J $k.about.text) }
+  if ($f -and $f.founded) { $ld += ',"foundingDate":' + (J ([string]$f.founded)) }
+  if ($f -and $f.web) { $ld += ',"url":' + (J $f.web) }
+  if ($f -and $f.hq) { $ld += ',"address":{"@type":"PostalAddress","addressLocality":' + (J $f.hq) + ',"addressCountry":"SE"}' }
+  if ($f -and $f.employees) { $ld += ',"numberOfEmployees":{"@type":"QuantitativeValue","value":' + [int]$f.employees[0] + "}" }
+  $ld += ',"identifier":' + (J $s.isin) + "}"
+  if ($html) {
+    $html += '<p class="desc section-gap">' + $(if ($k.cal -and $k.cal.next) { "Nästa rapport från " + (Esc $name) + ": " + (DateText $k.cal.next[0]) + ". " } else { "" }) +
+      "Källor: bolagets egna rapporter och pressmeddelanden via MFN och årsredovisningen (ESEF).</p>"
+  }
+  return @{ html = $html; ld = $ld; sentence = $sentence }
+}
+
 # Aktier
 foreach ($s in $pageStocks) {
   $holders = @($s.holders | Sort-Object v -Descending)
@@ -762,10 +884,12 @@ foreach ($s in $pageStocks) {
   $buyRows = NewList; foreach ($t in $buys) { $buyRows.Add(@((A (FundUrl $t.f.id) $t.f.name), (Colored $t.d (Mkr $t.d -Sign)))) }
   $sellRows = NewList; foreach ($t in $sells) { $sellRows.Add(@((A (FundUrl $t.f.id) $t.f.name), (Colored $t.d (Mkr $t.d -Sign)))) }
 
+  $kb = KnowBlocks $s
   $content = '<div class="page-head"><div class="crumbs"><a href="/aktier/">Aktier</a> / ' + (Esc $s.name) + '</div><div class="title-row"><h1>' + (Esc $s.name) + '</h1></div><p class="meta">' + ($metaParts -join " · ") + "</p></div>" +
     '<p class="lead">' + (Esc $lead) + "</p>" +
     '<dl class="figures">' + (Fig "Fonder som äger" (Num0 $s.f2)) + (Fig "Fondernas innehav" $(if ($s.price) { BigSek $s.val2 } else { "–" })) + (Fig "Nettoköp $QL" $flowText) +
     (Fig "Δ antal aktier" (Colored $s.chg (PctChange $s.chg))) + (Fig "Nya fonder" (Num0 $s.nNew)) + (Fig "Avvecklat" (Num0 $s.nExit)) + "</dl>" +
+    $(if ($kb) { $kb.html } else { "" }) +
     (Block "Största fondägare" (Table @("Fond", "Innehav (mkr)", "Förändring") $holderRows) "section-gap") +
     '<div class="grid-2 section-gap">' + (Block "Köpte mest $QL" (Table @("Fond", "Netto (mkr)") $buyRows) "") + (Block "Sålde mest $QL" (Table @("Fond", "Netto (mkr)") $sellRows) "") + "</div>" +
     (Source "/#/aktie/$($s.isin)" "Visa historik sedan 2018 och alla affärer")
@@ -778,7 +902,8 @@ foreach ($s in $pageStocks) {
   $img = Image "aktie-$($s.slug)" $svg
 
   Page "aktie/$($s.slug)/" "aktie/$($s.isin)" (PageTitle $(if ($nameCount[$s.name] -gt 1) { "$($s.name) ($($s.isin))" } else { $s.name }) "vilka fonder äger aktien?" "fondägare") `
-    "$fundsText äger $($s.name)$(if ($s.val2 -gt 0) { ' för ' + (BigSek $s.val2) }) ($asOf). Se vilka fonder som köper och säljer, största ägare och historik." $img $content -Crumbs @("Aktier", "aktier/", $s.name, "aktie/$($s.slug)/")
+    "$fundsText äger $($s.name)$(if ($s.val2 -gt 0) { ' för ' + (BigSek $s.val2) }) ($asOf). Se vilka fonder som köper och säljer, största ägare och historik." $img $content `
+    -Crumbs @("Aktier", "aktier/", $s.name, "aktie/$($s.slug)/") -Ld $(if ($kb) { $kb.ld } else { $null })
 }
 Write-Host "  $($pageStocks.Count) aktiesidor"
 
