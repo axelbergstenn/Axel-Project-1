@@ -1708,7 +1708,7 @@ $odContent = '<div class="page-head"><h1>Data och API</h1></div>' +
   (Block "Öppet dataset för analys" ('<p>Hela historiken per aktie och kvartal sedan ' + (QLabel $firstQ) + ' (' + (Num0 $dsRows) + ' rader: fonder, innehav, nettoköp och kursförändring) och spararnas fondflöden per månad. ' +
     'Standard-CSV för Python, R, Excel och Kaggle, med beskrivning av varje kolumn. Uppdateras automatiskt, och varje nytt kvartal publiceras också som en release på GitHub.</p>' +
     '<p><a class="btn" href="/data/dataset/' + $zipName + '">Ladda ner datasetet (' + $zipKb + ' kB)</a> <a href="/data/dataset/README.md">Beskrivning (README)</a> · ' +
-    '<a href="https://github.com/axelbergstenn/fondinsyn/releases">Alla versioner på GitHub</a></p>') "section-gap") +
+    '<a href="https://github.com/axelbergstenn/Axel-Project-1/releases">Alla versioner på GitHub</a></p>') "section-gap") +
   (Block "RSS-flöden" ('<p>Prenumerera i valfri RSS-läsare, utan konto:</p><ul>' +
     '<li><a href="/rss/rapporter.xml">Kvartalsrapporter</a>: en notis när ett nytt kvartal har kommit.</li>' +
     '<li><a href="/rss/insyn.xml">Insynshandel</a>: insiders köp och sälj för minst 500 000 kr.</li>' +
