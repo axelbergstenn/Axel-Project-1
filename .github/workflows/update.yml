@@ -77,6 +77,13 @@ jobs:
         continue-on-error: true
         run: ./scripts/build-shares.ps1
 
+      # "Känn bolaget" på aktiesidan: affärsområden, marknader och nyckeltal ur årsredovisningarna (ESEF),
+      # fakta från Wikidata och en beskrivning från Wikipedia. Nya rapporter hämtas när de kommer, resten sparas i repot.
+      - name: Bygg bolagsfakta
+        continue-on-error: true
+        timeout-minutes: 25
+        run: python3 scripts/build-companies.py
+
       # Spararnas nettoflöden per fondtyp (Fondbolagens förening, månadsvis) och uppskattade flöden per fond (ur FI-datan)
       - name: Bygg fondsparandet
         shell: pwsh
@@ -124,10 +131,10 @@ jobs:
       # Om någon pushat medan körningen pågick hämtas de ändringarna först (rebase), med några nya försök
       - name: Spara ny data i repot
         run: |
-          if [ -n "$(git status --porcelain site/data)" ]; then
+          if [ -n "$(git status --porcelain site/data data)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add site/data
+            git add site/data data
             git commit -m "Uppdatera fondinnehav från FI"
             for i in 1 2 3 4; do
               if git pull --rebase -q origin main && git push -q origin HEAD:main; then break; fi

@@ -685,8 +685,9 @@ function PreList($route) {
     '^$' { @("data/history-se.json", "data/reports-pdf.json") }
     '^aktie/(.+)$' {
       $isin = $Matches[1]
-      @("data/hist/$isin.json", "data/pages.json", "data/shares.json", "data/insider.json", "data/offers.json", "data/shorts.json") +
-        @($(if ($insynArchive -and $insynArchive.ContainsKey($isin)) { "data/insyn/$isin.json" }))
+      @("data/hist/$isin.json", "data/pages.json", "data/shares.json", "data/insider.json", "data/offers.json", "data/shorts.json", "data/bolag/_index.json") +
+        @($(if ($insynArchive -and $insynArchive.ContainsKey($isin)) { "data/insyn/$isin.json" })) +
+        @($(if (Test-Path (Join-Path $Site "data/bolag/$isin.json")) { "data/bolag/$isin.json" }))
     }
     '^fond/(.+)$' { @("data/fund/$($Matches[1]).json", "data/pages.json", "data/flows.json", "data/perf.json", "data/profiles.json", "data/$Q-rates.json") }
     '^rapport$' { @("data/history-se.json", "data/reports-pdf.json", "data/offers.json") }

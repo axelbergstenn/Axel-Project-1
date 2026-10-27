@@ -759,6 +759,54 @@ a.btn { color: var(--fg-soft); }
 .sp-t { font-size: 13px; color: var(--fg-muted); }
 .signal-panel .more { margin-top: 10px; font-size: 13px; }
 
+/* ---------- Känn bolaget (aktiesidan) ---------- */
+
+.know-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); padding: 20px; min-width: 0; }
+.know-card h3 { font-size: 16px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01em; }
+.know-about { font-size: 15.5px; line-height: 1.6; color: var(--fg-soft); margin: 0 0 16px; max-width: 75ch; }
+.know-about .src { font-size: 12.5px; white-space: nowrap; }
+.know-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px 20px; margin: 0; }
+.know-facts dt { font-size: 12px; color: var(--fg-muted); }
+.know-facts dd { margin: 2px 0 0; font-size: 15px; font-weight: 650; color: var(--fg); overflow-wrap: anywhere; }
+.know-facts dd .muted { font-weight: 400; font-size: 13px; }
+.know-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 16px; }
+.know-chips .lbl { font-size: 12.5px; color: var(--fg-muted); margin-right: 4px; }
+.know-chips .chip { font-size: 13px; padding: 3px 10px; border-radius: 999px; background: var(--chip-bg); color: var(--fg-soft); }
+.know-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
+.know-grid.one { grid-template-columns: minmax(0, 1fr); }
+.know-lead { font-size: 14px; line-height: 1.55; color: var(--fg-soft); margin: 0 0 16px; }
+.know-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.kr-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 14px; }
+.kr-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.kr-val { font-weight: 700; font-variant-numeric: tabular-nums; }
+.kr-bar { height: 8px; margin-top: 6px; border-radius: 4px; background: var(--seg-bg); overflow: hidden; }
+.kr-bar span { display: block; height: 100%; border-radius: 4px; background: var(--brand); }
+.kr-row.other .kr-bar span { background: var(--bar-neutral); }
+.kr-sub { margin-top: 5px; font-size: 12.5px; color: var(--fg-muted); }
+.kr-badge { display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 650; line-height: 18px; white-space: nowrap; vertical-align: 1px; }
+.kr-badge.big { background: var(--brand-soft); color: var(--brand-ink); }
+.kr-badge.best { background: var(--pos-bg); color: var(--pos); }
+.know-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap: 12px; margin-top: 16px; }
+.know-tile { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 14px 16px; min-width: 0; }
+.kt-big { font-size: 22px; font-weight: 750; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.kt-big.pos { color: var(--pos); }
+.kt-big.neg { color: var(--neg); }
+.kt-label { margin-top: 2px; font-size: 13.5px; color: var(--fg-soft); }
+.kt-sub { margin-top: 6px; font-size: 12.5px; color: var(--fg-muted); }
+.know-rank { margin: 14px 0 0; font-size: 13.5px; color: var(--fg-soft); }
+.know-src { margin: 12px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--fg-muted); }
+@media (max-width: 760px) {
+  .know-card { padding: 16px; }
+  .know-about { font-size: 14.5px; }
+  .know-facts { grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+  .know-facts dd { font-size: 14px; }
+  .know-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 12px; }
+  .know-tiles { grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .know-tile { padding: 12px; }
+  .kt-big { font-size: 18px; }
+  .kt-label { font-size: 12.5px; }
+}
+
 /* ---------- Diagram ---------- */
 
 .charts { gap: 20px; }

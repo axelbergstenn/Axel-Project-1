@@ -976,6 +976,8 @@
       });
     }
 
+    html += companySection(isin, name, s ? s.sector : hs.sector);
+
     html += '<section class="block section-gap"><div class="block-head"><h2>Historik</h2>';
     if (!hasHist) {
       html += "</div>" + (failed("history-" + histPart(isin)) ? errorBlock() : loadingBlock("Laddar historik…")) + "</section>";
@@ -1029,6 +1031,169 @@
         table("stock-trades", cols, trades, { sort: { col: "d", dir: -1 }, empty: "Ingen fond ändrade sitt innehav." }) + "</section>";
     }
     return html;
+  }
+
+  // ---------- Känn bolaget ----------
+  // Bolagets affärsområden, marknader och nyckeltal ur årsredovisningen (ESEF), plus fakta från Wikidata och en
+  // beskrivning från Wikipedia. Byggs av scripts/build-companies.py till data/bolag/<ISIN>.json.
+
+  function needCompanyIndex() {
+    return need("bolag-index", function () {
+      return getJSON("data/bolag/_index.json").then(function (d) {
+        state.companyIndex = {};
+        (d.isins || []).forEach(function (i) { state.companyIndex[i] = true; });
+      });
+    });
+  }
+  function needCompany(isin) {
+    return need("bolag-" + isin, function () {
+      return getJSON("data/bolag/" + isin + ".json").then(function (d) { (state.companies = state.companies || {})[isin] = d; });
+    });
+  }
+  // "Volvo AB SER. B" blir "Volvo", "Acrinova AB-B" blir "Acrinova"
+  function companyShort(name) {
+    return String(name || "").replace(/\s*\(publ\)/i, "").replace(/[\s-]+(ser\.?|series|class)?\s*[A-D]$/i, "")
+      .replace(/\s+(AB|ASA|Oyj|AS|plc|SDB)$/i, "").replace(/^AB\s+/i, "").trim();
+  }
+  // Belopp ur årsredovisningen i bolagets valuta (de flesta redovisar i kronor)
+  function money(v, cur) {
+    if (!cur || cur === "SEK") return bigSek(v);
+    if (v == null || !isFinite(v)) return "–";
+    var a = Math.abs(v), unit = { EUR: "euro", USD: "dollar", NOK: "norska kronor", DKK: "danska kronor" }[cur] || cur;
+    return fixMinus(a >= 1e9 ? nf1.format(v / 1e9) + " md " : a >= 1e6 ? nf0.format(v / 1e6) + " mn " : nf0.format(v) + " ") + unit;
+  }
+  function smallMoney(v, cur) {
+    var unit = !cur || cur === "SEK" ? "kr" : ({ EUR: "euro", USD: "dollar" }[cur] || cur);
+    return fixMinus(nf0.format(v)) + " " + unit;
+  }
+  // Andelar som en nybörjare säger dem: "ungefär hälften", "en fjärdedel"
+  function shareWords(v) {
+    var words = [[0.25, "en fjärdedel"], [1 / 3, "en tredjedel"], [0.5, "hälften"], [2 / 3, "två tredjedelar"], [0.75, "tre fjärdedelar"]];
+    for (var i = 0; i < words.length; i++) {
+      if (Math.abs(v - words[i][0]) < 0.02) return "ungefär " + words[i][1];
+    }
+    return nf0.format(v * 100) + " %";
+  }
+  function capFirst(s) { s = String(s || ""); return s.charAt(0).toUpperCase() + s.slice(1); }
+
+  function companySection(isin, name, sector) {
+    if (isin.slice(0, 2) !== "SE" || !needCompanyIndex() || !state.companyIndex[isin]) return "";
+    if (!needCompany(isin)) return failed("bolag-" + isin) ? "" : '<section class="block section-gap">' + loadingBlock("Laddar fakta om bolaget…") + "</section>";
+    var c = state.companies[isin], r = c.report || null, f = c.facts || {};
+    var cur = r ? r.cur : "SEK", fin = r ? r.fin || {} : {};
+    var now = function (k) { return fin[k] ? fin[k][0] : null; };
+    var before = function (k) { return fin[k] ? fin[k][1] : null; };
+    var short = companyShort(name);
+    // Banker och investmentbolag har inte "försäljning" i vanlig mening, så de siffrorna visas inte för dem
+    var finance = sector === "Finans";
+    var rev = finance ? null : now("rev"), ebit = now("ebit"), net = now("net");
+    var yearNow = new Date().getFullYear();
+
+    var html = '<section class="block section-gap know"><div class="block-head"><h2>Känn ' + esc(short) + '</h2><span class="note">Bolaget på en minut</span></div>';
+
+    // Om bolaget: beskrivning och fakta
+    var about = c.wiki ? c.wiki.text : r && r.about;
+    var facts = [];
+    if (f.founded) facts.push(["Grundat", f.founded + ' <span class="muted">(' + (yearNow - f.founded) + " år sedan)</span>"]);
+    if (f.hq) facts.push(["Huvudkontor", esc(f.hq)]);
+    if (f.employees) facts.push(["Anställda", "ca " + int(f.employees[0]) + (f.employees[1] && +f.employees[1] < yearNow - 1 ? ' <span class="muted">(' + f.employees[1] + ")</span>" : "")]);
+    if (f.ceo) facts.push(["Vd", esc(f.ceo)]);
+    if (f.web) facts.push(["Webbplats", '<a href="' + esc(f.web) + '" target="_blank" rel="noopener">' + esc(f.web.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")) + "</a>"]);
+    var known = (f.products || []).concat(f.brands || []).filter(function (x, i, a) { return a.indexOf(x) === i; }).slice(0, 8);
+    if (about || facts.length || known.length) {
+      html += '<div class="know-card">' +
+        (about ? '<p class="know-about">' + esc(about) + (c.wiki ? ' <a class="src" href="' + esc(c.wiki.url) + '" target="_blank" rel="noopener">Wikipedia ↗</a>' : "") + "</p>" : "") +
+        (facts.length ? '<dl class="know-facts">' + facts.map(function (x) { return "<div><dt>" + x[0] + "</dt><dd>" + x[1] + "</dd></div>"; }).join("") + "</dl>" : "") +
+        (known.length ? '<div class="know-chips"><span class="lbl">Gör bland annat</span>' + known.map(function (k) { return '<span class="chip">' + esc(capFirst(k)) + "</span>"; }).join("") + "</div>" : "") +
+        "</div>";
+    }
+
+    // Affärsområden och marknader
+    var cards = [];
+    var seg = !finance && r && r.seg;
+    if (seg) {
+      var items = seg.items.map(function (x) { return { name: x[0], rev: x[1], profit: x[2], share: x[3], margin: x[4], other: !!x[5] }; })
+        .sort(function (a, b) { return (a.other - b.other) || (b.share - a.share); });
+      var main = items.filter(function (x) { return !x.other; });
+      var biggest = main[0];
+      var withMargin = main.filter(function (x) { return x.margin != null; });
+      var best = withMargin.length >= 2 ? withMargin.slice().sort(function (a, b) { return b.margin - a.margin; })[0] : null;
+      var hundred = function (x) { return nf0.format(Math.max(0, x.margin) * 100) + " kronor"; };
+      var lead = esc(biggest.name) + " är störst och står för " + shareWords(biggest.share) + " av försäljningen.";
+      if (best && best.margin > 0) {
+        lead += best === biggest ? " Det är också det mest lönsamma affärsområdet: av varje 100 kronor det säljer för blir " + hundred(best) + " vinst."
+          : " Mest lönsamt är " + esc(best.name) + ": av varje 100 kronor det säljer för blir " + hundred(best) + " vinst.";
+      }
+      var metricNote = seg.metric && !/^rörelseresultat$/i.test(seg.metric) ? " Vinsten är bolagets mått " + esc(seg.metric.toLowerCase()) + "." : "";
+      cards.push('<div class="know-card"><h3>Så tjänar ' + esc(short) + " pengar</h3>" +
+        '<p class="know-lead">' + lead + metricNote + "</p>" +
+        '<ul class="know-rows">' + items.map(function (x) {
+          var badges = (x === biggest ? '<span class="kr-badge big">Störst</span>' : "") + (x === best && best.margin > 0 ? '<span class="kr-badge best">Mest lönsamt</span>' : "");
+          var sub = [];
+          if (x.rev != null) sub.push("Säljer för " + money(x.rev, cur));
+          if (x.margin != null) sub.push(x.margin < 0 ? '<span class="neg">Går med förlust</span>' : "Vinstmarginal " + nf0.format(x.margin * 100) + " %");
+          return '<li class="kr-row' + (x.other ? " other" : "") + '"><div class="kr-top"><span class="kr-name">' + esc(x.name) + badges + '</span><span class="kr-val">' + nf0.format(x.share * 100) + " %</span></div>" +
+            '<div class="kr-bar"><span style="width:' + Math.max(1, x.share * 100).toFixed(1) + '%"></span></div>' +
+            (sub.length ? '<div class="kr-sub">' + sub.join(" · ") + "</div>" : "") + "</li>";
+        }).join("") + "</ul></div>");
+    }
+    if (r && r.geo && r.geo.length && !finance) {
+      var total = r.geo.reduce(function (a, g) { return a + g[1]; }, 0);
+      var places = r.geo.filter(function (g) { return !/^Övriga länder$/.test(g[0]); });
+      var top = places.slice(0, 7), rest = total - top.reduce(function (a, g) { return a + g[1]; }, 0);
+      var rows = top.map(function (g) { return { name: g[0], share: g[1] / total }; });
+      if (rest / total >= 0.005) rows.push({ name: places.length > 7 ? "Övriga länder" : "Övrigt", share: rest / total, other: true });
+      var first = rows[0];
+      var se = places.filter(function (g) { return g[0] === "Sverige"; })[0];
+      var geoLead = "Största marknaden är " + esc(first.name) + " med " + shareWords(first.share) + " av försäljningen.";
+      if (se && se[1] / total < 0.15 && first.name !== "Sverige") geoLead += " Bara " + nf0.format(Math.max(1, se[1] / total * 100)) + " % säljs i Sverige.";
+      cards.push('<div class="know-card"><h3>Här säljer ' + esc(short) + "</h3>" +
+        '<p class="know-lead">' + geoLead + "</p>" +
+        '<ul class="know-rows">' + rows.map(function (x) {
+          return '<li class="kr-row' + (x.other ? " other" : "") + '"><div class="kr-top"><span class="kr-name">' + esc(x.name) + '</span><span class="kr-val">' + nf0.format(x.share * 100) + " %</span></div>" +
+            '<div class="kr-bar"><span style="width:' + Math.max(1, x.share * 100).toFixed(1) + '%"></span></div></li>';
+        }).join("") + "</ul></div>");
+    }
+    if (cards.length) html += '<div class="know-grid' + (cards.length === 1 ? " one" : "") + '">' + cards.join("") + "</div>";
+
+    // Siffror som går att förstå utan att kunna läsa en årsredovisning
+    var tiles = [];
+    var tile = function (big, label, sub, klass) {
+      tiles.push('<div class="know-tile"><div class="kt-big' + (klass ? " " + klass : "") + '">' + big + '</div><div class="kt-label">' + label + "</div>" + (sub ? '<div class="kt-sub">' + sub + "</div>" : "") + "</div>");
+    };
+    if (rev > 0) {
+      var perSec = rev / (365 * 24 * 3600);
+      tile(perSec >= 10 ? smallMoney(perSec, cur) : money(rev / 365, cur), perSec >= 10 ? "säljer de för varje sekund" : "säljer de för varje dag",
+        money(rev, cur) + " under " + r.fy);
+    }
+    if (net != null && (rev || finance)) {
+      tile(money(Math.abs(net) / 365, cur), net >= 0 ? "i vinst varje dag" : "i förlust varje dag", "Årets resultat " + money(net, cur), net < 0 ? "neg" : "");
+    }
+    if (rev > 0 && ebit != null && Math.abs(ebit) <= rev) {
+      tile(smallMoney(Math.round(ebit / rev * 100), "SEK"), "av varje 100 kr blir rörelsevinst", "Det kallas rörelsemarginal", ebit < 0 ? "neg" : "");
+    }
+    var growth = rev > 0 && before("rev") > 0 ? rev / before("rev") - 1 : null;
+    if (growth != null) tile(pct(growth), "försäljningen jämfört med " + (r.fy - 1), growth >= 0 ? "Bolaget växte" : "Försäljningen minskade", cls(growth));
+    var dps = now("dps");
+    if (dps > 0) tile(nf2.format(dps).replace(/,00$/, "") + " " + (cur === "SEK" ? "kr" : cur), "i utdelning per aktie", "Äger du 100 aktier får du " + smallMoney(dps * 100, cur));
+    if (rev > 0 && f.employees && f.employees[0] > 0 && (!f.employees[1] || +f.employees[1] >= r.fy - 2)) {
+      tile(money(rev / f.employees[0], cur), "i försäljning per anställd", "Med ca " + int(f.employees[0]) + " anställda");
+    }
+    if (tiles.length) html += '<div class="know-tiles">' + tiles.slice(0, 6).join("") + "</div>";
+
+    // Placering bland alla bolag på sajten
+    var rk = c.rank || {}, ranks = [];
+    var place = function (x, what) { return x && x[0] <= Math.max(25, x[1] * 0.1) ? "nr " + x[0] + " " + what : null; };
+    [place(!finance && rk.rev, "i försäljning"), place(rk.emp, "i antal anställda"), place(rk.age, "bland de äldsta")].forEach(function (x) { if (x) ranks.push(x); });
+    if (ranks.length) html += '<p class="know-rank">Bland de svenska bolagen på Fondinsyn: ' + ranks.join(", ") + ".</p>";
+
+    var src = [];
+    if (r) src.push((r.url ? '<a href="' + esc(r.url) + '" target="_blank" rel="noopener">årsredovisningen ' + r.fy + " ↗</a>" : "årsredovisningen " + r.fy));
+    if (c.wiki) src.push('<a href="' + esc(c.wiki.url) + '" target="_blank" rel="noopener">Wikipedia</a> (text under CC BY-SA 4.0)');
+    if (c.facts) src.push("Wikidata");
+    html += '<p class="know-src">Källor: ' + src.join(", ") + "." +
+      (cards.length ? " Affärsområden och marknader läses automatiskt ur årsredovisningen och visas bara när de går ihop med bolagets omsättning." : "") + "</p>";
+    return html + "</section>";
   }
 
   // ---------- Fonder ----------
