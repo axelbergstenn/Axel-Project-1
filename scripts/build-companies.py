@@ -1304,11 +1304,39 @@ def mfn_get(url, keep=False):
     return b.decode("utf-8", "replace") if b else ""
 
 
-def mfn_company(isin):
+def plain_name(n):
+    """"VOLVO AB SER. B" -> "volvo", "Hennes & Mauritz AB" -> "hennes & mauritz"."""
+    n = re.sub(r"\s*\(publ\)", "", (n or "").lower())
+    n = re.sub(r"[\s-]+(ser\.?\s*|series\s+|class\s+)?[a-d]\d?(\s+shs)?$|\s+shs$|\s+sdb$|\s+pref$", "", n)
+    n = re.sub(r"\b(ab|aktiebolag|group|holding|ltd|plc|asa|oyj|inc|the|corp)\b|[^\wåäöéü& ]+", " ", n)
+    return re.sub(r"\s+", " ", n).strip()
+
+
+def base_name(name):
+    """Bolagets namn utan tillfälligt aktieslag: "Qliro AB Right 2026" -> "Qliro AB", "ALZECURE BTA 26" -> "ALZECURE"."""
+    return re.sub(r"\s*\(.*?\)\s*|[\s-]+\b(bta|btu|ta|to\s?\d+|rts|rights?|interim( share)?|temp|ia|wd|subs rt|warrants?|tr|uniträtt|"
+                  r"teckningsrätt|pref)\b.*$", "", name or "", flags=re.I).strip(" -")
+
+
+def same_company(short, full):
+    """"isofol med" och "isofol medical" är samma bolag: varje ord i det korta namnet börjar som ordet i det långa."""
+    a, b = short.split(), full.split()
+    return bool(a) and len(a) <= len(b) and all(b[i].startswith(a[i]) for i in range(len(a))) and len(short) >= 4
+
+
+def mfn_company(isin, name=None):
+    swe = ("XSTO", "FNSE", "XNGM", "XSAT", "NSME")
+    tickers = lambda c: [t.split(":", 1)[1] for t in c.get("tickers", []) if t.split(":")[0] in swe]
     for c in json.loads(mfn_get("/search/companies?limit=5&query=" + isin, keep=True) or "[]"):
         if isin in c.get("isins", []):
-            return {"slug": c["slug"], "tickers": [t.split(":", 1)[1] for t in c.get("tickers", []) if t.split(":")[0] in ("XSTO", "FNSE", "XNGM", "XSAT", "NSME")]}
-    return None
+            return {"slug": c["slug"], "tickers": tickers(c)}
+    # ISIN finns inte hos MFN (nytt aktieslag, nytt ISIN efter en omstrukturering): sök på namnet, och bara exakt samma namn
+    want = plain_name(base_name(name))
+    if len(want) < 3:
+        return None
+    found = [c for c in json.loads(mfn_get("/search/companies?limit=8&query=" + urllib.parse.quote(want), keep=True) or "[]") if tickers(c)]
+    hits = [c for c in found if plain_name(c.get("name")) == want] or [c for c in found if same_company(want, plain_name(c.get("name")))]
+    return {"slug": hits[0]["slug"], "tickers": tickers(hits[0])} if len(hits) == 1 else None
 
 
 def mfn_page(slug, lang="sv"):
@@ -1395,14 +1423,45 @@ def read_interim(item, annual_rev):
     about = about_text(body_html, body)
     if about:
         res["about"] = about
-    events, outlook = events_and_outlook(body)
-    if events:
-        res["events"] = events
-    if outlook:
-        res["outlook"] = outlook
-    bank = bank_figures(body)
-    if bank and ("ci" in bank or "cet1" in bank):
-        res["bank"] = bank
+    interim_numbers(item, body, annual_rev, res)
+    res.update(report_text_fields(page, body_html, body, res.get("q"), pdf_text(res.pop("_pdf", None))))
+    return res
+
+
+def pdf_text(pdf_bytes):
+    """Hela rapportens text (för teman och ton, som blir säkrare ur hela rapporten än ur pressmeddelandet)."""
+    if not pdf_bytes or not pdfium:
+        return None
+    try:
+        pdf = pdfium.PdfDocument(pdf_bytes)
+        try:
+            return "\n".join(pdf[i].get_textpage().get_text_range() for i in range(len(pdf)))
+        finally:
+            pdf.close()
+    except Exception:
+        return None
+
+
+def refresh_text_fields(r, url):
+    """Läser om bara pressmeddelandets text (ur --raw-cache), utan PDF:en."""
+    page = mfn_get(url, keep=True)
+    m = re.search(r'<div class="content s-[a-z]+">(.*?)</article>', page, re.S)
+    body_html = m.group(1) if m else ""
+    body = html_text(body_html)
+    for k in ("events", "outlook", "bank", "themes", "tone", "react", "orders", "cash", "organic", "headline"):
+        r.pop(k, None)
+    full = pdf_text(cached_fetch(r["pdf"], "application/pdf,*/*")) if r.get("pdf") else None
+    r.update(report_text_fields(page, body_html, body, r.get("q"), full))
+    h = report_headline(r.get("title"), body)
+    if h:
+        r["headline"] = h
+
+
+def interim_numbers(item, body, annual_rev, res):
+    """Siffrorna ur rapportens PDF (resultaträkningen och affärsområdena), om de går att bekräfta."""
+    h = report_headline(item.get("title"), body)
+    if h:
+        res["headline"] = h
     if not pdfium:
         return res
     st = pdf_bytes = None
@@ -1417,6 +1476,7 @@ def read_interim(item, annual_rev):
             st = None
         if st:
             res["pdf"] = url
+            res["_pdf"] = pdf_bytes
             break
     if not st or not st["months"]:
         return res
@@ -1451,9 +1511,6 @@ def read_interim(item, annual_rev):
     res["q"] = q
     rev = (q.get("rev") or [None])[0]
     if rev and rev > 0:
-        orders = order_figures(body, rev, cur, q["m"])
-        if orders:
-            res["orders"] = orders
         try:
             seg = read_segments(pdf_bytes, q)
         except Exception as e:
@@ -1547,6 +1604,119 @@ def sv_amount(num, unit_word):
     w = (unit_word or "").lower()
     sc = next((sc for u, sc, cur in TEXT_UNITS if re.fullmatch(u, w, re.I)), None)
     return v * sc if sc else None
+
+
+THEMES = [
+    ("Tullar", r"\btull(ar|arna|en|kostnad\w*|avgift\w*)?\b"), ("AI", r"\bAI\b|artificiell intelligens"), ("Förvärv", r"\bförvärv"),
+    ("Efterfrågan", r"efterfrågan"), ("Prishöjningar", r"pris(höjning|ökning)\w*"), ("Besparingar", r"besparing\w*|kostnadsminskning\w*|effektiviseringsprogram|åtgärdsprogram"),
+    ("Omstrukturering", r"varsel|omstrukturering\w*|neddragning\w*"), ("Försvar", r"\bförsvar\w*"), ("Elektrifiering", r"elektrifiering|\belbil\w*|\bbatteri\w*"),
+    ("Hållbarhet", r"hållbar\w*|koldioxid|utsläpp\w*|klimat\w*"), ("Osäker omvärld", r"\bosäker\w*|geopolitisk\w*"),
+    ("Räntor", r"\bränte(läge|höjning\w*|sänkning\w*|nivå\w*)|\bräntor(na)?\b"), ("Kina", r"\bKina\b"), ("USA", r"\bUSA\b|Nordamerika"),
+    ("Rekord", r"\brekord\w*"), ("Nya produkter", r"\blanser\w*|nya produkter|ny produkt"), ("Digitalisering", r"\bdigital\w*"),
+    ("Lager", r"lagernivå\w*|lageruppbyggnad|lagerneddragning|lagerjustering\w*"), ("Nya marknader", r"nya marknader|etablering\w*|expansion\w*"),
+    ("Kunder och avtal", r"\bnya kunder\b|\bramavtal\w*|\bkontrakt\w*"), ("Energi", r"\benergi(priser|kris|omställning)\w*|\belpris\w*"),
+]
+TONE_POS = re.compile(r"\b(stark\w*|ökade|ökning\w*|förbättr\w*|rekord\w*|tillväxt\w*|växte|växer|positiv\w*|god|goda|gott|högre|framgång\w*|"
+                      r"lyckad\w*|glad\w*|stolt\w*|nöjd\w*|robust\w*|solid\w*|solitt|starkt)\b", re.I)
+TONE_NEG = re.compile(r"\b(svag\w*|minskade|minskning\w*|försämr\w*|lägre|negativ\w*|utmanande|utmaning\w*|osäker\w*|nedgång\w*|förlust\w*|"
+                      r"dämpad\w*|tuff\w*|vikande|nedskrivning\w*|motvind)\b", re.I)
+
+
+def report_headline(title, body):
+    """Bolagets egen sammanfattning av rapporten ("Förbättrad marginal och ökad efterfrågan"), inte bara "Delårsrapport Q3"."""
+    report_words = re.compile(r"rapport|kvartal|delår|bokslut|halvår|interim|\bQ[1-4]\b|\bkv\.? ?[1-4]\b|resultat för|januari|september|juni|mars|december|"
+                              r"publicerar|offentliggör", re.I)
+    cands = []
+    parts = re.split(r":\s+|\s+[–-]\s+", title or "")
+    cands += parts[1:] + parts[:1]
+    first = next((l.strip() for l in body.split("\n") if l.strip()), "")
+    cands.append(first)
+    for c in cands:
+        c = c.strip().strip('"”“').rstrip(".")
+        if 15 <= len(c) <= 110 and not report_words.search(c) and swedish(c + " och är av för") and not re.search(r"\d{4}-\d\d", c):
+            return c[:1].upper() + c[1:]
+    return None
+
+
+def price_reaction(page, pub_time):
+    """Aktiens rörelse den dag rapporten kom (MFN visar den på pressmeddelandet). Bara när rapporten kom före
+    börsöppning, annars handlar dagens rörelse inte om rapporten."""
+    if not pub_time or pub_time >= "09:00":
+        return None
+    m = re.search(r'share-price-widget-heading">\s*<div>\s*Kurs\s*</div>\s*<div class="[^"]*">\s*([+-−]?\d+,\d+)%', page)
+    if not m:
+        return None
+    v = float(m.group(1).replace("−", "-").replace(",", "."))
+    return v if abs(v) <= 60 else None
+
+
+def report_text_fields(page, body_html, body, q, full_text=None):
+    """Allt som läses ur pressmeddelandets text: rubrik, händelser, utsikter, bankmått, teman, ton, orderingång,
+    kassaflöde, organisk tillväxt och börsens reaktion. Teman och ton räknas i hela rapporten om den finns."""
+    res = {}
+    events, outlook = events_and_outlook(body)
+    if events:
+        res["events"] = events
+    if outlook:
+        res["outlook"] = outlook
+    bank = bank_figures(body)
+    if bank and ("ci" in bank or "cet1" in bank):
+        res["bank"] = bank
+    # teman: hur ofta bolaget tar upp olika ämnen (bara själva rapporttexten, inte kontaktuppgifter och ansvarsfriskrivning)
+    text = re.split(r"för (ytterligare|mer) information|denna information är sådan", body, flags=re.I)[0]
+    whole = full_text if full_text and len(full_text) > len(text) and swedish(full_text[:20000]) else text
+    counts = [(name, len(re.findall(rx, whole, re.I))) for name, rx in THEMES]
+    themes = sorted(((n, c) for n, c in counts if c >= (3 if whole is not text else 1)), key=lambda x: -x[1])[:6]
+    if themes and swedish(text):
+        res["themes"] = themes
+    p, n = len(TONE_POS.findall(whole)), len(TONE_NEG.findall(whole))
+    if p + n >= 6 and swedish(text):
+        res["tone"] = [p, n]
+    t = re.search(r'<div class="publish-date">\s*\d{4}-\d\d-\d\d (\d\d:\d\d)', page)
+    react = price_reaction(page, t.group(1) if t else None)
+    if react is not None:
+        res["react"] = react
+    rev = ((q or {}).get("rev") or [None])[0]
+    if q and rev and rev > 0:
+        orders = order_figures(body, rev, q["cur"], q["m"])
+        if orders:
+            res["orders"] = orders
+        cf = amount_pair(body, r"(?:det )?(?:operativa kassaflöde\w*|kassaflöde\w* från (?:den löpande verksamheten|rörelsen|rörelseverksamheten|löpande verksamhet))",
+                         rev, -1.5, 1.5, q["cur"], signed=True)
+        if cf:
+            res["cash"] = cf
+    m = re.search(r"organisk\w*\s+(?:försäljnings|intäkts)?tillväxt\w*\D{0,30}?(-?\d+(?:,\d+)?)\s?(?:%|procent)|"
+                  r"(-?\d+(?:,\d+)?)\s?(?:%|procent),?\s+(?:varav\s+\d+\s?%\s+)?organiskt|organisk\w* ökning med\s+(-?\d+(?:,\d+)?)\s?(?:%|procent)", text, re.I)
+    if m:
+        v = float(next(g for g in m.groups() if g).replace(",", "."))
+        if -60 <= v <= 200:
+            res["organic"] = v
+    return res
+
+
+def amount_pair(body, word, rev, lo, hi, cur, signed=False):
+    """Belopp med jämförelsetal efter ett ord ("Orderingång 18 336 Mkr (13 183)"): [nu, året innan] i valutan."""
+    N = r"-?\d{1,3}(?:[  .]\d{3})+(?:,\d+)?|-?\d+(?:,\d+)?" if signed else r"\d{1,3}(?:[  .]\d{3})+(?:,\d+)?|\d+(?:,\d+)?"
+    U = TEXT_UNIT_RE
+    pre = r"^(?:[^()\d\n]|\d+(?:[,.]\d+)?\s?(?:%|procent))*?"
+    patterns = [re.compile(pre + r"(?P<unit>%s)\s*(?P<x>%s)\s*\(\s*(?P<y>%s)\s*\)" % (U, N, N), re.I),
+                re.compile(pre + r"(?P<x>%s)\s*(?P<unit>%s)\s*\(\s*(?P<y>%s)\s*\)" % (N, U, N), re.I),
+                re.compile(pre + r"(?P<x>%s)\s*\(\s*(?P<y>%s)\s*\)\s*(?P<unit>%s)" % (N, N, U), re.I)]
+    for m in re.finditer(r"\b%s\b([^\n]{0,120})" % word, body, re.I):
+        rest = m.group(1)
+        if re.match(r"\s+i\s+[A-ZÅÄÖ]", rest) or re.match(r"\s+(i fast valuta|organisk|exklusive|justerad|per aktie)", rest, re.I):
+            continue
+        a = next((p.search(rest) for p in patterns if p.search(rest)), None)
+        if not a:
+            continue
+        unit = a.group("unit")
+        if cur != "SEK" and cur.lower() not in unit.lower():
+            return None
+        v, p = sv_amount(a.group("x").replace("−", "-"), unit), sv_amount(a.group("y").replace("−", "-"), unit)
+        if v is not None and p is not None and lo <= v / rev <= hi and v != 0:
+            return [round(v), round(p)]
+        return None
+    return None
 
 
 def order_figures(body, rev, cur, months):
@@ -1839,18 +2009,25 @@ def calendar_facts(cal, ticker):
             out["next"] = [d, text]
         if d >= today and "agm" not in out and re.match(r"årsstämma", text, re.I):
             out["agm"] = d
-    divs = []
+    divs, years = [], {}
     year_ago = (TODAY - dt.timedelta(days=380)).isoformat()
     for d, text in cal:
         m = re.match(r"x-dag (ordinarie |extra |bonus|halvårs|kvartals|special|extra)?(?:utdelning)\s+(.+?)\s+([\d.,]+)(?:\s+([A-Z]{3}))?$", text, re.I)
-        if not m or d < year_ago or not ticker or m.group(2).strip().upper() != ticker.upper():
+        if not m or not ticker or m.group(2).strip().upper() != ticker.upper():
             continue
         kind = "extra" if m.group(1) and m.group(1).strip().lower() in ("extra", "bonus", "special") else "ord"
         amount = float(m.group(3).replace(",", "."))
-        if amount > 0:
-            divs.append([d, amount, m.group(4) or "SEK", kind])
+        cur = m.group(4) or "SEK"
+        # utdelning per år (ordinarie och extra var för sig), för historiken
+        y = years.setdefault(d[:4], [0, 0, cur])
+        y[0 if kind == "ord" else 1] += amount
+        if amount > 0 and d >= year_ago:
+            divs.append([d, amount, cur, kind])
     if divs:
         out["div"] = sorted(divs)
+    hist = [[int(y), round(v[0], 2), round(v[1], 2)] for y, v in sorted(years.items()) if v[0] + v[1] > 0 or y < max(years)]
+    if len(hist) >= 3:
+        out["divHist"] = hist
     return out
 
 
@@ -1870,11 +2047,11 @@ def company_facts_from_text(desc, about):
     f = {}
     for text in (about or "", desc or ""):
         if "founded" not in f:
-            y = re.search(r"(?:grundades|grundad|grundat|grundlades|startades|bildades|skapades)\D{0,40}?\b(1[5-9]\d\d|20[0-2]\d)\b", text)
+            y = re.search(r"(?:grundades|grundad|grundat|grundlades|startades|bildades|skapades)\D{0,80}?\b(1[5-9]\d\d|20[0-2]\d)\b", text)
             if y:
                 f["founded"] = int(y.group(1))
         if "hq" not in f:
-            h = re.search(r"huvudkontor(?:et)?\s+(?:ligger\s+)?i\s+([A-ZÅÄÖ][\wåäöé\-]+(?:\s[A-ZÅÄÖ][\wåäöé\-]+)?)", text)
+            h = re.search(r"[Hh]uvudkontor(?:et)?\s+(?:ligger\s+|finns\s+|är\s+beläget\s+)?i\s+([A-ZÅÄÖ][\wåäöé\-]+(?:\s[A-ZÅÄÖ][\wåäöé\-]+)?)", text)
             if h and h.group(1) not in ("Sverige", "Sweden", "Norge", "Danmark", "Finland", "Europa", "Norden"):
                 f["hq"] = h.group(1)
     # "närmare 100.000 medarbetare", "cirka 23 400 anställda"
@@ -1905,6 +2082,7 @@ def main():
     ap.add_argument("--max-interim", type=int, default=80, help="högst så många nya kvartalsrapporter per körning")
     ap.add_argument("--interim-depth", type=int, default=4, help="så många av de senaste kvartalsrapporterna läses per bolag")
     ap.add_argument("--reinterim", action="store_true", help="läs om sparade kvartalsrapporter ur --raw-cache (efter att INTERIM_VERSION höjts)")
+    ap.add_argument("--retext", action="store_true", help="läs bara om pressmeddelandenas text ur --raw-cache (snabbt, utan PDF:erna)")
     args = ap.parse_args()
     global FILE_CACHE
     FILE_CACHE = args.raw_cache
@@ -2034,10 +2212,11 @@ def main():
         s = st.setdefault(isin, {})
         if out_of_time():
             break
-        if s.get("mfn") or days_since(s.get("mfnChecked")) <= 30:
+        if s.get("mfn") or (days_since(s.get("mfnChecked")) <= 30 and s.get("mfnByName")):
             continue
         try:
-            c = mfn_company(isin)
+            c = mfn_company(isin, stocks.get(isin))
+            s["mfnByName"] = True
         except Exception as e:
             print("  %s: kunde inte söka på MFN (%s)" % (isin, e))
             if network_error(e):
@@ -2077,6 +2256,15 @@ def main():
 
     due = sorted((p, s) for s, p in ((s, priority(s)) for s in slugs) if p is not None)
     pages = interims = failures = 0
+    if args.retext:
+        due = []
+        for slug in slugs:
+            for url, r in ((mfn.get(slug) or {}).get("reports") or {}).items():
+                try:
+                    refresh_text_fields(r, url)
+                    interims += 1
+                except Exception as e:
+                    print("  %s: fel vid tolkning (%s)" % (url, e))
     if args.reinterim:
         # Läs om de sparade kvartalsrapporterna (ur --raw-cache) utan att hämta bolagssidorna igen
         due = []
@@ -2195,6 +2383,9 @@ def main():
             doc["about"] = {"text": first_sentences(tidy_about(m["about"][1]), 600), "src": "pm", "url": m["about"][0]}
         elif m["report"] and m["report"].get("about"):
             doc["about"] = {"text": m["report"]["about"], "src": "ar", "url": m["report"].get("url")}
+        elif m["mm"].get("desc") and len(m["mm"]["desc"]) >= 80 and m["slug"]:
+            # bolagsbeskrivningen på MFN, när bolaget inte har någon egen i pressmeddelanden eller årsredovisning
+            doc["about"] = {"text": first_sentences(m["mm"]["desc"], 600), "src": "mfn", "url": MFN + "/all/a/" + m["slug"]}
         # Senaste kvartalet (bara om rapporten är från det senaste halvåret) och kvartalen innan
         annual_rev = None
         if m["report"] and (m["report"].get("fin") or {}).get("rev", [None])[0]:
@@ -2206,10 +2397,16 @@ def main():
             q = dict(checked[u], title=r["title"], date=r["date"], url=u)
             if r.get("quote") and latest == m["recent"][0]:
                 q["quote"] = r["quote"]
-            for k in ("events", "outlook", "orders", "bank"):
+            for k in ("events", "outlook", "orders", "bank", "headline", "themes", "tone", "cash", "organic"):
                 if r.get(k):
                     q[k] = r[k]
+            if r.get("react") is not None:
+                q["react"] = r["react"]
             doc["q"] = q
+            # Börsens reaktion på de senaste rapporterna
+            reacts = [[x["date"], x["react"]] for _, x in m["reps"] if x.get("react") is not None][:6]
+            if len(reacts) >= 2:
+                doc["reacts"] = reacts
             # Affärsområdena senaste kvartalet (samma valuta och samma rapport som siffrorna ovan)
             if r.get("seg") and r["seg"]["p"] == q["p"] and sane_segments(r["seg"]):
                 doc["qseg"] = sane_segments(r["seg"])
@@ -2247,6 +2444,24 @@ def main():
                 pass
         open(path, "w", encoding="utf-8").write(text)
         written.add(isin)
+    # Teckningsoptioner, rätter och interimsaktier ("Qliro AB Right 2026", "ALZECURE BTA 26") får moderbolagets fakta
+    by_name = {}
+    for isin in written:
+        by_name.setdefault(plain_name(stocks.get(isin)), isin)
+    for isin, name in stocks.items():
+        if isin in written:
+            continue
+        want = plain_name(base_name(name))
+        parent = by_name.get(want)
+        if not parent:
+            cands = [i for n, i in by_name.items() if same_company(want, n)]
+            parent = cands[0] if len(cands) == 1 else None
+        if parent and parent != isin:
+            src = os.path.join(out_dir, parent + ".json")
+            doc = json.load(open(src, encoding="utf-8"))
+            doc["parent"] = parent
+            open(os.path.join(out_dir, isin + ".json"), "w", encoding="utf-8").write(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
+            written.add(isin)
     if not args.only:
         for name in os.listdir(out_dir):
             if name.endswith(".json") and not name.startswith("_") and name[:-5] not in written:

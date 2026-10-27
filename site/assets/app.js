@@ -1111,6 +1111,96 @@
       }).join("") + "</div></div>";
   }
 
+  // Snabbkoll: ja/nej-frågor om rapporten med bock eller kryss
+  function scoreCard(items) {
+    if (items.length < 2) return "";
+    return '<div class="kq-score">' + items.map(function (it) {
+      var icon = it.tone === "pos" ? "✓" : it.tone === "neg" ? "✕" : "–";
+      return '<div class="ks ' + it.tone + '"><span class="ks-ic" aria-hidden="true">' + icon + '</span><div class="ks-t"><div class="ks-q">' + it.q + '</div><div class="ks-a">' + it.a + "</div></div></div>";
+    }).join("") + "</div>";
+  }
+
+  // Rörelsemarginalen kvartal för kvartal som en linje
+  function marginLine(qs) {
+    var pts = qs.filter(function (x) { return x[1] > 0 && x[2] != null && Math.abs(x[2]) <= x[1]; }).map(function (x) { return [x[0], x[2] / x[1]]; });
+    if (pts.length < 4) return "";
+    var vals = pts.map(function (p) { return p[1]; });
+    var lo = Math.min(0, Math.min.apply(null, vals)), hi = Math.max.apply(null, vals);
+    var pad = (hi - lo) * 0.15 || 0.02; lo = lo < 0 ? lo - pad : Math.max(0, lo - pad); hi += pad;
+    var W = 300, H = 84, x = function (i) { return 8 + i * (W - 16) / (pts.length - 1); }, y = function (v) { return 6 + (hi - v) / (hi - lo) * (H - 12); };
+    var path = pts.map(function (p, i) { return (i ? "L" : "M") + x(i).toFixed(1) + " " + y(p[1]).toFixed(1); }).join(" ");
+    var last = pts[pts.length - 1];
+    return '<div class="qb-chart"><div class="qb-title">Rörelsemarginal<span class="qb-now">' + periodText(last[0], 3).replace(/ \d{4}$/, "") + ": <b>" + nf0.format(last[1] * 100) + " %</b></span></div>" +
+      '<div class="ml-wrap"><svg class="ml-svg" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="Rörelsemarginal per kvartal">' +
+      (lo < 0 ? '<line class="ml-zero" x1="0" x2="' + W + '" y1="' + y(0).toFixed(1) + '" y2="' + y(0).toFixed(1) + '"></line>' : "") +
+      '<path class="ml-area" d="' + path + " L" + x(pts.length - 1).toFixed(1) + " " + H + " L" + x(0).toFixed(1) + " " + H + ' Z"></path>' +
+      '<path class="ml-line" d="' + path + '" vector-effect="non-scaling-stroke"></path></svg>' +
+      '<div class="ml-dots">' + pts.map(function (p, i) {
+        return '<span class="ml-dot' + (i === pts.length - 1 ? " now" : "") + '" style="left:' + (x(i) / W * 100).toFixed(2) + "%;top:" + (y(p[1]) / H * 100).toFixed(2) + '%" title="' + esc(periodText(p[0], 3) + ": " + nf1.format(p[1] * 100) + " %") + '"></span>';
+      }).join("") + "</div></div>" +
+      '<div class="ml-axis"><span>' + periodShort(pts[0][0]).replace("<br>", " ") + "</span><span>" + periodShort(last[0]).replace("<br>", " ") + "</span></div></div>";
+  }
+
+  // Börsens reaktion på rapportdagen, de senaste rapporterna
+  function reactCard(reacts, short) {
+    var list = reacts.slice().reverse();
+    var max = Math.max.apply(null, list.map(function (r) { return Math.abs(r[1]); })) || 1;
+    var up = list.filter(function (r) { return r[1] > 0; }).length;
+    var lead = "Börsen tog emot " + up + " av de senaste " + list.length + " rapporterna positivt.";
+    return '<div class="know-card"><h3>Så tog börsen emot rapporterna</h3><p class="know-lead">' + lead + ' <span class="muted">Hur ' + esc(short) + "-aktien rörde sig den dag rapporten kom.</span></p>" +
+      '<div class="rx-plot" role="img" aria-label="Aktiens rörelse på rapportdagarna">' + list.map(function (r) {
+        var h = Math.max(3, Math.abs(r[1]) / max * 100), d = r[0].split("-");
+        return '<div class="rx-col" title="' + esc(dateText(r[0]) + ": " + (r[1] > 0 ? "+" : "") + nf1.format(r[1]) + " %") + '">' +
+          '<div class="rx-up">' + (r[1] > 0 ? '<span class="rx-val pos">+' + nf1.format(r[1]) + '</span><span class="rx-bar pos" style="height:' + h.toFixed(0) + '%"></span>' : "") + "</div>" +
+          '<div class="rx-down">' + (r[1] <= 0 ? '<span class="rx-bar neg" style="height:' + h.toFixed(0) + '%"></span><span class="rx-val neg">' + fixMinus(nf1.format(r[1])) + "</span>" : "") + "</div>" +
+          '<div class="qb-lbl">' + MON[+d[1] - 1] + "<br>" + d[0] + "</div></div>";
+      }).join("") + "</div></div>";
+  }
+
+  // Utdelningen år för år (de senaste åtta åren) och hur länge bolaget har delat ut
+  function dividendCard(hist, cur, short) {
+    var thisYear = new Date().getFullYear();
+    var rows = hist.filter(function (h) { return h[0] <= thisYear; });
+    var last8 = rows.slice(-8);
+    if (last8.length < 3) return "";
+    var max = Math.max.apply(null, last8.map(function (h) { return h[1] + h[2]; })) || 1;
+    var span = rows[rows.length - 1][0] - rows[0][0] + 1, paid = rows.filter(function (h) { return h[1] + h[2] > 0; }).length;
+    var streak = 0;
+    for (var i = rows.length - 1; i > 0 && rows[i][1] > 0 && rows[i][1] >= rows[i - 1][1] && rows[i][0] - rows[i - 1][0] === 1; i--) streak++;
+    var lead = esc(short) + " har delat ut pengar till ägarna " + (paid === span ? "varje år de senaste " + span + " åren" : paid + " av de senaste " + span + " åren") + ".";
+    if (streak >= 2) lead += " Den ordinarie utdelningen har höjts eller legat kvar " + streak + " år i rad.";
+    return '<div class="know-card"><h3>Utdelningen år för år</h3><p class="know-lead">' + lead + "</p>" +
+      '<div class="dv-plot" role="img" aria-label="Utdelning per aktie och år">' + last8.map(function (h) {
+        var tot = h[1] + h[2];
+        return '<div class="dv-col" title="' + esc(h[0] + ": " + perShare(tot, cur) + (h[2] ? " (varav " + perShare(h[2], cur) + " extra)" : "")) + '">' +
+          '<div class="dv-val">' + (tot ? nf2.format(tot).replace(/,00$/, "") : "0") + '</div><div class="dv-area">' +
+          (h[2] ? '<span class="dv-bar extra" style="height:' + (h[2] / max * 100).toFixed(1) + '%"></span>' : "") +
+          '<span class="dv-bar" style="height:' + (h[1] / max * 100).toFixed(1) + '%"></span></div><div class="qb-lbl">' + h[0] + "</div></div>";
+      }).join("") + "</div>" +
+      '<div class="fin-legend"><span><i class="fin-eq"></i>Ordinarie</span>' + (last8.some(function (h) { return h[2]; }) ? '<span><i class="dv-extra-i"></i>Extra</span>' : "") +
+      '<span class="muted">' + (cur === "SEK" || !cur ? "Kronor" : cur) + " per aktie, inte justerat för eventuella aktiesplittar</span></div></div>";
+  }
+
+  // Vad rapporten handlar om, och hur positivt den är skriven
+  function themesHtml(themes, tone) {
+    var out = "";
+    if (themes && themes.length) {
+      var max = themes[0][1];
+      out += '<div><h4 class="kq-sub">Det här pratar rapporten om</h4><div class="th-chips">' + themes.map(function (t) {
+        var w = t[1] / max;
+        return '<span class="th-chip' + (w > 0.66 ? " big" : w > 0.33 ? " mid" : "") + '">' + esc(t[0]) + '<b>' + t[1] + "</b></span>";
+      }).join("") + '</div><p class="th-note">Siffran är hur många gånger ämnet nämns i rapporten.</p></div>';
+    }
+    if (tone && tone[0] + tone[1] > 0) {
+      var s = tone[0] / (tone[0] + tone[1]);
+      var word = s >= 0.75 ? "Mycket positiv" : s >= 0.6 ? "Mest positiv" : s >= 0.45 ? "Blandad" : s >= 0.3 ? "Mest negativ" : "Mycket negativ";
+      out += '<div><h4 class="kq-sub">Rapportens ton: ' + word + '</h4><div class="tone-bar" role="img" aria-label="' + nf0.format(s * 100) + ' % positiva ord">' +
+        '<span class="tone-pos" style="width:' + (s * 100).toFixed(1) + '%"></span><span class="tone-neg" style="width:' + ((1 - s) * 100).toFixed(1) + '%"></span></div>' +
+        '<div class="fin-legend"><span><i class="tone-pos"></i>' + tone[0] + " positiva ord (stark, ökade, rekord …)</span><span><i class=\"tone-neg\"></i>" + tone[1] + " negativa ord (svag, minskade, osäker …)</span></div></div>";
+    }
+    return out;
+  }
+
   // Insikter ur kvartalen: det senaste året mot året innan, hur ofta bolaget växer, lönsamhet, rekord och säsong
   function quarterInsights(qs, cur, short, finance) {
     var idx = function (p) { return +p.slice(0, 4) * 12 + +p.slice(5, 7); };
@@ -1236,6 +1326,8 @@
         var months = qrev && qrev[0] > 0 ? ord.book[0] / qrev[0] * (q.m || 3) : null;
         qtile(money(ord.book[0], qcur), "i orderstock", months != null && months >= 1 ? "Beställt men inte levererat, motsvarar ungefär " + nf0.format(months) + " månaders försäljning" : "Beställt men inte levererat än");
       }
+      if (q.organic != null && qrev) lead.splice(1, 0, "Räknat utan förvärv och valutaeffekter (organiskt) " + (q.organic >= 0 ? "växte försäljningen med " : "minskade försäljningen med ") + nf0.format(Math.abs(q.organic)) + " %.");
+      if (q.cash && q.cash[0] != null) qtile(money(q.cash[0], qcur), "kassaflöde från verksamheten", "Pengar som den vanliga verksamheten drog in" + (q.cash[1] != null ? ". Ett år tidigare " + money(q.cash[1], qcur) : ""), q.cash[0] < 0 ? "neg" : "");
       // Bankernas egna mått, förklarade
       var bk = q.bank || {};
       if (bk.roe != null) qtile(nf1.format(bk.roe) + " %", "avkastning på eget kapital", "Så mycket vinst banken gör per år på ägarnas pengar", bk.roe < 0 ? "neg" : "");
@@ -1255,11 +1347,29 @@
       var voice = (q.quote && f.ceo ? '<blockquote class="know-quote"><p>”' + esc(q.quote) + '”</p><footer>' + esc(f.ceo) + ", vd</footer></blockquote>" : "") +
         (q.outlook ? '<h4 class="kq-sub">Bolaget om framtiden</h4><p class="know-outlook">' + esc(q.outlook) + "</p>" : "");
       var pair = function (a, b) { return a && b ? '<div class="kq-split">' + a + "<div>" + b + "</div></div>" : a || b; };
+      // Snabbkoll
+      var sc = [], yes = function (v, txt) { return v > 0 ? "Ja, " + txt : v < 0 ? "Nej, " + txt : "Oförändrat"; };
+      if (g != null) sc.push({ q: "Växte försäljningen?", a: yes(g, pct(g)), tone: cls(g) });
+      var eg = q.ebit && q.ebit[1] != null && q.ebit[0] != null ? q.ebit[0] - q.ebit[1] : null;
+      if (eg != null && !finance) sc.push({ q: "Ökade rörelseresultatet?", a: q.ebit[1] > 0 ? yes(eg, pct(q.ebit[0] / q.ebit[1] - 1)) : (eg > 0 ? "Ja, förbättrades" : "Nej, försämrades"), tone: cls(eg) });
+      var ng = q.net && q.net[1] != null && q.net[0] != null ? q.net[0] - q.net[1] : null;
+      if (ng != null && (finance || eg == null)) sc.push({ q: "Ökade vinsten?", a: q.net[1] > 0 ? yes(ng, pct(q.net[0] / q.net[1] - 1)) : (ng > 0 ? "Ja, förbättrades" : "Nej, försämrades"), tone: cls(ng) });
+      if (qrev && qrev[0] > 0 && qrev[1] > 0 && q.ebit && q.ebit[0] != null && q.ebit[1] != null) {
+        var md = q.ebit[0] / qrev[0] - q.ebit[1] / qrev[1];
+        sc.push({ q: "Blev lönsamheten bättre?", a: Math.abs(md) < 0.005 ? "Ungefär samma" : (md > 0 ? "Ja, " : "Nej, ") + nf0.format(q.ebit[0] / qrev[0] * 100) + " % marginal (" + nf0.format(q.ebit[1] / qrev[1] * 100) + " %)", tone: Math.abs(md) < 0.005 ? "" : cls(md) });
+      }
+      if (ord["in"] && ord["in"][1]) { var oc = ord["in"][0] / ord["in"][1] - 1; sc.push({ q: "Fler nya order?", a: yes(oc, pct(oc)), tone: cls(oc) }); }
+      if (q.cash && q.cash[0] != null) sc.push({ q: "Drog verksamheten in pengar?", a: q.cash[0] > 0 ? "Ja, " + money(q.cash[0], qcur) : "Nej, " + money(q.cash[0], qcur), tone: q.cash[0] > 0 ? "pos" : "neg" });
+      if (q.react != null) sc.push({ q: "Gillade börsen rapporten?", a: (q.react > 0 ? "Ja, aktien steg " : q.react < 0 ? "Nej, aktien föll " : "Aktien stod still ") + fixMinus(nf1.format(Math.abs(q.react))) + " %", tone: cls(q.react) });
+      var thHtml = themesHtml(q.themes, q.tone);
       html += '<div class="know-card know-q"><div class="kq-head"><h3>Senaste rapporten <span class="kq-per">' + per + '</span></h3><span class="kq-date">Publicerad ' + dateText(q.date) + "</span></div>" +
+        (q.headline ? '<p class="kq-headline">”' + esc(q.headline) + "”</p>" : "") +
+        scoreCard(sc) +
         (lead.length ? '<p class="know-lead">' + lead.join(" ") + "</p>" : "") +
         (qt.length ? '<div class="know-tiles in-card">' + qt.join("") + "</div>" : "") +
-        pair(charts ? '<div class="qb-charts">' + charts + "</div>" : "", insHtml) +
+        pair(charts ? '<div class="qb-charts">' + charts + "</div>" : "", (c.qs && !finance && marginLine(c.qs) ? '<div class="qb-charts">' + marginLine(c.qs) + "</div>" : "") + insHtml) +
         pair(evHtml, voice) +
+        (thHtml ? '<div class="kq-split th-split">' + thHtml + "</div>" : "") +
         '<p class="kq-link"><a href="' + esc(q.url) + '" target="_blank" rel="noopener">Läs hela rapporten: ' + esc(q.title) + " ↗</a></p></div>";
     }
 
@@ -1281,6 +1391,11 @@
     if (calItems.length) {
       html += '<dl class="know-cal">' + calItems.map(function (x) { return "<div><dt>" + x[0] + "</dt><dd>" + x[1] + "</dd></div>"; }).join("") + "</dl>";
     }
+    // Börsens reaktion på rapporterna och utdelningen genom åren, sida vid sida
+    var duo = [];
+    if (c.reacts && c.reacts.length >= 2) duo.push(reactCard(c.reacts, short));
+    if (cal.divHist) { var dc = dividendCard(cal.divHist, cal.divHist.length && cal.div && cal.div[0] ? cal.div[0][2] : "SEK", short); if (dc) duo.push(dc); }
+    if (duo.length) html += '<div class="know-grid' + (duo.length === 1 ? " one" : "") + '">' + duo.join("") + "</div>";
 
     // Affärsområden (senaste kvartalet om rapporten har dem, annars helåret ur årsredovisningen) och marknader
     var cards = [];
