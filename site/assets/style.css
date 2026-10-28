@@ -392,9 +392,9 @@ main { padding-top: 36px; padding-bottom: 64px; outline: none; min-height: 60vh;
 .kicker { font-size: 13px; font-weight: 500; color: var(--brand-ink); }
 
 /* Initialbricka (aktie, fond, emittent) */
-.avatar { display: inline-grid; place-items: center; flex: none; width: 46px; height: 46px; border-radius: 11px; font-size: 15px; font-weight: 750; letter-spacing: 0.02em; background: hsl(var(--h) 75% 95%); color: hsl(var(--h) 55% 32%); box-shadow: inset 0 0 0 1px hsl(var(--h) 55% 88%); }
+.avatar { display: inline-grid; place-items: center; flex: none; width: 46px; height: 46px; border-radius: 12px; font-family: var(--display); font-size: 15px; font-weight: 700; letter-spacing: 0.01em; background: var(--brand-soft); color: var(--brand-ink); }
 .avatar-sm { width: 30px; height: 30px; border-radius: 8px; font-size: 11px; }
-:root[data-theme="dark"] .avatar { background: hsl(var(--h) 28% 19%); color: hsl(var(--h) 75% 78%); box-shadow: inset 0 0 0 1px hsl(var(--h) 28% 27%); }
+
 
 /* ---------- Nyckeltal och markeringar ---------- */
 
@@ -591,7 +591,7 @@ a.btn { color: var(--fg); }
 .hero-stats dd { order: 1; }
 
 /* Vad Fondinsyn är och hur ofta datan uppdateras */
-.about-card { position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px 36px; align-items: center; padding: 20px 24px; margin-bottom: 14px; border-radius: var(--radius-lg); background: var(--bg); border: 1px solid var(--border); }
+.about-card { position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px 36px; align-items: center; padding: 20px 24px; margin: 28px 0 0; border-radius: var(--radius-lg); background: var(--bg); border: 1px solid var(--border); }
 .ac-text h2 { font-size: 19px; font-weight: 650; margin-bottom: 6px; }
 .ac-text p { font-size: 14px; line-height: 1.6; color: var(--fg-soft); max-width: 62ch; }
 .ac-text a { font-weight: 600; white-space: nowrap; }
@@ -605,11 +605,13 @@ a.btn { color: var(--fg); }
 .ac-close:hover { background: var(--bg-hover); color: var(--fg); }
 
 /* Kvartalsrapporten i liten form överst på startsidan */
-.rep-card { position: relative; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 18px 32px; flex-wrap: wrap; padding: 30px 32px; border-radius: var(--radius-lg); background: var(--navy); color: var(--navy-fg); }
-.rc-main { min-width: 0; flex: 1 1 420px; display: flex; flex-direction: column; gap: 6px; }
-.rc-title { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.12; color: #fff; text-wrap: balance; }
+.rep-card { position: relative; padding: 26px 32px 30px; border-radius: var(--radius-lg); background: var(--navy); color: var(--navy-fg); }
+.rc-top { display: flex; align-items: center; justify-content: space-between; gap: 10px 20px; flex-wrap: wrap; margin-bottom: 18px; }
+.rc-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 28px 48px; align-items: start; }
+.rc-main { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.rc-title { font-size: 40px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.06; color: #fff; text-wrap: balance; }
 .rc-title:hover { color: #fff; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 5px; }
-.rc-meta { font-size: 14.5px; color: var(--navy-muted); }
+.rc-meta { font-size: 15.5px; line-height: 1.55; color: var(--navy-muted); max-width: 46ch; }
 .rc-meta b { font-weight: 600; color: #fff; }
 .rep-card .kicker { color: #8fe0bd; }
 .rep-card .rc-web { color: #fff; }
@@ -629,7 +631,7 @@ a.btn { color: var(--fg); }
 :root[data-theme="dark"] .rep-card { background: #0e2b21; border: 1px solid #1d4234; }
 .rc-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .rc-controls .select-sm { font-weight: 600; }
-.rc-go { display: inline-flex; align-items: center; gap: 12px; }
+.rc-go { display: inline-flex; align-items: center; gap: 16px; margin-top: 6px; }
 .rc-web { font-size: 13px; font-weight: 600; white-space: nowrap; }
 .btn-tag { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 5px; background: rgba(255, 255, 255, 0.18); }
 
@@ -679,15 +681,30 @@ a.btn { color: var(--fg); }
 }
 
 /* Genvägar till avdelningarna på startsidan */
-.quick { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
-.ql { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 14px 16px 15px; border-radius: var(--radius-lg); background: var(--bg); border: 1px solid var(--border); color: var(--fg); transition: border-color 0.2s, background 0.2s; }
-.ql:hover { text-decoration: none; border-color: var(--border-strong); background: var(--bg-subtle); }
-.ql-t { font-size: 13px; font-weight: 600; color: var(--fg-muted); display: flex; justify-content: space-between; align-items: center; }
-.ql-t::after { content: "→"; color: var(--fg-muted); transition: transform 0.2s var(--ease), color 0.2s; }
-.ql:hover .ql-t::after { transform: translateX(3px); color: var(--fg); }
+.quick { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow: hidden; }
+.ql { position: relative; display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 16px 18px 17px; color: var(--fg); transition: background 0.15s; }
+.ql + .ql::before { content: ""; position: absolute; left: 0; top: 16px; bottom: 16px; width: 1px; background: var(--border); }
+.ql:hover { text-decoration: none; background: var(--bg-hover); }
+.ql-t { font-size: 13px; font-weight: 500; color: var(--fg-muted); }
 .ql-v { font-size: 22px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ql-d { font-size: 12.5px; color: var(--fg-muted); line-height: 1.4; }
-.rc-next { font-size: 12.5px; color: var(--fg-muted); }
+.ql:hover .ql-t { color: var(--link); }
+.rc-next { font-size: 13px; color: var(--fg-muted); }
+/* Kvartalets fem största köp och sälj i samma skala */
+.rc-movers { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; padding: 18px 20px; border-radius: var(--radius); background: rgba(255, 255, 255, 0.06); }
+.mv-h { font-family: var(--font); font-size: 13px; font-weight: 500; color: var(--navy-muted); margin: 0 0 6px; }
+.mv-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.mv-list li { display: grid; grid-template-columns: minmax(0, 11em) minmax(0, 1fr) 6.2em; align-items: center; gap: 12px; font-size: 14px; }
+.mv-list a { color: #fff; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mv-list a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.mv-bar { display: block; height: 8px; }
+.mv-bar i { display: block; height: 100%; border-radius: 0 4px 4px 0; transform-origin: left; animation: bar-grow 0.7s var(--ease) both; }
+.mv-bar.pos i { background: #8ab8f0; }
+.mv-bar.neg i { background: #f2958a; }
+.mv-v { text-align: right; color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mv-list li:nth-child(2) i { animation-delay: 40ms; } .mv-list li:nth-child(3) i { animation-delay: 80ms; }
+.mv-list li:nth-child(4) i { animation-delay: 120ms; } .mv-list li:nth-child(5) i { animation-delay: 160ms; }
+.rc-movers .sk-block { height: 230px; margin: 0; background: rgba(255, 255, 255, 0.08); animation: none; }
 
 /* Rullgardinen som ersätter flikarna på mobilen, och sökrutan överst i mobilmenyn */
 .subnav-pick { display: none; }
@@ -1276,6 +1293,12 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .hero-side { padding-left: 0; border-left: 0; padding-top: 28px; border-top: 1px solid var(--border); }
   .modules { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .quick { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ql:nth-child(4)::before { display: none; }
+  .ql:nth-child(n+4) { border-top: 1px solid var(--border); }
+  .rc-body { grid-template-columns: minmax(0, 1fr); }
+  .rc-title { font-size: 34px; }
+  .rc-movers { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 32px; }
+  .mv-list li { grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr) 5.8em; }
   .about-card { grid-template-columns: minmax(0, 1fr); }
   .bt-answer { grid-template-columns: minmax(0, 1fr); }
   .bt-duel { padding-left: 0; border-left: 0; padding-top: 16px; border-top: 1px solid var(--border); }
@@ -1344,8 +1367,11 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .subbar-controls { width: 100%; justify-content: space-between; margin-left: 0; flex-wrap: nowrap; }
   .summary { display: none; }
   .filter-label { display: none; }
-  .quick { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .ql { padding: 11px 13px 12px; }
+  .quick { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ql { padding: 12px 14px 13px; }
+  .ql:nth-child(n)::before { display: none; }
+  .ql:nth-child(even)::before { display: block; top: 12px; bottom: 12px; }
+  .ql:nth-child(n+3) { border-top: 1px solid var(--border); }
   .ql-v { font-size: 16px; }
   /* Flikarna blir en rullgardin på mobilen (en rad i stället för flera) */
   .subnav { display: none; }
@@ -1353,7 +1379,10 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .lg { display: none; }
   .sp-parts { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .sig-cell .sig-meter { display: none; }
-  .rep-card { padding: 16px; }
+  .rep-card { padding: 18px 16px 20px; }
+  .rc-top { margin-bottom: 12px; }
+  .rc-movers { grid-template-columns: minmax(0, 1fr); padding: 14px; gap: 14px; }
+  .mv-list li { grid-template-columns: minmax(0, 1fr) 4.5em 5.6em; gap: 8px; font-size: 13.5px; }
   .about-card { padding: 14px 14px 12px; gap: 10px; }
   /* Uppdateringstakten tar mycket plats på en telefon och finns på Om-sidan */
   .about-card .ac-freq, .about-card .ac-stamp { display: none; }
@@ -1364,11 +1393,12 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .ac-text { padding-right: 24px; }
   .ac-freq { padding-right: 0; gap: 10px 14px; }
   .ac-freq dd { font-size: 14px; }
-  .rc-title { font-size: 18px; }
+  .rc-title { font-size: 26px; }
   .rc-controls { width: 100%; }
   .rc-controls .seg { flex: 1 1 auto; }
   .rc-controls .seg-btn { flex: 1; }
-  .rc-go { flex: 1 1 100%; }
+  .rc-go { align-self: stretch; }
+  .rc-go .btn { flex: 1 1 auto; }
   .rc-controls .btn { flex: 1 1 auto; }
   .summary { text-align: left; }
   /* Startsidan och rapporten visar samma siffror i toppen, så sammanfattningen behövs inte där på mobil */

@@ -95,7 +95,7 @@
   // Stapel med 4px rundad ände bort från nollinjen, rak vid nollinjen
   function barPath(x, y0, y1, w) {
     var h = Math.abs(y1 - y0);
-    var r = Math.min(3, h / 2, w / 2);
+    var r = Math.min(4, h / 2, w / 2);
     if (h < 0.5) return "";
     if (y1 < y0) {
       return "M" + x + "," + y0 + "V" + (y1 + r) + "Q" + x + "," + y1 + " " + (x + r) + "," + y1 +
