@@ -67,14 +67,15 @@ Skripten fungerar även i Windows PowerShell 5.1 (`powershell -File ...`).
 
 ## Automatisk uppdatering
 
-GitHub Actions kör `update.yml` varje måndag, vid varje push till `main` och manuellt via fliken Actions. Arbetsflödet:
+GitHub Actions kör `update.yml` tre gånger om dagen (kl. 05, 11 och 17 UTC), vid varje push till `main` och manuellt via fliken Actions. Arbetsflödet:
 
-1. Läser vilka kvartal FI har publicerat.
-2. Bygger de fyra senaste kvartalen och historiken om FI har publicerat nya versioner av källfilerna.
-3. Committar ändrad data till repot.
-4. Publicerar `site/` till GitHub Pages.
+1. Läser vilka kvartal FI har publicerat och bygger de fyra senaste kvartalen och historiken om FI har publicerat nya versioner av källfilerna.
+2. Hämtar det som ändras oftare: räntor, insynshandel, blankning, fondsparande, avkastning och bolagens kvartalsrapporter (MFN).
+3. Kontrollerar datan och committar det som ändrats till repot.
+4. Bygger de statiska sidorna, delningsbilderna och kvartalsrapporterna som PDF, och kör ett röktest i Chrome.
+5. Publicerar `site/` till GitHub Pages. Misslyckas röktestet ligger den förra versionen kvar.
 
-FI:s zip-filer cachas mellan körningar.
+Körningarna kl. 11 och 17 är till för bolagens kvartalsrapporter samma dag. Nyhetsbrev, bevakningsmejl, release och PDF görs bara på morgonen. FI:s zip-filer cachas mellan körningar.
 
 ## Metod
 
