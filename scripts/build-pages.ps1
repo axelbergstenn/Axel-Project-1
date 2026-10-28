@@ -27,9 +27,9 @@ $DataDir = Join-Path $Site "data"
 $NB = [string][char]0xA0
 $MINUS = [string][char]0x2212
 $MONTHS = @("januari", "februari", "mars", "april", "maj", "juni", "juli", "augusti", "september", "oktober", "november", "december")
-$FONT = "Roboto, 'Roboto Flex', 'DejaVu Sans', Arial, sans-serif"
-# Rubriker och namnet i delningsbilderna, som på sajten (Roboto Slab installeras i arbetsflödet)
-$DISPLAY = "'Roboto Slab', Roboto, 'DejaVu Serif', Georgia, serif"
+# Typsnitten i delningsbilderna, som på sajten. Arbetsflödet installerar dem från scripts/fonts.
+$FONT = "'Inter Tight', 'DejaVu Sans', Arial, sans-serif"
+$DISPLAY = "'Schibsted Grotesk', 'Inter Tight', 'DejaVu Sans', Arial, sans-serif"
 
 # Samma regler som i app.js
 $INDEX_RE = '(?i)index|indx|\bomx|passiv|tracker|\betf\b|\bzero\b|\baccess\b'
@@ -554,22 +554,22 @@ function TextEl($x, $y, $size, $color, $text, $extra, $family) {
 function OgSvg($title, $sub, $stats, $label, $bars, $line) {
   $sb = New-Object System.Text.StringBuilder
   [void]$sb.Append('<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">')
-  [void]$sb.Append('<rect width="1200" height="630" fill="#ffffff"/><rect width="1200" height="8" fill="#068e6a"/>')
+  [void]$sb.Append('<rect width="1200" height="630" fill="#ffffff"/><rect width="1200" height="8" fill="#0c2e23"/>')
   # Loggan: Kvartal-symbolen (fyra delar, senaste kvartalet i grönt) och namnet
-  [void]$sb.Append('<g transform="translate(72,50) scale(1.3)"><path d="M17.5 2.08A14 14 0 0 1 29.92 14.5H17.5Z" fill="#068e6a"/><path d="M29.92 17.5A14 14 0 0 1 17.5 29.92V17.5ZM14.5 29.92A14 14 0 0 1 2.08 17.5H14.5ZM2.08 14.5A14 14 0 0 1 14.5 2.08V14.5Z" fill="#0d1112"/></g>')
-  [void]$sb.Append((TextEl 128 84 32 "#0d1112" "Fondinsyn" ' font-weight="700"' $DISPLAY))
+  [void]$sb.Append('<g transform="translate(72,50) scale(1.3)"><path d="M17.5 2.08A14 14 0 0 1 29.92 14.5H17.5Z" fill="#0e6b4e"/><path d="M29.92 17.5A14 14 0 0 1 17.5 29.92V17.5ZM14.5 29.92A14 14 0 0 1 2.08 17.5H14.5ZM2.08 14.5A14 14 0 0 1 14.5 2.08V14.5Z" fill="#0f1a16"/></g>')
+  [void]$sb.Append((TextEl 128 84 32 "#0f1a16" "Fondinsyn" ' font-weight="700"' $DISPLAY))
   $ts = FitSize $title 64 40 1056 0.6
-  [void]$sb.Append((TextEl 72 205 $ts "#0d1112" (Clip $title $ts 1056 0.6) ' font-weight="700"' $DISPLAY))
-  [void]$sb.Append((TextEl 72 255 28 "#5a6569" (Clip $sub 28 1056 0.55) ""))
+  [void]$sb.Append((TextEl 72 205 $ts "#0f1a16" (Clip $title $ts 1056 0.6) ' font-weight="700"' $DISPLAY))
+  [void]$sb.Append((TextEl 72 255 28 "#5b6862" (Clip $sub 28 1056 0.55) ""))
   for ($i = 0; $i -lt $stats.Count; $i++) {
     $x = 72 + $i * 352
     $v = [string]$stats[$i][1]
     $vs = FitSize $v 50 28 330 0.6
-    [void]$sb.Append((TextEl $x 335 24 "#5a6569" $stats[$i][0] ""))
+    [void]$sb.Append((TextEl $x 335 24 "#5b6862" $stats[$i][0] ""))
     [void]$sb.Append((TextEl $x 392 $vs $stats[$i][2] $v ' font-weight="500"'))
   }
-  [void]$sb.Append('<line x1="72" y1="432" x2="1128" y2="432" stroke="#e8edee" stroke-width="2"/>')
-  [void]$sb.Append((TextEl 72 476 22 "#5a6569" $label ""))
+  [void]$sb.Append('<line x1="72" y1="432" x2="1128" y2="432" stroke="#dbe1de" stroke-width="2"/>')
+  [void]$sb.Append((TextEl 72 476 22 "#5b6862" $label ""))
   if ($bars) {
     $pos = 0.0; $neg = 0.0
     foreach ($b in $bars) { if ($b -gt $pos) { $pos = $b }; if (-$b -gt $neg) { $neg = -$b } }
@@ -585,27 +585,27 @@ function OgSvg($title, $sub, $stats, $label, $bars, $line) {
       if ($b -eq 0) { $bh = 0 }
       $x = [math]::Round(72 + $i * $slot + ($slot - $w) / 2, 1)
       $y = if ($b -ge 0) { $base - $bh } else { $base }
-      $color = if ($b -ge 0) { "#2970c2" } else { "#d0184d" }
+      $color = if ($b -ge 0) { "#2f6fbf" } else { "#b8322a" }
       $op = if ($i -eq $bars.Count - 1) { "1" } else { "0.55" }
       [void]$sb.Append('<rect x="' + $x + '" y="' + [math]::Round($y, 1) + '" width="' + $w + '" height="' + [math]::Round($bh, 1) + '" rx="3" fill="' + $color + '" fill-opacity="' + $op + '"/>')
     }
-    [void]$sb.Append('<line x1="72" y1="' + [math]::Round($base, 1) + '" x2="1128" y2="' + [math]::Round($base, 1) + '" stroke="#c0cbce" stroke-width="1.5"/>')
+    [void]$sb.Append('<line x1="72" y1="' + [math]::Round($base, 1) + '" x2="1128" y2="' + [math]::Round($base, 1) + '" stroke="#a2bcb1" stroke-width="1.5"/>')
   } elseif ($line) {
-    [void]$sb.Append((TextEl 72 535 34 "#0d1112" (Clip $line 34 1056 0.56) ' font-weight="600"'))
+    [void]$sb.Append((TextEl 72 535 34 "#0f1a16" (Clip $line 34 1056 0.56) ' font-weight="600"'))
   }
   [void]$sb.Append("</svg>")
   return $sb.ToString()
 }
-function FlowColor($v) { if ($null -eq $v) { return "#0d1112" }; if ($v -gt 0) { return "#155299" }; if ($v -lt 0) { return "#d0184d" }; return "#0d1112" }
+function FlowColor($v) { if ($null -eq $v) { return "#0f1a16" }; if ($v -gt 0) { return "#1757a6" }; if ($v -lt 0) { return "#b8322a" }; return "#0f1a16" }
 # Delningsbild för en kvartalsrapport: rubriken, nettoköpet och de fem största köpen som staplar.
 # $items: lista med @(namn, nettoköp i kr)
 function ReportOgSvg($kicker, $headline, $netLabel, $net, $items) {
   $sb = New-Object System.Text.StringBuilder
   [void]$sb.Append('<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">')
   [void]$sb.Append('<rect width="1200" height="630" fill="#ffffff"/>')
-  [void]$sb.Append('<g transform="translate(64,46) scale(1.15)"><path d="M17.5 2.08A14 14 0 0 1 29.92 14.5H17.5Z" fill="#068e6a"/><path d="M29.92 17.5A14 14 0 0 1 17.5 29.92V17.5ZM14.5 29.92A14 14 0 0 1 2.08 17.5H14.5ZM2.08 14.5A14 14 0 0 1 14.5 2.08V14.5Z" fill="#0d1112"/></g>')
-  [void]$sb.Append((TextEl 112 76 30 "#0d1112" "Fondinsyn" ' font-weight="700"' $DISPLAY))
-  [void]$sb.Append((TextEl 1136 76 24 "#05735a" $kicker ' font-weight="500" text-anchor="end"'))
+  [void]$sb.Append('<g transform="translate(64,46) scale(1.15)"><path d="M17.5 2.08A14 14 0 0 1 29.92 14.5H17.5Z" fill="#0e6b4e"/><path d="M29.92 17.5A14 14 0 0 1 17.5 29.92V17.5ZM14.5 29.92A14 14 0 0 1 2.08 17.5H14.5ZM2.08 14.5A14 14 0 0 1 14.5 2.08V14.5Z" fill="#0f1a16"/></g>')
+  [void]$sb.Append((TextEl 112 76 30 "#0f1a16" "Fondinsyn" ' font-weight="700"' $DISPLAY))
+  [void]$sb.Append((TextEl 1136 76 24 "#0a5640" $kicker ' font-weight="500" text-anchor="end"'))
   # Rubriken på högst två rader
   $size = 50; $maxW = 1072; $factor = 0.54
   $words = ([string]$headline).Split(" "); $lines = @("");
@@ -613,26 +613,26 @@ function ReportOgSvg($kicker, $headline, $netLabel, $net, $items) {
     $try = ($lines[-1] + " " + $w).Trim()
     if ($try.Length * $size * $factor -le $maxW -or -not $lines[-1]) { $lines[-1] = $try } elseif ($lines.Count -lt 2) { $lines += $w } else { $lines[-1] = Clip ($lines[-1] + " " + $w) $size $maxW $factor }
   }
-  for ($i = 0; $i -lt $lines.Count; $i++) { [void]$sb.Append((TextEl 64 (170 + $i * 60) $size "#0d1112" $lines[$i] ' font-weight="700"' $DISPLAY)) }
+  for ($i = 0; $i -lt $lines.Count; $i++) { [void]$sb.Append((TextEl 64 (170 + $i * 60) $size "#0f1a16" $lines[$i] ' font-weight="700"' $DISPLAY)) }
   $top = 170 + $lines.Count * 60 + 18
   # Nettoköpet till vänster
-  [void]$sb.Append((TextEl 64 ($top + 40) 24 "#5a6569" $netLabel ""))
+  [void]$sb.Append((TextEl 64 ($top + 40) 24 "#5b6862" $netLabel ""))
   [void]$sb.Append((TextEl 64 ($top + 112) 76 (FlowColor $net) (BigSek $net -Sign) ' font-weight="500" letter-spacing="-1"'))
   # De största köpen till höger
   $x0 = 560; $rowH = [math]::Min([double]44, (630 - 48 - ($top + 52)) / [math]::Max(1, $items.Count))
-  [void]$sb.Append((TextEl $x0 ($top + 40) 22 "#5a6569" "Mest köpta aktier" ""))
+  [void]$sb.Append((TextEl $x0 ($top + 40) 22 "#5b6862" "Mest köpta aktier" ""))
   $max = 1.0
   foreach ($it in $items) { if ([double]$it[1] -gt $max) { $max = [double]$it[1] } }
   for ($i = 0; $i -lt $items.Count; $i++) {
     $y = $top + 52 + $i * $rowH
     $name = Clip ([string]$items[$i][0]) 24 225 0.55
     $w = [math]::Max([double]4, [double]$items[$i][1] / $max * 150)
-    [void]$sb.Append((TextEl $x0 ($y + 28) 24 "#0d1112" $name ' font-weight="500"'))
-    [void]$sb.Append('<rect x="800" y="' + ($y + 12) + '" width="' + [math]::Round($w, 1).ToString($Inv) + '" height="18" rx="5" fill="#2970c2"/>')
-    [void]$sb.Append((TextEl 1136 ($y + 28) 24 "#155299" (BigSek ([double]$items[$i][1]) -Sign) ' font-weight="700" text-anchor="end"'))
+    [void]$sb.Append((TextEl $x0 ($y + 28) 24 "#0f1a16" $name ' font-weight="500"'))
+    [void]$sb.Append('<rect x="800" y="' + ($y + 12) + '" width="' + [math]::Round($w, 1).ToString($Inv) + '" height="18" rx="5" fill="#2f6fbf"/>')
+    [void]$sb.Append((TextEl 1136 ($y + 28) 24 "#1757a6" (BigSek ([double]$items[$i][1]) -Sign) ' font-weight="700" text-anchor="end"'))
   }
-  [void]$sb.Append('<rect y="606" width="1200" height="24" fill="#0d1112"/>')
-  [void]$sb.Append((TextEl 64 623 14 "#c0cbce" "www.fondinsyn.se · Källa: Finansinspektionens fondinnehav" ""))
+  [void]$sb.Append('<rect y="606" width="1200" height="24" fill="#0c2e23"/>')
+  [void]$sb.Append((TextEl 64 623 14 "#a2bcb1" "www.fondinsyn.se · Källa: Finansinspektionens fondinnehav" ""))
   [void]$sb.Append("</svg>")
   return $sb.ToString()
 }
@@ -898,7 +898,7 @@ foreach ($s in $pageStocks) {
     (Source "/#/aktie/$($s.isin)" "Visa historik sedan 2018 och alla affärer")
 
   $bars = FlowBars $s.isin
-  $stats = @(@("Fonder som äger", (Num0 $s.f2), "#0d1112"), @("Fondernas innehav", (BigSek $s.val2), "#0d1112"),
+  $stats = @(@("Fonder som äger", (Num0 $s.f2), "#0f1a16"), @("Fondernas innehav", (BigSek $s.val2), "#0f1a16"),
     @("Nettoköp $QL", $(if ($null -eq $s.netFlow) { "–" } else { BigSek $s.flow -Sign }), (FlowColor $s.netFlow)))
   $svg = if ($bars) { OgSvg $s.name "$($s.sector) · svenska fonders ägande · $QL" $stats "Fondernas nettoköp per kvartal, senaste $($bars.Count) kvartalen" $bars $null }
          else { OgSvg $s.name "$($s.sector) · svenska fonders ägande · $QL" $stats "Största fondägare" $null (JoinSv @($holders | Select-Object -First 3 | ForEach-Object { $_.f.name })) }
@@ -946,7 +946,7 @@ foreach ($fi in $infos) {
   }
   $content += Source ("/#/fond/" + [uri]::EscapeDataString($fi.id)) "Visa utländska innehav, avkastning och jämförelser"
 
-  $stats = @(@("Fondförmögenhet", (BigSek $fi.aum), "#0d1112"), @("Avgift", $fee, "#0d1112"), @("Svenska aktier", (BigSek $seVal), "#0d1112"))
+  $stats = @(@("Fondförmögenhet", (BigSek $fi.aum), "#0f1a16"), @("Avgift", $fee, "#0f1a16"), @("Svenska aktier", (BigSek $seVal), "#0f1a16"))
   $svg = if ($top3.Count) { OgSvg $fi.name "$($fi.co) · $QL" $stats "Största svenska innehav" $null ($top3 -join " · ") }
          else { OgSvg $fi.name "$($fi.co) · $QL" $stats "Jämförelseindex" $null $(if ($fi.bench) { $fi.bench } else { "Saknas" }) }
   $img = Image "fond-$($fi.slug)" $svg
@@ -987,7 +987,7 @@ foreach ($c in $coList) {
   if ($stockRows.Count) { $content += Block "Största svenska innehav" (Table @("Aktie", "Innehav (mkr)", "Fonder") $stockRows) "section-gap" }
   $content += Source ("/#/fondbolag/" + [uri]::EscapeDataString($c.name)) "Visa bolagets köp och sälj"
 
-  $stats = @(@("Fonder", (Num0 $cf.Count), "#0d1112"), @("Fondförmögenhet", (BigSek $c.aum), "#0d1112"), @("Snittavgift", $fee, "#0d1112"))
+  $stats = @(@("Fonder", (Num0 $cf.Count), "#0f1a16"), @("Fondförmögenhet", (BigSek $c.aum), "#0f1a16"), @("Snittavgift", $fee, "#0f1a16"))
   $svg = OgSvg $c.name "Fondbolag · $QL" $stats "Största fonder" $null (@($cf | Select-Object -First 3 | ForEach-Object { $_.name }) -join " · ")
   $img = Image "fondbolag-$($c.slug)" $svg
 
@@ -997,7 +997,7 @@ foreach ($c in $coList) {
 Write-Host "  $($coList.Count) fondbolagssidor"
 
 # Standardbilden (startsidan och sidor utan egen bild)
-$homeStats = @(@("Fonder", (Num0 $tFunds), "#0d1112"), @("Svenska aktier", (Num0 $tHeld), "#0d1112"), @("Nettoköp $QL", (BigSek $tNet -Sign), (FlowColor $tNet)))
+$homeStats = @(@("Fonder", (Num0 $tFunds), "#0f1a16"), @("Svenska aktier", (Num0 $tHeld), "#0f1a16"), @("Nettoköp $QL", (BigSek $tNet -Sign), (FlowColor $tNet)))
 $null = Image "fondinsyn" (OgSvg "Vad köper och säljer fonderna?" "Svenska fonders innehav, $QL" $homeStats "Öppen data från Finansinspektionen" $null "Innehav, köp och sälj, avgifter, blankning och uppköp")
 $defaultImg = "og/fondinsyn.png"
 
@@ -1283,7 +1283,7 @@ for ($ri = 0; $ri -lt $reportQs.Count; $ri++) {
   $desc = "Svenska fonder " + $(if ($net -ge 0) { "nettoköpte" } else { "nettosålde" }) + " svenska aktier för " + (BigSek ([math]::Abs($net))) + " under $repQL." +
     $(if ($top3.Count) { " Mest köpte de " + (JoinSv $top3) + "." } else { "" }) +
     $(if ($sells.Count) { " Mest sålde de " + (JoinSv @($sells | Select-Object -First 3 | ForEach-Object { $_.name })) + "." } else { "" })
-  $stats = @(@("Fonder", (Num0 $qd.tFunds), "#0d1112"), @("Nettoköp", (BigSek $net -Sign), (FlowColor $net)), @("Största köp", $(if ($buys.Count) { BigSek $buys[0].flow -Sign } else { "–" }), "#155299"))
+  $stats = @(@("Fonder", (Num0 $qd.tFunds), "#0f1a16"), @("Nettoköp", (BigSek $net -Sign), (FlowColor $net)), @("Största köp", $(if ($buys.Count) { BigSek $buys[0].flow -Sign } else { "–" }), "#1757a6"))
   $rs = ReportSlug $qid
   $img = Image "rapport-$rs" (ReportOgSvg "Kvartalsrapport $repQL" $headline "Nettoköp svenska aktier" $net @($buys | Select-Object -First 5 | ForEach-Object { ,@($_.name, $_.flow) }))
   $article = '{"@context":"https://schema.org","@type":"Article","headline":' + (J "Fondernas köp och sälj $repQL") + ',"description":' + (J $desc) +
@@ -1357,7 +1357,7 @@ for ($ri = 0; $ri -lt $reportQs.Count; $ri++) {
   $desc = "Svenska fonder " + $(if ($net -ge 0) { "nettoköpte" } else { "nettosålde" }) + " globala aktier för " + (BigSek ([math]::Abs($net))) + " under $repQL." +
     $(if ($top3.Count) { " Mest köpte de " + (JoinSv $top3) + "." } else { "" }) +
     $(if ($cPos.Count) { " Mest pengar gick till aktier från " + (JoinSv $cPos) + "." } else { "" })
-  $stats = @(@("Fonder", (Num0 $wq.tFunds), "#0d1112"), @("Nettoköp", (BigSek $net -Sign), (FlowColor $net)), @("Största köp", $(if ($buys.Count) { BigSek $buys[0].flow -Sign } else { "–" }), "#155299"))
+  $stats = @(@("Fonder", (Num0 $wq.tFunds), "#0f1a16"), @("Nettoköp", (BigSek $net -Sign), (FlowColor $net)), @("Största köp", $(if ($buys.Count) { BigSek $buys[0].flow -Sign } else { "–" }), "#1757a6"))
   $img = Image "rapport-$rs-utland" (ReportOgSvg "Kvartalsrapport $repQL · globala aktier" $headline "Nettoköp globala aktier" $net @($buys | Select-Object -First 5 | ForEach-Object { ,@($_.name, $_.flow) }))
   $article = '{"@context":"https://schema.org","@type":"Article","headline":' + (J "Fondernas köp och sälj av globala aktier $repQL") + ',"description":' + (J $desc) +
     ',"datePublished":' + (J ([string]$qMeta.built)) + ',"dateModified":' + (J ([string]$qMeta.built)) + ',"inLanguage":"sv-SE","image":' + (J "$BaseUrl/$img") +
@@ -1429,7 +1429,7 @@ if ($ratesLight -and $issLatest) {
       '<dl class="figures">' + (Fig "Fondernas innehav" (BigSek $i.v2)) + (Fig "Nettoköp $QL" (Colored $i.flow (BigSek $i.flow -Sign))) + (Fig "Fonder som äger" (Num0 $i.f2)) + (Fig "Värdepapper" (Num0 $i.n)) + "</dl>" +
       '<div class="grid-2 section-gap">' + (Block "Fonder som äger" (Table @("Fond", "Innehav (mkr)", "Nettoköp (mkr)") @($hRows)) "") + (Block "Värdepapper" (Table @("Värdepapper", "Innehav (mkr)", "Fonder") @($bRows)) "") + "</div>" +
       (Source ("/#/emittent/" + [uri]::EscapeDataString($i.key)) "Se alla fonder och värdepapper")
-    $stats = @(@("Fondernas innehav", (BigSek $i.v2), "#0d1112"), @("Nettoköp $QL", (BigSek $i.flow -Sign), (FlowColor $i.flow)), @("Fonder som äger", (Num0 $i.f2), "#0d1112"))
+    $stats = @(@("Fondernas innehav", (BigSek $i.v2), "#0f1a16"), @("Nettoköp $QL", (BigSek $i.flow -Sign), (FlowColor $i.flow)), @("Fonder som äger", (Num0 $i.f2), "#0f1a16"))
     $img = Image "emittent-$($i.key)" (OgSvg $i.name "$catName · obligationer som svenska fonder äger" $stats "Största ägare" $null (($top | Select-Object -First 3) -join " · "))
     Page "emittent/$($i.key)/" "emittent/$($i.key)" (PageTitle $i.name "obligationer som fonderna äger" "obligationer") `
       "$($i.name): svenska fonder äger obligationer för $(BigSek $i.v2) ($asOf). Se vilka fonder som äger, köper och säljer bolagets obligationer och certifikat." `
@@ -1452,7 +1452,7 @@ if ($ratesLight -and $issLatest) {
     '<div class="grid-2 section-gap">' + (Block "Köpte mest" (Table @("Emittent", "Netto (mkr)", "Innehav (mkr)") @(& $flowRows $rBuys)) "") + (Block "Sålde mest" (Table @("Emittent", "Netto (mkr)", "Innehav (mkr)") @(& $flowRows $rSells)) "") + "</div>" +
     (Block "Största emittenterna" (Table @("Emittent", "Netto (mkr)", "Innehav (mkr)") @(& $flowRows $topIss)) "section-gap") +
     (Source "/#/rantor" "Se marknadsräntor och alla emittenter")
-  $stats = @(@("Fondernas räntepapper", (BigSek $rTot), "#0d1112"), @("Nettoköp $QL", (BigSek $rFlow -Sign), (FlowColor $rFlow)), @("Emittenter", (Num0 @($rIss | Where-Object { $_.v2 -gt 0 }).Count), "#0d1112"))
+  $stats = @(@("Fondernas räntepapper", (BigSek $rTot), "#0f1a16"), @("Nettoköp $QL", (BigSek $rFlow -Sign), (FlowColor $rFlow)), @("Emittenter", (Num0 @($rIss | Where-Object { $_.v2 -gt 0 }).Count), "#0f1a16"))
   $img = Image "rantor" (OgSvg "Räntor" "Vad svenska fonder äger, köper och säljer för räntepapper" $stats "Mest köpta emittenter" $null ((@($rBuys | Select-Object -First 3 | ForEach-Object { $_.name })) -join " · "))
   Page "rantor/" "rantor" "Räntor och räntefonder – vad fonderna äger | Fondinsyn" "Vilka obligationer svenska räntefonder äger, köper och säljer: statsobligationer, bostadsobligationer och företagsobligationer per emittent, plus Riksbankens räntor." `
     $img $content -Crumbs @("Räntor", "rantor/")

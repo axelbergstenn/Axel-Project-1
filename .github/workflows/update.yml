@@ -60,13 +60,12 @@ jobs:
           restore-keys: fi-zips-
 
       # pdftotext läser målbolag, pris och premie ur erbjudandehandlingarna.
-      # rsvg-convert och typsnitten Roboto och Roboto Slab (rubrikerna) ritar delningsbilderna.
+      # rsvg-convert ritar delningsbilderna med sajtens typsnitt (Schibsted Grotesk och Inter Tight ur scripts/fonts).
       - name: Installera verktyg
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq poppler-utils librsvg2-bin
-          sudo apt-get install -y -qq fonts-roboto || echo "Roboto saknas, bilderna använder DejaVu Sans"
-          sudo apt-get install -y -qq fonts-roboto-slab || echo "Roboto Slab saknas, rubrikerna i bilderna använder Roboto"
+          mkdir -p ~/.local/share/fonts && cp scripts/fonts/*.ttf ~/.local/share/fonts/ && fc-cache -f >/dev/null
 
       - name: Hämta fondinnehav från FI
         shell: pwsh

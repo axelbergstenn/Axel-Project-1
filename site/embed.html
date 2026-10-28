@@ -13,21 +13,21 @@
     ?aktie=<namn i adressen eller ISIN>   ?lista=kopta | salda   ?tema=ljust | morkt
 -->
 <style>
-@font-face { font-family: "Roboto"; src: url("assets/fonts/roboto-var.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
-@font-face { font-family: "Roboto Slab"; src: url("assets/fonts/roboto-slab-var.woff2") format("woff2"); font-weight: 500 800; font-display: swap; }
-:root { --bg: #ffffff; --fg: #0d1112; --muted: #5a6569; --line: #e8edee; --pos: #155299; --neg: #d0184d; --brand: #08729b; --soft: #f9fbfb; --dot: #068e6a; --ink: #0d1112; }
-@media (prefers-color-scheme: dark) { :root:not(.light) { --bg: #161c1e; --fg: #f9fbfb; --muted: #9aa6aa; --line: #243133; --pos: #6aa8ef; --neg: #f2557f; --brand: #6cc3e6; --soft: #121719; --dot: #2fbf8f; --ink: #f9fbfb; } }
-:root.dark { --bg: #161c1e; --fg: #f9fbfb; --muted: #9aa6aa; --line: #243133; --pos: #6aa8ef; --neg: #f2557f; --brand: #6cc3e6; --soft: #121719; --dot: #2fbf8f; --ink: #f9fbfb; }
+@font-face { font-family: "Inter Tight"; src: url("assets/fonts/inter-tight-var.woff2") format("woff2"); font-weight: 300 700; font-display: swap; }
+@font-face { font-family: "Schibsted Grotesk"; src: url("assets/fonts/schibsted-grotesk-var.woff2") format("woff2"); font-weight: 400 900; font-display: swap; }
+:root { --bg: #ffffff; --fg: #0f1a16; --muted: #5b6862; --line: #dbe1de; --pos: #1757a6; --neg: #b8322a; --brand: #0a5640; --soft: #f5f7f6; --dot: #0e6b4e; --ink: #0f1a16; }
+@media (prefers-color-scheme: dark) { :root:not(.light) { --bg: #131b18; --fg: #edf2ef; --muted: #8f9c96; --line: #22302a; --pos: #74a9ee; --neg: #f07a6e; --brand: #7fd9b3; --soft: #0f1613; --dot: #3fbf8c; --ink: #edf2ef; } }
+:root.dark { --bg: #131b18; --fg: #edf2ef; --muted: #8f9c96; --line: #22302a; --pos: #74a9ee; --neg: #f07a6e; --brand: #7fd9b3; --soft: #0f1613; --dot: #3fbf8c; --ink: #edf2ef; }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: transparent; }
 :root { color-scheme: light dark; } :root.light { color-scheme: light; } :root.dark { color-scheme: dark; }
-body { font: 14px/1.45 "Roboto", -apple-system, "Segoe UI", Arial, sans-serif; letter-spacing: 0.01em; color: var(--fg); -webkit-font-smoothing: antialiased; }
-.card { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px 10px; overflow: hidden; }
+body { font: 14px/1.5 "Inter Tight", -apple-system, "Segoe UI", Arial, sans-serif; color: var(--fg); -webkit-font-smoothing: antialiased; }
+.card { background: var(--bg); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px 10px; overflow: hidden; }
 .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-.brand { display: inline-flex; align-items: center; gap: 7px; font-family: "Roboto Slab", Georgia, serif; font-weight: 700; font-size: 14px; color: var(--ink); text-decoration: none; }
+.brand { display: inline-flex; align-items: center; gap: 7px; font-family: "Schibsted Grotesk", "Inter Tight", Arial, sans-serif; font-weight: 700; font-size: 14px; color: var(--ink); text-decoration: none; }
 .brand svg { width: 18px; height: 18px; }
 .q { font-size: 12px; color: var(--muted); }
-h1 { margin: 0 0 8px; font-family: "Roboto Slab", Georgia, serif; font-size: 19px; font-weight: 700; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+h1 { margin: 0 0 8px; font-family: "Schibsted Grotesk", "Inter Tight", Arial, sans-serif; font-size: 19px; font-weight: 700; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
 @media (min-width: 560px) { .grid { grid-template-columns: repeat(4, 1fr); } }
 @media (max-width: 299px) { .k small { display: none; } }

@@ -743,7 +743,7 @@
         : highlight("Längsta köpsvit", null, null, '<span class="muted">Laddar…</span>', "")) +
       "</div>";
 
-    return '<h1 class="visually-hidden">Fondinsyn: vad svenska fonder köper och säljer</h1>' + aboutCard() + reportCard() + quickLinks(ds) + watchBlock() + signalModules() + '<div class="section-gap">' + highlights + "</div>" +
+    return '<h1 class="visually-hidden">Fondinsyn: vad svenska fonder köper och säljer</h1>' + reportCard() + aboutCard() + quickLinks(ds) + watchBlock() + signalModules() + '<div class="section-gap">' + highlights + "</div>" +
       '<div class="grid-2 section-gap">' +
       block("Störst nettoköp", "Förändring i antal aktier × kurs vid kvartalsslut. " + termLink("nettokop", "Hur räknas det?"), table("ov-buy", flowCols, buys, st) + '<a class="more" href="#/aktier">Alla aktier</a>') +
       block("Störst nettosälj", "&nbsp;", table("ov-sell", flowCols, sells, st)) +
@@ -5245,7 +5245,7 @@
     else document.documentElement.removeAttribute("data-theme");
     if (!fromSystem) { try { localStorage.setItem("ff-theme", theme); } catch (e) { /* ingen lagring */ } }
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", theme === "dark" ? "#161c1e" : "#ffffff");
+    if (meta) meta.setAttribute("content", theme === "dark" ? "#131b18" : "#ffffff");
     syncThemeBtn();
   }
   syncThemeBtn();
