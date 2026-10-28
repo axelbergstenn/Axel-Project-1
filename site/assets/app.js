@@ -5245,7 +5245,7 @@
     else document.documentElement.removeAttribute("data-theme");
     if (!fromSystem) { try { localStorage.setItem("ff-theme", theme); } catch (e) { /* ingen lagring */ } }
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute("content", theme === "dark" ? "#0a0a0b" : "#ffffff");
+    if (meta) meta.setAttribute("content", theme === "dark" ? "#161c1e" : "#ffffff");
     syncThemeBtn();
   }
   syncThemeBtn();
