@@ -1354,7 +1354,7 @@ def mfn_page(slug, lang="sv"):
             cells = [re.sub(r"\s+", " ", html_text(c)) for c in re.findall(r"<td[^>]*>(.*?)</td>", row, re.S)]
             if len(cells) == 3 and re.match(r"\d{4}-\d\d-\d\d$", cells[0]):
                 out["cal"].append([cells[0], cells[2]])
-    for blk in re.split(r'<div class="short-item compressible"', t)[1:]:
+    for blk in re.split(r'<div class="short-item compressible\s*"', t)[1:]:
         d = re.search(r'compressed-date">([^<]+)', blk)
         a = re.search(r'title-link item-link" href="([^"]+)" title="([^"]*)"', blk)
         if d and a:
@@ -1364,14 +1364,15 @@ def mfn_page(slug, lang="sv"):
 
 
 def mfn_fresh_slugs(since):
-    """Bolag med nya rapporter på MFN sedan ett datum (en sida med de senaste rapporterna från alla nordiska bolag)."""
+    """Nya kvartalsrapporter på MFN sedan ett datum, per bolag: {slug: {publiceringsdatum}} (en sida med de senaste
+    rapporterna från alla nordiska bolag). Datum i stället för adress, eftersom samma rapport finns på två språk."""
     t = mfn_get("/all/s/nordic?" + urllib.parse.urlencode({"filter": '(and(or(.properties.tags@>["sub:report"])))', "limit": 300}))
-    out = set()
-    for blk in re.split(r'<div class="short-item compressible"', t)[1:]:
+    out = {}
+    for blk in re.split(r'<div class="short-item compressible\s*"', t)[1:]:
         d = re.search(r'compressed-date">([^<]+)', blk)
-        a = re.search(r'title-link item-link" href="/(?:[a-z]+/)?a/([^/"]+)/', blk)
-        if d and a and d.group(1).strip() >= since:
-            out.add(a.group(1))
+        a = re.search(r'title-link item-link" href="/(?:[a-z]+/)?a/([^/"]+)/[^"]*" title="([^"]*)"', blk)
+        if d and a and d.group(1).strip() >= since and not NOT_INTERIM.search(html.unescape(a.group(2))):
+            out.setdefault(a.group(1), set()).add(d.group(1).strip())
     return out
 
 
@@ -2242,7 +2243,7 @@ def main():
         rev = (rep.get("fin") or {}).get("rev", [None])[0]
         if rev and st[i].get("mfn"):
             annual[st[i]["mfn"]] = rev
-    fresh = set()
+    fresh = {}
     if state.get("mfnRun") and not out_of_time():
         try:
             fresh = mfn_fresh_slugs(min(state["mfnRun"], (TODAY - dt.timedelta(days=3)).isoformat()))
@@ -2255,10 +2256,14 @@ def main():
         checked = m.get("checked")
         if not checked:
             return 1
-        if checked < today and (slug in fresh or any(checked <= d <= today for d, t in m.get("cal", [])
-                                                     if re.match(r"(kvartalsrapport|bokslutskommuniké|delårsrapport|halvårsrapport)", t, re.I))):
-            return 0  # en ny rapport har kommit
-        return 2 if days_since(checked) > 30 else None
+        # en rapport på MFN som inte är inläst än (även om bolaget redan kollats tidigare samma dag)
+        if fresh.get(slug, set()) - {r["date"] for r in (m.get("reports") or {}).values()}:
+            return 0
+        if checked < today and any(checked <= d <= today for d, t in m.get("cal", [])
+                                   if re.match(r"(kvartalsrapport|bokslutskommuniké|delårsrapport|halvårsrapport)", t, re.I)):
+            return 0  # kalendern säger att en rapport har kommit
+        # annars en gång i veckan, så att kalendern (nästa rapport, utdelning) hålls aktuell
+        return 2 if days_since(checked) > 7 else None
 
     due = sorted((p, s) for s, p in ((s, priority(s)) for s in slugs) if p is not None)
     pages = interims = failures = failed_pages = empty_pages = 0

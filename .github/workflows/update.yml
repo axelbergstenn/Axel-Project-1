@@ -4,6 +4,10 @@ on:
   schedule:
     # Varje dag 05:00 UTC (insynshandel uppdateras dagligen, fonddata kvartalsvis)
     - cron: "0 5 * * *"
+    # Extra körningar 11:00 och 17:00 UTC (12 och 18 svensk vintertid): bolagens kvartalsrapporter, som oftast
+    # kommer 07–08, syns samma dag. Mejl, nyhetsbrev, PDF:er, release och IndexNow görs bara på morgonen.
+    - cron: "0 11 * * *"
+    - cron: "0 17 * * *"
   push:
     branches: [main]
   workflow_dispatch:
@@ -28,7 +32,7 @@ jobs:
   # GitHub stänger av schemalagda körningar i publika repon efter 60 dagar utan aktivitet.
   # Att aktivera arbetsflödet på nytt varje vecka nollställer den räknaren.
   keepalive:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event.schedule == '0 5 * * *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
       - name: Håll det schemalagda arbetsflödet aktivt
@@ -39,6 +43,9 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    env:
+      # "true" i de extra körningarna mitt på dagen och på kvällen
+      MIDDAY: ${{ github.event_name == 'schedule' && github.event.schedule != '0 5 * * *' }}
     steps:
       # Hela historiken, så att datasteget kan göra rebase om någon pushat under körningen
       - uses: actions/checkout@v7
@@ -123,6 +130,7 @@ jobs:
         run: ./scripts/build-perf.ps1
 
       - name: Skapa utkast till nyhetsbrev vid nytt kvartal
+        if: env.MIDDAY != 'true'
         shell: pwsh
         env:
           BUTTONDOWN_API_KEY: ${{ secrets.BUTTONDOWN_API_KEY }}
@@ -135,6 +143,7 @@ jobs:
 
       # Bevakningsmejl via Buttondown. Utkast tills variabeln ALERTS_SEND är "true" (Settings > Variables)
       - name: Skicka bevakningsmejl
+        if: env.MIDDAY != 'true'
         shell: pwsh
         continue-on-error: true
         env:
@@ -177,6 +186,7 @@ jobs:
 
       # Datasetet som release på GitHub, en gång per kvartal (data-2026Q2 osv.)
       - name: Publicera datasetet som release
+        if: env.MIDDAY != 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -191,6 +201,7 @@ jobs:
 
       # Kvartalsrapporterna som PDF (Chrome skriver ut rapportsidorna). Misslyckas det länkar sajten till webbversionen.
       - name: Skriv ut kvartalsrapporterna som PDF
+        if: env.MIDDAY != 'true'
         continue-on-error: true
         run: bash scripts/build-pdf.sh site
 
@@ -218,7 +229,7 @@ jobs:
       # dem, så att träfflistan visar aktuell titel, beskrivning och logga. En gång om dagen, med sidorna i sitemap.
       # Nyckeln ligger som site/fb549666c6643d6c6533a786ad60cc79.txt.
       - name: Meddela sökmotorerna (IndexNow)
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        if: github.event.schedule == '0 5 * * *' || github.event_name == 'workflow_dispatch'
         continue-on-error: true
         run: |
           curl -sf https://www.fondinsyn.se/sitemap.xml -o sitemap.xml
