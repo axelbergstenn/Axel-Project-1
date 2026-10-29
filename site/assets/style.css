@@ -69,9 +69,9 @@
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   --spring: cubic-bezier(0.32, 0.72, 0, 1);
   --tabbar-h: 0px;
-  --s1: #0e6b4e; --s2: #2f6fbf; --s3: #c8752c; --s4: #7a5fc0;
+  --s1: #0e6b4e; --s2: #2f6fbf; --s3: #c8752c; --s4: #5d6f86;
   --cat-bostad: #2f6fbf; --cat-stat: #c8752c; --cat-kommun: #0e6b4e; --cat-bank: #b8921f;
-  --cat-fastighet: #c4577e; --cat-foretag: #7a5fc0; --cat-utland: #c5cec9;
+  --cat-fastighet: #c4577e; --cat-foretag: #5d6f86; --cat-utland: #c5cec9;
   color-scheme: light;
 }
 
@@ -126,7 +126,7 @@
   --shadow-sm: none;
   --shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.6);
   --shadow-lg: 0 18px 40px -16px rgba(0, 0, 0, 0.7);
-  --s1: #3fbf8c; --s2: #74a9ee; --s3: #e39a5c; --s4: #a48ee6;
+  --s1: #3fbf8c; --s2: #74a9ee; --s3: #e39a5c; --s4: #a9b6c8;
   --cat-bostad: #3987e5; --cat-stat: #d95926; --cat-kommun: #199e70; --cat-bank: #c98500;
   --cat-fastighet: #d55181; --cat-foretag: #9085e9; --cat-utland: #646468;
   color-scheme: dark;
@@ -1535,7 +1535,7 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
 /* ---------- Rörelse ---------- */
 
 /* Mjuk övergång mellan sidor */
-#app.fade-in > * { animation: page-in 0.28s ease-out both; animation-delay: calc(min(var(--i, 0), 3) * 30ms); }
+#app.fade-in > * { animation: page-in 0.22s var(--ease) both; animation-delay: calc(min(var(--i, 0), 3) * 20ms); }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 /* Mjuk övergång när man byter mellan ljust och mörkt läge */
 body, .table-wrap, .chart-card, .panel { transition-property: background-color, border-color, color, box-shadow; transition-duration: 0.2s; }
@@ -1612,3 +1612,7 @@ html.pdf *, html.pdf *::before, html.pdf *::after { animation: none !important; 
   .method .actions-row, .method .page-head .actions-row { display: none; }
   .bt-answer { border: 1px solid #e8edee; }
 }
+
+/* Klickbara kort och rader reagerar likadant när man pekar på dem */
+.module, .mgr, .story, .g-item, .ql { transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease), background-color 0.18s var(--ease); }
+.module:hover, .mgr:hover, .story:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }

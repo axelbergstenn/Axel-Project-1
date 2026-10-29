@@ -1807,13 +1807,16 @@
     var list = ft === "buy" ? buys : ft === "sell" ? sells : rows;
     var seg = function (v, label) { return '<button type="button" class="seg-btn" data-fund-trades="' + v + '" aria-pressed="' + (ft === v) + '">' + label + "</button>"; };
     var nameOf = function (r) { return r.href ? '<a href="' + r.href + '">' + esc(r.name) + "</a>" : '<span class="nm-plain">' + esc(r.name) + "</span>"; };
+    var maxD = rows.reduce(function (a, r) { return Math.max(a, Math.abs(r.d)); }, 0);
     var cols = [
       { key: "name", label: "Innehav", align: "l", cls: "name", cell: function (r) {
         return nameOf(r) + (r.sub ? '<span class="sub">' + esc(r.sub) + "</span>" : "") + '<span class="sub show-sm">' + changeLabel(r.s1, r.s2) + " " + esc(r.m) + "</span>";
       }, value: function (r) { return r.name; } },
       { key: "chg", label: "Ändring", align: "l", hideSm: true, cell: function (r) { return changeLabel(r.s1, r.s2); } },
       { key: "n", label: "Antal före och efter", hideSm: true, cell: function (r) { return r.n ? int(r.s1) + " → " + int(r.s2) : "–"; } },
-      { key: "d", label: "Förändring (mkr)", cell: function (r) { return '<span class="' + cls(r.d) + '">' + mkr(r.d, true) + "</span>"; }, value: function (r) { return r.d; } },
+      { key: "d", label: "Förändring (mkr)", cell: function (r) {
+        return '<span class="barcell"><span class="' + cls(r.d) + '">' + mkr(r.d, true) + "</span>" + bar(r.d, maxD, r.d >= 0 ? "pos" : "neg") + "</span>";
+      }, value: function (r) { return r.d; } },
       { key: "m", label: "Typ", align: "l", hideSm: true, cls: "muted", cell: function (r) { return esc(r.m); }, value: function (r) { return r.m; } }
     ];
     return '<section class="block"><div class="block-head"><h2>Köp och sälj ' + quarterLabel(state.q) + '</h2><div class="seg" role="group" aria-label="Typ av affär">' +
@@ -3843,6 +3846,45 @@
     return html;
   }
 
+  // Insiders köp och sälj per vecka (måndag–söndag): köp som staplar uppåt och sälj nedåt, i miljoner kronor
+  function isoWeek(date) {
+    var d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+    return Math.ceil(((d - Date.UTC(d.getUTCFullYear(), 0, 1)) / 864e5 + 1) / 7);
+  }
+  function insiderWeeks(rows, days) {
+    var monday = function (iso) {
+      var d = new Date(iso + "T00:00:00Z");
+      d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+      return d;
+    };
+    // Bara periodens veckor, i följd: affärer som anmälts sent med gamla transaktionsdatum räknas inte, och tomma veckor blir noll
+    var weeks = {}, list = [], since = daysAgo(+days || 90);
+    for (var d = monday(since), end = new Date(); d <= end; d.setUTCDate(d.getUTCDate() + 7)) {
+      var k = d.toISOString().slice(0, 10);
+      list.push(weeks[k] = { w: k, buy: 0, sell: 0, nb: 0, ns: 0 });
+    }
+    rows.forEach(function (r) {
+      if (r.sek == null || (r.kind !== "buy" && r.kind !== "sell") || r.tx < since) return;
+      var e = weeks[monday(r.tx).toISOString().slice(0, 10)];
+      if (!e) return;
+      if (r.kind === "buy") { e.buy += r.sek; e.nb++; } else { e.sell += r.sek; e.ns++; }
+    });
+    if (list.filter(function (e) { return e.nb + e.ns; }).length < 4) return "";
+    var pts = list.map(function (e) { return { w: e.w, value: e.buy / 1e6, neg: -e.sell / 1e6, e: e }; });
+    var weekNo = function (p) { return isoWeek(new Date(p.w + "T00:00:00Z")); };
+    return '<section class="chart-card section-gap"><div class="chart-title">Insiders köp och sälj per vecka <span>mkr, de senaste ' + days + " dagarna</span></div>" +
+      '<div class="legend"><span class="legend-item"><i class="dot" style="background:var(--bar-pos)"></i>Köp</span><span class="legend-item"><i class="dot" style="background:var(--bar-neg)"></i>Sälj</span></div>' +
+      chart(function (node) {
+        FFCharts.columns(node, pts, { height: 200, ticks: 4, barMax: 20,
+          xLabel: function (p) { return "v. " + weekNo(p); },
+          tip: function (p) {
+            return "<b>Vecka " + weekNo(p) + "</b><br>" + '<span class="pos">Köp ' + bigSek(p.e.buy) + "</span> (" + int(p.e.nb) + ")<br>" +
+              '<span class="neg">Sälj ' + bigSek(p.e.sell) + "</span> (" + int(p.e.ns) + ")";
+          } });
+      }) + "</section>";
+  }
+
   function viewInsider() {
     document.title = "Insynshandel – Fondinsyn";
     var head = '<div class="page-head"><h1>Insynshandel</h1><p class="meta lead">Köp och sälj som vd:ar, styrelseledamöter och andra i ledande ställning har gjort i sina egna bolag. ' +
@@ -3879,7 +3921,7 @@
         insiderFilter.own ? "bara egna affärer" : closeNote(sum(sells30), sum(closeOf(sells30))).replace(/^, /, "")) +
       highlight("Mest köpt av insiders", top[0] && top[0].r.issuer, top[0] && ds.byIsin[top[0].r.isin] ? stockHref(ds.byIsin[top[0].r.isin]) : null,
         top[0] ? '<span class="pos">' + bigSek(top[0].net, true) + "</span>" : "", top[0] ? int(top[0].nBuyers) + (top[0].nBuyers === 1 ? " person" : " personer") + ", " + (yearMode ? "12 månader" : I.days + " dagar") + closeNote(top[0].net, top[0].close) : "") +
-      "</div>";
+      "</div>" + insiderWeeks(rowsAll, I.days);
 
     var fundFlow = function (e) { var s = ds.byIsin[e.r.isin]; return s && s.netFlow != null ? s.flow : null; };
     var compCols = function (sold) {
@@ -4194,7 +4236,7 @@
     var sells = cont.filter(function (s) { return s.flow < 0; }).sort(function (a, b) { return a.flow - b.flow; });
     var news = cont.filter(function (s) { return s.nNew > 0; }).sort(function (a, b) { return b.nNew - a.nNew; });
     var t = ds.totals, net = t.buy + t.sell;
-    document.title = "Fondinsyn " + quarterLabel(state.q) + " · " + Word.toLowerCase() + " – kvartalsrapport";
+    document.title = "Kvartalsrapport " + quarterLabel(state.q) + ", " + Word.toLowerCase() + " – Fondinsyn";
 
     // Sektorer (och länder för utländska aktier) summeras ur kvartalets nettoköp
     var sum = function (keyFn) {
@@ -4393,9 +4435,13 @@
     var trades = Object.keys(byStock).map(function (k) { return byStock[k]; });
     var buys = trades.filter(function (t) { return t.d > 0; }).sort(function (a, b) { return b.d - a.d; });
     var sells = trades.filter(function (t) { return t.d < 0; }).sort(function (a, b) { return a.d - b.d; });
+    // Staplarna i köp- och säljtabellen har samma skala, så att storlekarna går att jämföra mellan dem
+    var maxTrade = Math.max(buys.length ? buys[0].d : 0, sells.length ? -sells[0].d : 0);
     var tradeCols = [
       { key: "s", label: "Aktie", align: "l", cls: "name", cell: function (t) { return nameCell(stockHref(t.s), t.s.name, t.n + (t.n === 1 ? " fond" : " fonder")); } },
-      { key: "d", label: "Netto (mkr)", cell: function (t) { return '<span class="' + cls(t.d) + '">' + mkr(t.d, true) + "</span>"; } },
+      { key: "d", label: "Netto (mkr)", cell: function (t) {
+        return '<span class="barcell"><span class="' + cls(t.d) + '">' + mkr(t.d, true) + "</span>" + bar(t.d, maxTrade, t.d >= 0 ? "pos" : "neg") + "</span>";
+      } },
       { key: "n", label: "Fonder", hideSm: true, cell: function (t) { return int(t.n); } }
     ];
     var fundCols = [

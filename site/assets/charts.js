@@ -116,6 +116,14 @@
     });
   }
 
+  // x-etiketter från opts.xLabel (t.ex. veckonummer), glesare när staplarna står tätt; den sista visas alltid
+  function xLabels(g, points, xAt, y, band, fn) {
+    var every = Math.max(1, Math.ceil(44 / Math.max(1, band))), last = points.length - 1;
+    points.forEach(function (p, i) {
+      if ((last - i) % every === 0) text(g, xAt(i), y, fn(p, i), "c-axis", "middle");
+    });
+  }
+
   function grid(ctx, m, scale, y) {
     var g = el("g", {}, ctx.svg);
     scale.ticks.forEach(function (t) {
@@ -126,11 +134,12 @@
     return g;
   }
 
-  // Kolumner som kan vara positiva eller negativa (nettoköp per kvartal)
+  // Kolumner som kan vara positiva eller negativa (nettoköp per kvartal).
+  // Med p.neg ritas dessutom en stapel nedåt i samma kolumn (t.ex. köp uppåt och sälj nedåt samma vecka).
   function columns(container, points, opts) {
     opts = opts || {};
     var ctx = setup(container, opts.height || 220);
-    var vals = points.map(function (p) { return p.value || 0; });
+    var vals = points.map(function (p) { return p.value || 0; }).concat(points.map(function (p) { return p.neg || 0; }));
     var scale = niceTicks(Math.min(0, Math.min.apply(null, vals)), Math.max(0, Math.max.apply(null, vals)), opts.ticks || 4);
     var m = { t: opts.label ? 24 : 10, r: 8, b: 26, l: axisWidth(scale) };
     var ih = ctx.h - m.t - m.b, iw = ctx.w - m.l - m.r;
@@ -150,6 +159,14 @@
       if (ctx.fresh) a.style = "animation-delay:" + Math.round(i * Math.min(40, 600 / points.length)) + "ms";
       return el("path", a, g);
     });
+    var negBars = points.map(function (p, i) {
+      if (!p.neg) return null;
+      var d = barPath(xAt(i) - bw / 2, y(0), y(p.neg), bw);
+      if (!d) return null;
+      var a = { d: d, "class": "c-bar c-neg" };
+      if (ctx.fresh) a.style = "animation-delay:" + Math.round(i * Math.min(40, 600 / points.length)) + "ms";
+      return el("path", a, g);
+    });
     // Värdet ovanför den markerade stapeln
     if (opts.label) {
       points.forEach(function (p, i) {
@@ -162,16 +179,20 @@
     // nollinjen ovanpå staplarna
     var z = Math.round(y(0)) + 0.5;
     el("line", { x1: m.l, x2: ctx.w - m.r, y1: z, y2: z, "class": "c-zero" }, ctx.svg);
-    yearLabels(el("g", {}, ctx.svg), points, xAt, ctx.h - 6, ctx.w);
+    if (opts.xLabel) xLabels(el("g", {}, ctx.svg), points, xAt, ctx.h - 6, band, opts.xLabel);
+    else yearLabels(el("g", {}, ctx.svg), points, xAt, ctx.h - 6, ctx.w);
 
     var hit = el("rect", { x: m.l, y: 0, width: iw, height: ctx.h, fill: "transparent" }, ctx.svg);
     var on = -1;
+    var mark = function (i, add) {
+      [bars[i], negBars[i]].forEach(function (b) { if (b) b.classList[add ? "add" : "remove"]("on"); });
+    };
     hit.addEventListener("pointermove", function (e) {
       var r = ctx.svg.getBoundingClientRect();
       var i = Math.max(0, Math.min(points.length - 1, Math.floor((e.clientX - r.left - m.l) / band)));
       if (i !== on) {
-        if (bars[on]) bars[on].classList.remove("on");
-        if (bars[i]) bars[i].classList.add("on");
+        if (on >= 0) mark(on, false);
+        mark(i, true);
         on = i;
       }
       g.classList.add("hovering");
@@ -179,7 +200,7 @@
     });
     hit.addEventListener("pointerleave", function () {
       g.classList.remove("hovering");
-      if (bars[on]) bars[on].classList.remove("on");
+      if (on >= 0) mark(on, false);
       on = -1;
       hideTip(ctx);
     });
