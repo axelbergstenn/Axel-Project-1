@@ -706,10 +706,10 @@
 ["2026-03-23","2026-08-02","Lappland Guldprospektering AB","SE0022447207","Daniel Gecer","Styrelseledamot",1,"Förvärv",456,154,"SEK",70224],
 ["2026-03-12","2026-08-02","Lappland Guldprospektering AB","SE0022447207","Daniel Gecer","Styrelseledamot",1,"Förvärv",362,205.66,"SEK",74449],
 ["2026-03-11","2026-08-02","Lappland Guldprospektering AB","SE0022447207","Daniel Gecer","Styrelseledamot",1,"Förvärv",638,203,"SEK",129514],
-["2026-07-31","2026-08-01","Africa Resources AB (publ)","SE0009496482","Peter Karpinski","Styrelseledamot",0,"Förvärv",150000,0.1448,"SEK",21720],
-["2026-07-31","2026-08-01","Africa Resources AB (publ)","SE0009496482","Peter Karpinski","Styrelseledamot",0,"Förvärv",118700,0.141,"SEK",16737],
-["2026-07-31","2026-08-01","K-Fast Holding AB","SE0016101679","Magnus Persson","Annan ledande befattningshavare",0,"Förvärv",2930,12,"SEK",35160],
 ["2026-07-31","2026-08-01","C-RAD AB","SE0002016352","Linda Maria Elisabet Eixmann Frölén","Ekonomichef/finanschef/finansdirektör",0,"Förvärv",2000,36.7,"SEK",73400],
-["2026-07-30","2026-08-01","ABB Ltd","CH0012221716","Peter Terwiesch","Annan medlem i bolagets administrations-, lednings- eller kontrollorgan",0,"Avyttring",10000,77.3,"CHF",null],
-["2026-07-30","2026-08-01","C-RAD AB","SE0002016352","Linda Maria Elisabet Eixmann Frölén","Ekonomichef/finanschef/finansdirektör",0,"Avyttring",2000,36.6,"SEK",73200]
+["2026-07-31","2026-08-01","K-Fast Holding AB","SE0016101679","Magnus Persson","Annan ledande befattningshavare",0,"Förvärv",2930,12,"SEK",35160],
+["2026-07-31","2026-08-01","Africa Resources AB (publ)","SE0009496482","Peter Karpinski","Styrelseledamot",0,"Förvärv",118700,0.141,"SEK",16737],
+["2026-07-31","2026-08-01","Africa Resources AB (publ)","SE0009496482","Peter Karpinski","Styrelseledamot",0,"Förvärv",150000,0.1448,"SEK",21720],
+["2026-07-30","2026-08-01","C-RAD AB","SE0002016352","Linda Maria Elisabet Eixmann Frölén","Ekonomichef/finanschef/finansdirektör",0,"Avyttring",2000,36.6,"SEK",73200],
+["2026-07-30","2026-08-01","ABB Ltd","CH0012221716","Peter Terwiesch","Annan medlem i bolagets administrations-, lednings- eller kontrollorgan",0,"Avyttring",10000,77.3,"CHF",null]
 ]
