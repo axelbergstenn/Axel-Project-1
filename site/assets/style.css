@@ -841,6 +841,11 @@ a.btn { color: var(--fg); }
 .know-tiles.in-card { margin-top: 0; }
 .know-tiles.in-card .know-tile { box-shadow: none; background: var(--bg-subtle); border-color: transparent; }
 .kq-link { margin: 14px 0 0; font-size: 13.5px; overflow-wrap: anywhere; }
+/* Substansvärde: kurs mot substansvärde och en förklaring för nybörjare */
+.nav-card .nav-bars { margin: 0 0 16px; max-width: 560px; }
+.nav-explain { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 13.5px; line-height: 1.55; color: var(--fg-soft); }
+.nav-explain p { margin: 0 0 8px; max-width: 80ch; }
+.nav-explain p:last-child { margin-bottom: 0; color: var(--fg-muted); }
 .know-quote { margin: 16px 0 0; padding: 14px 18px; border-left: 3px solid var(--brand); background: var(--bg-subtle); border-radius: 0 var(--radius) var(--radius) 0; }
 .know-quote p { margin: 0; font-family: var(--display); font-size: 16px; line-height: 1.5; color: var(--fg); max-width: 70ch; }
 .know-quote footer { margin-top: 4px; font-size: 12.5px; color: var(--fg-muted); }

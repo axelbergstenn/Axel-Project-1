@@ -11,6 +11,9 @@ Bara bolagens egna rapporter och pressmeddelanden, utan nycklar:
     resultat och resultat per aktie för senaste kvartalet och samma kvartal året innan), pressmeddelandet ger vd:ns
     namn och kommentar och bolagets egen beskrivning ("Om oss"). MFN:s kalender ger nästa rapport, årsstämman och
     utdelningarna, och bolagssidan grundår och huvudkontor.
+  - Investmentbolagens substansvärde per aktie och fastighetsbolagens EPRA NRV och belåningsgrad, ur samma
+    kvartalsrapporter. Substansrabatten räknas mot kursen vid kvartalsslut (fondernas rapporter till FI) för den
+    rapport som gäller samma dag, eller tas ur rapporten om bolaget själv anger den.
 
 Tabellerna ser olika ut hos olika bolag, så allt kontrolleras innan det används. Affärsområden och länder måste
 gå ihop med bolagets totala omsättning (inom 10 %). Kvartalets siffror måste gå att hitta i pressmeddelandet
@@ -52,6 +55,8 @@ except ImportError:
 # Höjs när tolkningen av rapporterna ändras, så att alla rapporter läses om
 PARSER_VERSION = 7
 INTERIM_VERSION = 5  # samma sak för kvartalsrapporterna
+NAV_VERSION = 1      # substansvärdet i investment- och fastighetsbolagens rapporter (läses om utan att resten läses om)
+NAV_INDUSTRIES = {"Investeringar", "Förvaltning"}  # MFN:s branscher för investmentbolag och fastighetsbolag
 UA = "Fondinsyn/1.0 (https://www.fondinsyn.se)"
 TODAY = dt.date.today()
 
@@ -1561,8 +1566,66 @@ def read_interim(item, annual_rev):
     if about:
         res["about"] = about
     interim_numbers(item, body, annual_rev, res)
-    res.update(report_text_fields(page, body_html, body, res.get("q"), pdf_text(res.pop("_pdf", None))))
+    full = pdf_text(res.pop("_pdf", None))
+    res.update(report_text_fields(page, body_html, body, res.get("q"), full))
+    read_nav(item, body, full, res)
     return res
+
+
+def nav_period(item, q, body):
+    """Dagen då rapportens substansvärde gäller: periodens sista dag, ur rubriken ("januari–september") eller
+    kvartalssiffrorna. Utan månad i rubriken, och när pressmeddelandet bara nämner andra månadsskiften (brutna
+    räkenskapsår: Svolders tredje kvartal slutar 31 maj), gäller det månadsskifte som nämns oftast."""
+    title = (item.get("title") or "").lower()
+    if MONTH_RANGE.search(title) or re.search(r"\b(?:q|kv\.?|kvartal)\s?[1-4]\b|(första|andra|tredje|fjärde) kvartalet|halvårsrapport", title):
+        end = period_end(item["date"], None, item["title"])
+        if end:
+            return end
+    end = None
+    if q and q.get("p"):
+        y, m = int(q["p"][:4]), int(q["p"][5:7])
+        end = dt.date(y, m, 28) + dt.timedelta(days=4)
+        end -= dt.timedelta(days=end.day)
+    end = end or period_end(item["date"], None, item["title"])
+    pub, counts = dt.date.fromisoformat(item["date"]), {}
+    for d, mon, y in re.findall(r"\b(\d{1,2})\s+(%s)\s+(\d{4})\b" % "|".join(SV_MONTHS), body, re.I):
+        try:
+            x = dt.date(int(y), SV_MONTHS.index(mon.lower()) + 1, int(d))
+        except ValueError:
+            continue
+        if (x + dt.timedelta(days=1)).day == 1 and 3 <= (pub - x).days <= 120:
+            counts[x] = counts.get(x, 0) + 1
+    if not counts or end in counts:
+        return end
+    return max(counts, key=lambda x: (counts[x], x))
+
+
+def read_nav(item, body, full, res, full_url=None):
+    """Substansvärdet ur rapporten (se nav_figures). Står det inte i PDF:en med resultaträkningen (Balder lägger
+    bara en kort sammanfattning där) prövas rapportens andra PDF:er, men bara om pressmeddelandet nämner det."""
+    end = nav_period(item, res.get("q"), body)
+    res["navv"] = NAV_VERSION
+    nav = nav_figures(body, full, end)
+    if (not nav or "v" not in nav) and pdfium and NAV_WORD.search(body):
+        for url in item["pdfs"][:3]:
+            if url == (full_url or res.get("pdf")) and full:
+                continue
+            try:
+                b = cached_fetch(url, "application/pdf,*/*")
+            except Exception as e:
+                if network_error(e):
+                    raise
+                continue
+            other = nav_figures(body, pdf_text(b), end)
+            if other and "v" in other:
+                nav = dict(nav or {}, **other)
+                nav["pdf"] = url
+                break
+    if nav and end:
+        nav["end"] = end.isoformat()
+        res["nav"] = nav
+    else:
+        res.pop("nav", None)
 
 
 def pdf_text(pdf_bytes):
@@ -1592,6 +1655,18 @@ def refresh_text_fields(r, url):
     h = report_headline(r.get("title"), body)
     if h:
         r["headline"] = h
+    refresh_nav(r, url)
+
+
+def refresh_nav(r, url):
+    """Läser bara om substansvärdet (efter att NAV_VERSION höjts), med pressmeddelandet och rapportens PDF:er."""
+    page = mfn_get(url, keep=True)
+    m = re.search(r'<div class="content s-[a-z]+">(.*?)</article>', page, re.S)
+    body = html_text(m.group(1) if m else "")
+    # rapportens PDF:er står som länkar på pressmeddelandet; den med resultaträkningen först
+    pdfs = list(dict.fromkeys([p for p in (r.get("pdf"),) if p] + re.findall(r'<a[^>]+href="(https://[^"]+\.pdf)"', page, re.I)))[:3]
+    full = pdf_text(cached_fetch(pdfs[0], "application/pdf,*/*")) if pdfs and pdfium else None
+    read_nav({"url": url, "date": r["date"], "title": r["title"], "pdfs": pdfs}, body, full, r, pdfs[0] if pdfs else None)
 
 
 def interim_numbers(item, body, annual_rev, res):
@@ -1725,6 +1800,203 @@ def bank_figures(body):
                 v = float(m.group(1).replace(",", "."))
         if v is not None and lo <= v <= hi:
             out[key] = v
+    return out or None
+
+
+# ---------- Substansvärde, substansrabatt och belåningsgrad (investmentbolag och fastighetsbolag) ----------
+
+SV_MONTHS = ["januari", "februari", "mars", "april", "maj", "juni", "juli", "augusti", "september", "oktober", "november", "december"]
+TEXT_DATE = re.compile(r"\b(\d{1,2})\s+(%s)\b" % "|".join(SV_MONTHS), re.I)
+NRV_WORD = r"epra nrv|långsiktig[ta]? substansvärde(?:t|n)?(?![a-zåäö])|net reinstatement value"
+NAV_WORD = re.compile(r"%s|(?:justerat |justerade |rapporterat |rapporterade )?substansvärde(?:t|n)?(?![a-zåäö])" % NRV_WORD, re.I)
+SH_NUM = r"\d{1,3}(?:[  ]\d{3})*(?:,\d{1,2})?"
+PER_SHARE = r"(?:per|/)\s*(?:[a-d]-\s*och\s*[a-d]-)?(?:stam)?aktie"
+# "411 kr per aktie", "59,40 (57,20) SEK per aktie", "147 kr (146) per aktie"
+NAV_AMOUNT = re.compile(r"(?P<v>%s)\s*(?:\(\s*[-−–]?%s\s*\)\s*)?(?:kr|kronor|sek)\s*(?:\(\s*[-−–]?%s\s*\)\s*)?%s" % (SH_NUM, SH_NUM, SH_NUM, PER_SHARE), re.I)
+# "EPRA NRV per aktie … till 101,59 kr", "Substansvärde per A- och B-aktie uppgick till 144,49 kronor"
+NAV_AFTER = re.compile(r"\s*(?:\([\w ]{2,12}\)\s*)?%s" % PER_SHARE, re.I)
+NAV_LATE = re.compile(r"(?P<v>%s)\s*(?:kr|kronor|sek)\b" % SH_NUM, re.I)
+# en förändring, inte själva värdet ("ökade med 74 kronor per aktie", "motsvarande 12 kr")
+NAV_CHANGE = re.compile(r"(ökade|ökat|ökning|minskade|minskat|minskning|steg|sjönk|förändring\w*|motsvarande|med|utdelning\w*(?: om| på)?|ca\.?|cirka|drygt|nästan)\s*[+−–-]?\s*$", re.I)
+LTV_TEXT = re.compile(r"belåningsgrad\w*(?:\s+(?:uppgick till|uppgår till|till|var|om|blev|på|landade på))?\s+(\d{1,2}(?:,\d{1,2})?)\s*(?:procent|%)(?!\s*[-–])", re.I)
+DISC_TEXT = re.compile(r"(?P<w>rabatt|premie)\w*\s+(?:(?:om|på|var|uppgick till|till|motsvarande)\s+)?(?P<v>\d{1,2}(?:,\d)?)\s*(?:procent|%)(?!\s*[-–])", re.I)
+
+
+def nav_label(word):
+    w = word.lower()
+    if "nrv" in w or "reinstatement" in w:
+        return "nrv", "EPRA NRV"
+    if w.startswith("långsiktig"):
+        return "nrv", "Långsiktigt substansvärde"
+    if w.startswith("justera"):
+        return "nav", "Justerat substansvärde"
+    if w.startswith("rapportera"):
+        return "nav", "Rapporterat substansvärde"
+    return "nav", "Substansvärde"
+
+
+def sentences(text):
+    text = re.sub(r"[￾­]\s*", "", text)
+    # PDF:ens radbrytningar mitt i en mening ("… uppgick till\n156,6 mdkr (631 kronor per aktie)")
+    text = re.sub(r"(?<![.:!?])[ \t]*\n(?=[a-zåäö(\d])", " ", text)
+    out = []
+    for part in re.split(r"\n|[•■◼▪●]", text):
+        out += [s for s in re.split(r"(?<=[a-zåäö0-9)%])[.!?]\s+(?=[A-ZÅÄÖ])", part) if s.strip()]
+    return out
+
+
+def half_step(s):
+    """Halva avrundningssteget för ett tal som "411" (0,5) eller "107,75" (0,005)."""
+    return 0.5 * 10 ** -len(s.split(",")[1]) if "," in s else 0.5
+
+
+def nav_in_text(text, end):
+    """Substansvärdet per aktie i löptext: [(värde, halvt avrundningssteg, slag, etikett)]. Bara meningar där värdet
+    gäller periodens slut: står ett annat datum först ("den 19 augusti", "den 11 september") gäller det inte perioden."""
+    out = []
+    for s in sentences(text):
+        for lm in NAV_WORD.finditer(s):
+            rest = s[lm.end():lm.end() + 220]
+            m = NAV_AMOUNT.search(rest)
+            if not m and NAV_AFTER.match(rest):
+                m = NAV_LATE.search(rest, NAV_AFTER.match(rest).end())
+            if not m or NAV_CHANGE.search(rest[max(0, m.start() - 28):m.start()]):
+                continue
+            upto = s[:lm.end() + m.end() + 40]
+            dates = TEXT_DATE.findall(upto)
+            if dates and (not end or (int(dates[0][0]), SV_MONTHS.index(dates[0][1].lower()) + 1) != (end.day, end.month)):
+                break
+            v = pdf_number(m.group("v"), ",")
+            if v and v > 0:
+                out.append((v, half_step(m.group("v")), ) + nav_label(lm.group(0)))
+            break  # bara första värdet efter ordet: resten är jämförelser ("jämfört med 267,2 kr vid årsskiftet")
+    return out
+
+
+def clean_row(line):
+    """Fotnoter bort ur en nyckeltalsrad: "Substansvärde per aktie, kronor1, 2) 94 96" -> "Substansvärde per aktie, kronor 94 96"."""
+    l = re.sub(r"[*¹²³⁴⁵⁶⁷⁸⁹⁰’]+", "", line.replace("−", "-").replace("–", "-"))
+    l = re.sub(r"(?<=[a-zåäö%)])\d(?:,\s*\d)*\)", " ", l)
+    l = re.sub(r"(?<=\s)\d(?:,\s*\d)*\)(?=\s)", " ", l)
+    return re.sub(r"\s+", " ", l).strip()
+
+
+def table_rows(text):
+    """Nyckeltalsrader i PDF:en: [(etikett, [tal som text])]. Första talet är nästan alltid perioden."""
+    out = []
+    for line in text.split("\n"):
+        m = re.match(r"^(?P<lab>[A-Za-zÅÄÖåäöÉé][^\d]*?)\s+(?P<rest>[-(]?\d[\d ,.%()-]*)$", clean_row(line))
+        if m:
+            out.append((m.group("lab").strip(" ,:"), m.group("rest").split()))
+    return out
+
+
+def first_value(tokens, want_pct=False):
+    if want_pct and not tokens[0].endswith("%"):
+        tokens = [t for t in tokens if t.endswith("%")] or tokens
+    v = pdf_number(tokens[0].rstrip("%").strip("()"), ",") if tokens else None
+    return v, tokens[0].rstrip("%") if tokens else ""
+
+
+def nav_figures(body, full, end):
+    """Substansvärde per aktie (eller EPRA NRV för fastighetsbolag), substansrabatten och belåningsgraden ur
+    kvartalsrapporten. Ett värde sparas bara om det går att bekräfta:
+      - "pm": samma tal står i pressmeddelandet och i PDF:en,
+      - "text": samma tal står i rapportens nyckeltalstabell och i rapportens löptext,
+      - "calc": tabellens substansvärde, aktiekurs och rabatt går ihop med varandra.
+    Rabatten som rapporten själv anger sparas bara om den stämmer med rapportens egen aktiekurs (eller, senare,
+    med kvartalskursen från fonderna samma dag)."""
+    if not full or not (NAV_WORD.search(body) or NAV_WORD.search(full) or re.search(r"belåningsgrad", full, re.I)):
+        return None
+    full = re.sub(r"[￾­]\s*", "", full)
+    rows = table_rows(full)
+    nav_rows, price, disc_rows = [], None, []
+    for lab, toks in rows:
+        low = lab.lower()
+        lm = NAV_WORD.search(low)
+        # bara kronor: Cibus och Eastnine redovisar i euro, och kursen från fonderna är i kronor
+        if lm and lm.start() <= 12 and re.search(r"%s|\b(kr|kronor|sek)\b" % PER_SHARE, low) and \
+                not re.search(r"förändring|tillväxt|rabatt|premie|avkastning|mkr|mnkr|msek|mdkr|sek ?mn|sek ?m\b|miljon|miljard|\bnta\b|\bndv\b|kurs|%|utdelning|"
+                              r"\b(eur|euro|usd|nok|dkk)\b", low):
+            v, s = first_value(toks)
+            if v and v > 0:
+                nav_rows.append((v, half_step(s)) + nav_label(lm.group(0)))
+        elif price is None and re.match(r"(aktiens )?(aktiekurs|börskurs|senaste betalkurs)(en)?\b", low) and re.search(r"\b(kr|kronor|sek)\b", low) and \
+                not re.search(r"%|procent|förändring|utveckling|relation|genomsnitt|högsta|lägsta", low):
+            price = first_value(toks)[0]
+        elif re.search(r"rabatt|premie", low) and re.search(r"substans|nav\b|nrv", low) and not re.search(r"likvid|justering", low):
+            v = first_value(toks, True)[0]
+            if v is not None and abs(v) < 95:
+                disc_rows.append(v)
+        elif re.search(r"(börskurs|aktiekurs)\w*\s*(i % av|i procent av|/)\s*(epra nrv|substansvärde|långsiktigt substansvärde)", low):
+            v = first_value(toks, True)[0]
+            if v and 5 < v < 500:
+                disc_rows.append(round(v - 100, 2))
+    pm = nav_in_text(body, end)
+    in_pdf = nav_in_text(full, end)
+    # Bekräftelsen: samma värde två gånger, och då det mest exakta (tabellens 107,75 framför pressmeddelandets 108)
+    nav = None
+    close = lambda a, b: abs(a[0] - b[0]) <= max(a[1], b[1]) + 1e-9
+    for src, via in ((pm, "pm"), (in_pdf, "text")):
+        if not src:
+            continue
+        first = src[0]
+        others = nav_rows + (in_pdf if via == "pm" else [])
+        match = [x for x in others if close(first, x) and x[2] == first[2]]
+        if match:
+            best = min(match + [first], key=lambda x: x[1])
+            nav = {"k": first[2], "lbl": first[3], "v": best[0], "via": via}
+            break
+    if nav is None and len(nav_rows) >= 2:
+        # "tabeller": samma värde först i två olika nyckeltalstabeller (Castellum: "EPRA NRV, kr/aktie 169 160 …" och
+        # "EPRA NRV, kr 169 160 160 157 …"), så att kolumnen inte är fel vald
+        first = nav_rows[0]
+        if any(close(first, x) and x[2] == first[2] for x in nav_rows[1:]):
+            nav = {"k": first[2], "lbl": first[3], "v": first[0], "via": "tabeller"}
+    disc = None
+    if price and nav_rows and disc_rows:
+        calc = (price / nav_rows[0][0] - 1) * 100
+        disc = next((d for d in disc_rows if abs(d - calc) <= 1.5), next((-d for d in disc_rows if d > 0 and abs(-d - calc) <= 1.5), None))
+        if nav is None and disc is not None:
+            nav = {"k": nav_rows[0][2], "lbl": nav_rows[0][3], "v": nav_rows[0][0], "via": "calc"}
+    out = {}
+    if nav:
+        out.update(nav)
+        if disc is None and price and disc_rows and abs(price / nav["v"] - 1) < 5:
+            calc = (price / nav["v"] - 1) * 100
+            disc = next((d for d in disc_rows if abs(d - calc) <= 1.5), None)
+        if disc is not None and price:
+            out["disc"] = disc
+            out["discVia"] = "pris"
+        elif disc is None:
+            # Rabatten bara i text ("värderades till en rabatt om 3,2 procent i förhållande till substansvärdet"),
+            # eller i tabellen utan kurs: kontrolleras mot fondernas kvartalskurs om den gäller samma dag
+            for s in sentences(full) + sentences(body):
+                if NAV_WORD.search(s) or re.search(r"substans", s, re.I):
+                    m = DISC_TEXT.search(s)
+                    if m and not re.search(r"(ca\.?|cirka|omkring|intervallet)\s*$", s[:m.start("v")], re.I):
+                        disc = float(m.group("v").replace(",", ".")) * (-1 if m.group("w").lower() == "rabatt" else 1)
+                        break
+            if disc is None and disc_rows:
+                disc = disc_rows[0]
+            if disc is not None:
+                out["disc"] = disc
+    # Belåningsgraden: nyckeltalsraden ("Belåningsgrad, % 37,4 36,5") och samma tal i texten
+    ltv_rows = []
+    for lab, toks in rows:
+        low = lab.lower()
+        if re.match(r"belåningsgrad(en)?( fastighet(er)?| vid periodens (utgång|slut))?,?\s*(%|\(%\)|procent)?$", low):
+            v = first_value(toks)[0]
+            if v and 5 <= v <= 85:
+                ltv_rows.append((0 if low.startswith("belåningsgrad,") or low in ("belåningsgrad", "belåningsgrad %", "belåningsgrad (%)") else 1, v))
+    ltv_rows.sort(key=lambda x: x[0])
+    for text, via in ((body, "pm"), (full, "text")):
+        found = [float(m.group(1).replace(",", ".")) for s in sentences(text) for m in [LTV_TEXT.search(s)] if m]
+        hit = next((v for v in found if any(abs(v - r[1]) < 1e-9 for r in ltv_rows)), None)
+        if hit is not None:
+            out["ltv"] = hit
+            out["ltvVia"] = via
+            break
     return out or None
 
 
@@ -2123,6 +2395,43 @@ def sane_quarter(q, annual):
     return q
 
 
+def nav_doc(reps, prices, name):
+    """Substansvärdet på aktiesidan: det senaste ur rapporterna, rabatten som rapporten själv anger (om den stämmer
+    med en kurs samma dag) och rabatten räknad mot fondernas kvartalskurs för den rapport som gäller samma dag.
+    reps är bolagets rapporter, nyast först, och prices {kvartalsslut: (kvartal, kurs)} för just den här aktien."""
+    if re.search(r"(\bser\.?\s*|[\s-])d$|\bpref\b|preferens", (name or "").strip(), re.I):
+        return None  # D-aktier och preferensaktier har en fast utdelning, inte en del av substansvärdet per stamaktie
+    found = [(u, r) for u, r in reps if (r.get("nav") or {}).get("end") and days_since(r["date"]) <= 200]
+    if not found:
+        return None
+    u, r = found[0]
+    n = r["nav"]
+    out = {"end": n["end"], "date": r["date"], "url": u, "title": r["title"]}
+    if n.get("ltv") is not None:
+        out["ltv"], out["ltvVia"] = n["ltv"], n["ltvVia"]
+    latest_px = prices[max(prices)][1] if prices else None
+    if "v" in n and (not latest_px or 0.2 <= latest_px / n["v"] <= 5):
+        out.update({"k": n["k"], "lbl": n["lbl"], "v": n["v"], "via": n["via"]})
+        if n.get("disc") is not None:
+            fi = prices.get(n["end"])
+            if n.get("discVia") == "pris" or (fi and abs((fi[1] / n["v"] - 1) * 100 - n["disc"]) <= 1.5):
+                out["disc"] = n["disc"]
+        same = [(u2, r2["nav"], r2["date"]) for u2, r2 in found if r2["nav"].get("v") and r2["nav"].get("lbl") == n["lbl"]]
+        # Kvartalskursen (fondernas rapporter till FI) mot substansvärdet samma dag
+        for u2, n2, d2 in same:
+            if n2["end"] in prices:
+                qid, px = prices[n2["end"]]
+                if 0.2 <= px / n2["v"] <= 5:
+                    out["calc"] = {"q": qid, "end": n2["end"], "px": px, "v": n2["v"], "disc": round((px / n2["v"] - 1) * 100, 1), "url": u2, "date": d2}
+                break
+        hist = {}
+        for _, n2, _ in same:
+            hist.setdefault(n2["end"], n2["v"])
+        if len(hist) >= 2:
+            out["hist"] = sorted([e, v] for e, v in hist.items())
+    return out if "v" in out or "ltv" in out else None
+
+
 def sane_segments(seg):
     """Affärsområden ur kvartalsrapporten som går att visa: riktiga namn (inte "Miljoner euro", "Kvartal" eller
     flera rubriker som klistrats ihop) och avstavningar ihopsatta ("Commun- ications")."""
@@ -2225,6 +2534,7 @@ def main():
     ap.add_argument("--interim-depth", type=int, default=4, help="så många av de senaste kvartalsrapporterna läses per bolag")
     ap.add_argument("--reinterim", action="store_true", help="läs om sparade kvartalsrapporter ur --raw-cache (efter att INTERIM_VERSION höjts)")
     ap.add_argument("--retext", action="store_true", help="läs bara om pressmeddelandenas text ur --raw-cache (snabbt, utan PDF:erna)")
+    ap.add_argument("--max-nav", type=int, default=80, help="högst så många rapporter per körning läses om för substansvärdet")
     ap.add_argument("--health", default=None, help="fil där hälsokollen sparas (problem blir ett ärende på GitHub)")
     args = ap.parse_args()
     global FILE_CACHE
@@ -2265,6 +2575,18 @@ def main():
     if args.only:
         stocks = {i: stocks.get(i, i) for i in args.only.split(",")}
     print("  %d svenska aktier" % len(stocks))
+    # Kursen vid de senaste kvartalssluten (fondernas rapporter till FI), för substansrabatten: {ISIN: {datum: (kvartal, kurs)}}
+    prices = {}
+    for qi in index["quarters"][:4]:
+        y, n = int(qi["id"][:4]), int(qi["id"][-1])
+        qend = dt.date(y, n * 3, 28) + dt.timedelta(days=4)
+        qend -= dt.timedelta(days=qend.day)
+        path = os.path.join(args.out, qi["id"] + ".json")
+        if not os.path.exists(path):
+            continue
+        for row in (qd if qi["id"] == latest else json.load(open(path, encoding="utf-8")))["stocks"]:
+            if row[0] in stocks and row[3]:
+                prices.setdefault(row[0], {})[qend.isoformat()] = (qi["id"], row[3])
 
     # 1. LEI-kod per ISIN (GLEIF tar många ISIN i samma anrop)
     need = [i for i in stocks if not st.get(i, {}).get("lei") and days_since(st.get(i, {}).get("leiChecked")) > 30]
@@ -2493,10 +2815,31 @@ def main():
             interims += 1
         for k in sorted(reps, key=lambda k: reps[k]["date"], reverse=True)[8:]:
             del reps[k]
+    # Substansvärdet i investment- och fastighetsbolagens tre senaste rapporter, för rapporter som lästes innan det
+    # fanns (eller när NAV_VERSION höjts). Nya rapporter får det redan i read_interim.
+    navs = 0
+    for slug in slugs:
+        m = mfn.get(slug) or {}
+        if m.get("industry") not in NAV_INDUSTRIES or out_of_time() or navs >= args.max_nav or failures >= 10:
+            continue
+        for url, r in sorted((m.get("reports") or {}).items(), key=lambda x: x[1]["date"], reverse=True)[:3]:
+            if r.get("navv") == NAV_VERSION or navs >= args.max_nav:
+                continue
+            try:
+                refresh_nav(r, url)
+            except Exception as e:
+                print("  %s: substansvärdet gick inte att läsa (%s)" % (url, e))
+                if network_error(e):
+                    failures += 1
+                    break
+                r["navv"] = NAV_VERSION
+            navs += 1
     if not out_of_time():
         state["mfnRun"] = today
     with_q = sum(1 for s in slugs if any(r.get("q") for r in (mfn.get(s, {}).get("reports") or {}).values()))
     print("  MFN: %d bolag, %d sidor hämtade, %d nya kvartalsrapporter, %d bolag med kvartalssiffror" % (len(slugs), pages, interims, with_q))
+    with_nav = sum(1 for s in slugs if any((r.get("nav") or {}).get("v") for r in (mfn.get(s, {}).get("reports") or {}).values()))
+    print("  Substansvärde: %d rapporter lästa om, %d bolag med substansvärde" % (navs, with_nav))
 
     # Hälsokoll: fungerar hämtningen och läsningen fortfarande? Problemen blir ett ärende på GitHub (se update.yml).
     problems = []
@@ -2645,6 +2988,9 @@ def main():
             series = [[p] + v for p, v in sorted(pts.items())][-8:]
             if len(series) >= 4:
                 doc["qs"] = series
+        nav = nav_doc(m["reps"], prices.get(isin, {}), stocks.get(isin))
+        if nav:
+            doc["nav"] = nav
         cal = calendar_facts(m["mm"].get("cal") or [], share_ticker(m["mm"].get("tickers") or [], stocks.get(isin)))
         if cal:
             doc["cal"] = cal
@@ -2684,6 +3030,7 @@ def main():
             src = os.path.join(out_dir, parent + ".json")
             doc = json.load(open(src, encoding="utf-8"))
             doc["parent"] = parent
+            doc.pop("nav", None)  # rabatten gäller moderbolagets aktie, inte rätten eller interimsaktien
             open(os.path.join(out_dir, isin + ".json"), "w", encoding="utf-8").write(json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
             written.add(isin)
     if not args.only:

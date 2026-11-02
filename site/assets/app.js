@@ -1495,6 +1495,69 @@
       '<p class="know-explain">En utdelning som täcks av det fria kassaflödet betalas med pengar som verksamheten tjänar in. Täcks den inte år efter år måste bolaget ta av kassan eller låna, och då kan utdelningen bli svår att behålla.</p></div>';
   }
 
+  // Substansvärdet: investmentbolagens substansvärde per aktie, fastighetsbolagens EPRA NRV och belåningsgrad, och om
+  // aktien kostar mindre (substansrabatt) eller mer (premie) än så. Vi har bara kursen vid kvartalsslut, så rabatten
+  // räknas för den rapport som gäller samma dag, eller tas ur rapporten när bolaget själv anger den.
+  function navCard(n, short, industry) {
+    if (!n || (n.v == null && n.ltv == null)) return "";
+    var prop = n.k === "nrv" || n.ltv != null || industry === "Förvaltning";
+    var kr = function (v) { return (v === Math.round(v) ? nf0 : nf2).format(v) + " kr"; };
+    var size = function (d) { return (Math.abs(d) < 10 ? nf1 : nf0).format(Math.abs(d)) + " %"; };
+    var word = function (d) { return d < 0 ? "rabatt" : "premie"; };
+    var VIA = { pm: "Står i både rapporten och pressmeddelandet.", text: "Står i rapportens nyckeltal och i rapportens text.",
+      tabeller: "Samma värde i flera tabeller i rapporten.", calc: "Rapportens substansvärde, aktiekurs och rabatt går ihop." };
+    var lbl = n.lbl || "Substansvärde", lblLow = lbl === "EPRA NRV" ? lbl : lbl.toLowerCase();
+    // bestämd form: "det justerade substansvärdet", "EPRA NRV"
+    var the = { "Substansvärde": "substansvärdet", "Justerat substansvärde": "det justerade substansvärdet", "Rapporterat substansvärde": "det rapporterade substansvärdet",
+      "Långsiktigt substansvärde": "det långsiktiga substansvärdet" }[lbl] || lblLow;
+    var tiles = [], tile = function (big, label, sub) {
+      tiles.push('<div class="know-tile"><div class="kt-big">' + big + '</div><div class="kt-label">' + label + '</div><div class="kt-sub">' + sub + "</div></div>");
+    };
+    if (n.v != null) tile(kr(n.v), lblLow + " per aktie", "Den " + dateText(n.end) + ". " + VIA[n.via]);
+    if (n.disc != null && n.v != null) tile(size(n.disc), "substans" + word(n.disc) + " enligt rapporten", Math.abs(n.disc) < 0.5 ? "Aktien kostade ungefär substansvärdet den " + dateText(n.end) + "." :
+      "Den " + dateText(n.end) + ". Bolaget räknar själv mot aktiekursen den dagen.");
+    var c = n.calc;
+    if (c) tile(size(c.disc), Math.abs(c.disc) < 0.5 ? "ingen rabatt per kvartalsslut" : word(c.disc) + " per kvartalsslut", "Kursen " + kr(c.px) + " den " + dateText(c.end) + " mot " + lblLow + " " + kr(c.v) + " samma dag.");
+    if (n.ltv != null) tile(nf1.format(n.ltv).replace(/,0$/, "") + " %", "belåningsgrad", "Så stor del av fastigheternas värde som är lånat, den " + dateText(n.end) + ".");
+    // Kurs mot substansvärde samma dag, som två staplar, och vad det betyder i kronor
+    var lead = [], bars = "";
+    if (n.v != null) {
+      var h0 = n.hist && n.hist.length >= 2 ? n.hist[n.hist.length - 2] : null, g = h0 ? n.v / h0[1] - 1 : null;
+      lead.push("Den " + dateText(n.end) + " var " + the + " " + kr(n.v) + " per aktie" + (g == null ? "." : Math.abs(g) < 0.005 ? ", lika mycket som den " + dateText(h0[0]) + "." :
+        ", " + nf0.format(Math.max(1, Math.abs(g) * 100)) + " % " + (g > 0 ? "mer" : "mindre") + " än den " + dateText(h0[0]) + "."));
+    }
+    // Kurs mot substansvärde samma dag, som två staplar, och vad det betyder i kronor
+    if (c) {
+      var max = Math.max(c.px, c.v), d = c.disc / 100;
+      lead.push("Vid kvartalsslutet den " + dateText(c.end) + " kostade aktien " + kr(c.px) + " mot " + kr(c.v) + " i " + (lbl === "EPRA NRV" ? "EPRA NRV" : "substansvärde") +
+        (Math.abs(c.disc) < 0.5 ? ", alltså ungefär vad tillgångarna var värda." : ", alltså en " + word(c.disc) + " på " + size(c.disc) + ": för 100 kronor fick man tillgångar värda ungefär " + nf0.format(100 / (1 + d)) + " kronor."));
+      bars = '<ul class="know-rows nav-bars">' + [["Aktiekursen", c.px, true], [capFirst(lblLow), c.v, false]].map(function (x) {
+        return '<li class="kr-row' + (x[2] ? " other" : "") + '"><div class="kr-top"><span class="kr-name">' + x[0] + '</span><span class="kr-val">' + kr(x[1]) + "</span></div>" +
+          '<div class="kr-bar"><span style="width:' + (x[1] / max * 100).toFixed(1) + '%"></span></div></li>';
+      }).join("") + "</ul>";
+    }
+    if (n.disc != null && n.v != null && (!c || c.end !== n.end)) {
+      lead.push("Enligt rapporten var " + (Math.abs(n.disc) < 0.5 ? "kursen nära substansvärdet" : n.disc < 0 ? "substansrabatten " + size(n.disc) : "premien " + size(n.disc)) + " den " + dateText(n.end) + ".");
+    }
+    lead = lead.join(" ");
+    var explain = prop ?
+      "<p><b>" + (n.k === "nrv" ? "EPRA NRV (långsiktigt substansvärde)" : "Substansvärdet") + "</b> är vad fastigheterna och bolagets andra tillgångar är värda minus skulderna, räknat per aktie" +
+        (n.k === "nrv" ? ", utan avdrag för den skatt som skulle betalas om fastigheterna såldes. Det är fastighetsbranschens vanliga mått." : ".") +
+        " Kostar aktien mindre än så handlas den med " + termLink("substansrabatt", "substansrabatt") + ".</p>" +
+        (n.ltv != null ? "<p><b>Belåningsgraden</b> är hur stor del av fastigheternas värde som är lånade pengar. Ju högre den är, desto mer känsligt är bolaget för högre räntor och fallande fastighetspriser. " +
+          termLink("belaningsgrad", "Mer om belåningsgrad") + "</p>" : "")
+      : "<p><b>Substansvärdet</b> är vad allt investmentbolaget äger (aktier i andra bolag, onoterade innehav och kassa) är värt minus skulderna, räknat per aktie. " +
+        "Kostar aktien mindre än substansvärdet handlas den med <b>substansrabatt</b>: man köper tillgångarna billigare än de är värda. Kostar den mer är det en <b>premie</b>.</p>" +
+        "<p>Rabatt är vanligt för investmentbolag, bland annat för att bolaget har förvaltningskostnader och för att ägarna inte själva väljer innehaven. " + termLink("substansrabatt", "Mer om substansrabatt") + "</p>";
+    return '<div class="know-card nav-card"><h3>' + (prop ? "Substansvärde och belåning" : "Substansvärde och rabatt") + "</h3>" +
+      (lead ? '<p class="know-lead">' + lead + "</p>" : "") +
+      bars + '<div class="know-tiles in-card">' + tiles.join("") + "</div>" +
+      '<div class="nav-explain">' + explain + "<p>Fondinsyn har bara aktiekursen vid kvartalsslut (ur fondernas rapporter till Finansinspektionen), inte dagens kurs. " +
+        "Rabatten gäller därför den dag som står, och kan vara en annan i dag.</p></div>" +
+      '<p class="kq-link"><a href="' + esc(n.url) + '" target="_blank" rel="noopener">Källa: ' + esc(n.title) + " (" + dateText(n.date) + ") ↗</a>" +
+        (c && c.url !== n.url ? ' · <a href="' + esc(c.url) + '" target="_blank" rel="noopener">Rapporten för ' + dateText(c.end) + " ↗</a>" : "") + "</p></div>";
+  }
+
   function companySection(isin, name, sector) {
     if (isin.slice(0, 2) !== "SE" || !needCompanyIndex() || !state.companyIndex[isin]) return "";
     if (!needCompany(isin)) return failed("bolag-" + isin) ? "" : '<section class="block section-gap">' + loadingBlock("Laddar fakta om bolaget…") + "</section>";
@@ -1527,6 +1590,9 @@
         (facts.length ? '<dl class="know-facts">' + facts.map(function (x) { return "<div><dt>" + x[0] + "</dt><dd>" + x[1] + "</dd></div>"; }).join("") + "</dl>" : "") +
         "</div>";
     }
+
+    // Investment- och fastighetsbolag: substansvärde, rabatt och belåningsgrad
+    html += navCard(c.nav, short, f.industry);
 
     // Senaste kvartalsrapporten
     if (q) {
