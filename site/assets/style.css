@@ -649,6 +649,27 @@ a.btn { color: var(--fg); }
 .bt-tools { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; margin-bottom: 14px; font-size: 13.5px; }
 .bt-answer { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 20px 32px; align-items: center; padding: 22px 24px; margin-bottom: 24px; border-radius: var(--radius-lg); background: var(--bg); border: 1px solid var(--border); }
 .bt-answer .kicker { margin-bottom: 6px; }
+
+/* ---------- Statistikrutan: bedömning, urval, effekt, konfidensintervall, p-värde och källkritik ---------- */
+.stat-box { margin-top: 16px; padding: 18px 22px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.sb-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
+.sb-head h3 { margin: 0; font-size: 16px; }
+.sb-verdict { display: inline-block; font-size: 13px; font-weight: 600; line-height: 24px; padding: 0 11px; border-radius: 999px; border: 1px solid transparent; }
+.sb-strong .sb-verdict { background: var(--brand); color: var(--bg); }
+.sb-weak .sb-verdict { background: var(--brand-soft); color: var(--brand-ink); border-color: var(--brand-border); }
+.sb-none .sb-verdict { background: var(--chip-bg); color: var(--fg-soft); border-color: var(--border); }
+.sb-text { margin: 0 0 12px; color: var(--fg-soft); line-height: 1.6; max-width: 78ch; }
+.sb-figs { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 16px; margin: 0 0 14px; padding: 4px 0; border-top: 1px solid var(--border-muted); border-bottom: 1px solid var(--border-muted); }
+.sb-figs div { padding: 8px 0; min-width: 0; }
+.sb-figs dt { font-size: 12.5px; color: var(--fg-muted); }
+.sb-figs dd { margin: 2px 0 0; font-family: var(--display); font-size: 18px; font-weight: 600; font-variant-numeric: proportional-nums lining-nums; overflow-wrap: anywhere; }
+.sb-figs small { display: block; font-size: 12px; color: var(--fg-muted); line-height: 1.4; }
+.sb-caveats h4 { margin: 0 0 6px; font-size: 14px; }
+.sb-caveats ul { margin: 0 0 12px; padding-left: 18px; color: var(--fg-soft); font-size: 13.5px; line-height: 1.55; }
+.sb-caveats li + li { margin-top: 4px; }
+.sb-more summary { cursor: pointer; color: var(--link); font-size: 13.5px; font-weight: 500; }
+.sb-more p { margin: 8px 0 0; font-size: 13.5px; color: var(--fg-soft); line-height: 1.6; max-width: 78ch; }
+@media (max-width: 760px) { .stat-box { padding: 16px; } .sb-figs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .bt-verdict { font-size: 16.5px; line-height: 1.6; font-weight: 500; color: var(--fg); max-width: 70ch; }
 .bt-duel { display: flex; align-items: center; justify-content: center; gap: 16px; padding-left: 24px; border-left: 1px solid var(--border); }
 .bt-duel div:not(.bt-vs) { display: flex; flex-direction: column; align-items: center; text-align: center; }

@@ -1335,8 +1335,11 @@
       if (ms.length === 4) {
         var avg = ms.reduce(function (a, m) { return a + byQ[m]; }, 0) / 4;
         var top = ms.sort(function (a, b) { return byQ[b] - byQ[a]; })[0];
-        if (byQ[top] > avg * 1.15) out.push({ tone: "", text: "Säsongen spelar roll: " + periodText("2000-" + top, 3).replace(" 2000", "") + " brukar vara bolagets största kvartal, med ungefär " +
-          nf0.format((byQ[top] / avg - 1) * 100) + " % mer försäljning än ett vanligt kvartal." });
+        // Med bara två år sägs det bara om samma kvartal var störst båda åren, och utan att påstå att det alltid är så
+        var bestOf = function (h) { var b = null; h.forEach(function (x) { if (x[1] != null && (!b || x[1] > b[1])) b = x; }); return b && b[0].slice(5, 7); };
+        if (byQ[top] > avg * 1.15 && bestOf(run.slice(-8, -4)) === top && bestOf(run.slice(-4)) === top) out.push({ tone: "",
+          text: periodText("2000-" + top, 3).replace(" 2000", "").replace(/^./, function (c) { return c.toUpperCase(); }) + " var bolagets största kvartal båda de senaste två åren, med ungefär " +
+          nf0.format((byQ[top] / avg - 1) * 100) + " % mer försäljning än ett genomsnittligt kvartal. Två år räcker inte för att säga att mönstret alltid håller." });
       }
     }
     return out;
@@ -2008,8 +2011,22 @@
     if (!hasPerf) return "";
     var pts = funds.map(function (f) { var p = perfOf(f.id); return p && p[3] != null ? { x: f.feeMax, y: p[3], size: f.aum, cls: "c-" + f.cat, f: f } : null; }).filter(Boolean);
     if (pts.length < 20) return "";
-    var reg = FFCharts.regression(pts);
-    var slope = reg.b, verdict = Math.abs(reg.r) < 0.15 ? "Det finns nästan inget samband" : slope < 0 ? "Dyrare fonder har i snitt gått sämre" : "Dyrare fonder har i snitt gått bättre";
+    var ct = corrTest(pts.map(function (p) { return p.x; }), pts.map(function (p) { return p.y; }));
+    var pp = function (v) { return (v > 0 ? "+" : "") + fixMinus(nf1.format(v)); };
+    var feeText1 = ct.level === "none" ?
+      "Bland de här fonderna finns inget statistiskt säkerställt samband mellan avgift och avkastning: lutningen kan lika gärna vara slump. " :
+      "Dyrare fonder har i snitt gått " + (ct.b < 0 ? "sämre" : "bättre") + ". Varje procentenhet högre avgift har gått ihop med ungefär " + nf1.format(Math.abs(ct.b)) +
+        " procentenheter " + (ct.b < 0 ? "lägre" : "högre") + " avkastning per år. Sambandet är " + (ct.level === "strong" ? "starkt" : "svagt") + ". ";
+    var feeBox = corrBox({ t: ct, unit: "fonder", unitNote: "med fem års historik",
+      text: feeText1 + "Avgiften dras alltid från avkastningen, så två i övrigt likadana fonder skiljer sig med just avgiften. Frågan här är om dyrare fonder i snitt har tjänat in sin avgift.",
+      extra: [["Lutning", pp(ct.b) + " p.e.", "per procentenhet avgift, 95 %: " + ciText(ct.ciB, pp)]],
+      caveats: [
+        "<b>Olika marknader.</b> Dyra fonder placerar ofta i småbolag, tillväxtmarknader eller teman, medan billiga indexfonder ofta är globala. Skillnaden kan bero på marknaden, inte på avgiften. Välj Sverigefonder ovan för att jämföra fonder på samma marknad.",
+        "<b>Överlevnadsbias.</b> Fonder som lagts ner eller slagits ihop saknas, och det är oftare fonder som gått dåligt.",
+        "<b>Rabatterad avgift.</b> Avkastningen från Pensionsmyndigheten är räknad efter premiepensionens rabatt, så utanför premiepensionen drar den ordinarie avgiften ännu mer.",
+        "<b>Inte oberoende.</b> Många fonder äger samma aktier, så p-värdet är snarare för lågt än för högt.",
+        "<b>Avgiften</b> är den högsta fasta avgiften bland fondens andelsklasser. Prestationsbaserade avgifter ingår inte."
+      ] });
     return '<section class="block section-gap"><div class="block-head"><h2>Avgift mot avkastning</h2><span class="note">' + int(pts.length) + " fonder med femårshistorik</span></div>" +
       '<div class="legend">' + catLabel("closet") + catLabel("active") + catLabel("index") + '<span class="legend-item"><i class="ln dash" style="color:var(--fg-soft)"></i>Trend</span></div>' +
       '<div class="chart-card"><p class="chart-howto">Varje prick är en fond. <b>Till höger</b> är avgiften högre, <b>högre upp</b> har fonden gått bättre. ' +
@@ -2024,9 +2041,7 @@
           },
           onClick: function (p) { location.hash = fundHref(p.f); }
         });
-      }) + '<p class="chart-note"><b>' + verdict + ".</b> Trendlinjen lutar " + (slope < 0 ? "nedåt" : "uppåt") + ": varje procentenhet högre avgift har gått ihop med " +
-      fixMinus(nf1.format(Math.abs(slope))) + " procentenheter " + (slope < 0 ? "lägre" : "högre") + " avkastning per år (korrelation " + fixMinus(nf2.format(reg.r)) + "). " +
-      "Punkternas storlek är fondförmögenheten. Avkastningen kommer från Pensionsmyndigheten och är räknad efter premiepensionens rabatterade avgift, så utanför premiepensionen drar den ordinarie avgiften ännu mer. Ett samband är inte ett bevis.</p></div></section>";
+      }) + '<p class="chart-note">Punkternas storlek är fondförmögenheten. Den streckade linjen är en vanlig regression över fonderna.</p></div>' + feeBox + "</section>";
   }
 
   function catLabel(cat, small) {
@@ -3131,7 +3146,20 @@
       return { x: fi.sd, y: p[3], size: fi.aum, cls: "c-" + cat, fi: fi, p: p };
     }).filter(Boolean);
     if (pts.length < 15) return head + '<div class="notice">Det finns för få fonder med avkastning just nu.</div>';
-    var reg = FFCharts.regression(pts);
+    var ct = corrTest(pts.map(function (p) { return p.x; }), pts.map(function (p) { return p.y; }));
+    var riskText = ct.level === "none" ?
+      "Fonder med högre risk har inte gett säkert högre eller lägre avkastning de här fem åren: korrelationen är " + rText(ct.r) + " och kan vara slump. " :
+      "Fonder med högre risk har i snitt gett " + (ct.r > 0 ? "högre" : "lägre") + " avkastning de här fem åren. Sambandet är " + (ct.level === "strong" ? "starkt" : "svagt") +
+        ": risken samvarierar med ungefär " + nf0.format(ct.r2 * 100) + " % av skillnaderna i avkastning. ";
+    var riskBox = corrBox({ t: ct, unit: "fonder", unitNote: "aktiefonder med fem års historik",
+      text: riskText + "Spridningen är stor, och fonder med samma risk skiljer sig ofta flera procentenheter per år.",
+      caveats: [
+        "<b>Överlevnadsbias.</b> Bara fonder som finns i dag och har fem års historik är med. Fonder som lagts ner eller slagits ihop, ofta efter svag avkastning, saknas.",
+        "<b>Olika perioder.</b> Risken gäller de senaste 24 månaderna (Finansinspektionen), avkastningen fem år (Pensionsmyndigheten).",
+        "<b>En enda femårsperiod.</b> Resultatet beror mycket på vilka marknader som gick bra just de här åren, inte bara på risken. Det säger lite om nästa fem år.",
+        "<b>Inte oberoende.</b> Många fonder äger samma aktier. Det verkliga antalet oberoende observationer är färre än antalet fonder, så p-värdet är snarare för lågt.",
+        "<b>Urval.</b> Bara fonder i premiepensionen, och avkastningen är räknad efter premiepensionens rabatterade avgift."
+      ] });
     // Avkastning per procentenhet risk: ett enkelt mått på hur mycket fonden gett för svängningarna
     var cols = [
       { key: "name", label: "Fond", align: "l", cls: "name", value: function (p) { return p.fi.name; }, cell: function (p) { return nameCell(fundHref(p.fi), p.fi.name, esc(p.fi.co) + " · " + esc(p.p[7] || "")); } },
@@ -3154,12 +3182,166 @@
           },
           onClick: function (p) { location.hash = fundHref(p.fi); }
         });
-      }) + '<p class="chart-note">Varje punkt är en aktiefond, storleken är fondförmögenheten. Högre risk har i snitt gett ' + (reg && reg.b > 0 ? "högre" : "lägre") +
-      " avkastning (korrelation " + fixMinus(nf2.format(reg ? reg.r : 0)) + "), men spridningen är stor: fonder med samma risk skiljer sig flera procentenheter per år. " +
-      "Avkastningen kommer från Pensionsmyndigheten, risken från Finansinspektionen. Fonder utanför premiepensionen saknas.</p></div></section>" +
+      }) + '<p class="chart-note">Varje punkt är en aktiefond, storleken är fondförmögenheten. ' +
+      "Avkastningen kommer från Pensionsmyndigheten, risken från Finansinspektionen. Fonder utanför premiepensionen saknas.</p></div>" + riskBox + "</section>" +
       block("Alla fonder på kartan", "Sorterat på avkastning per risk: avkastningen per år delat med risken. Högre är bättre. Tryck på en rubrik för att sortera om.",
         table("risk-funds", cols, pts, { sort: { col: "ratio", dir: -1 }, limit: 15, expand: true, csv: true }), "section-gap") +
       '<p class="desc section-gap">Historisk avkastning är ingen garanti för framtida avkastning. Risken är standardavvikelsen för fondens avkastning de senaste 24 månaderna.</p>';
+  }
+
+  // ---------- Statistik ----------
+  // Gemensamma test för analyserna som drar en slutsats: t-test, permutationstest, bootstrap och korrelation med p-värde.
+  // Slumpen i permutationstest och bootstrap har ett fast frö, så att siffrorna inte ändras mellan två visningar.
+
+  function lnGamma(x) {
+    var c = [76.18009172947146, -86.50532032941677, 24.01409824083091, -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5];
+    var y = x, t = x + 5.5, s = 1.000000000190015;
+    t -= (x + 0.5) * Math.log(t);
+    for (var j = 0; j < 6; j++) s += c[j] / ++y;
+    return -t + Math.log(2.5066282746310005 * s / x);
+  }
+  // Kedjebråk för den regulariserade ofullständiga betafunktionen (Numerical Recipes)
+  function betaCf(a, b, x) {
+    var tiny = 1e-30, qab = a + b, qap = a + 1, qam = a - 1, c = 1, d = 1 - qab * x / qap;
+    d = 1 / (Math.abs(d) < tiny ? tiny : d);
+    var h = d;
+    for (var m = 1; m <= 300; m++) {
+      var m2 = 2 * m, aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+      d = 1 + aa * d; d = 1 / (Math.abs(d) < tiny ? tiny : d);
+      c = 1 + aa / c; if (Math.abs(c) < tiny) c = tiny;
+      h *= d * c;
+      aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+      d = 1 + aa * d; d = 1 / (Math.abs(d) < tiny ? tiny : d);
+      c = 1 + aa / c; if (Math.abs(c) < tiny) c = tiny;
+      var del = d * c; h *= del;
+      if (Math.abs(del - 1) < 3e-14) break;
+    }
+    return h;
+  }
+  function ibeta(x, a, b) {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    var bt = Math.exp(lnGamma(a + b) - lnGamma(a) - lnGamma(b) + a * Math.log(x) + b * Math.log(1 - x));
+    return x < (a + 1) / (a + b + 2) ? bt * betaCf(a, b, x) / a : 1 - bt * betaCf(b, a, 1 - x) / b;
+  }
+  // Tvåsidigt p-värde för ett t-värde med df frihetsgrader
+  function pFromT(t, df) { return df > 0 && !isNaN(t) ? (isFinite(t) ? Math.min(1, ibeta(df / (df + t * t), df / 2, 0.5)) : 0) : 1; }
+  // t-värdet som ger ett 95 % konfidensintervall
+  function tCrit(df) {
+    var lo = 0, hi = 100;
+    for (var i = 0; i < 60; i++) { var mid = (lo + hi) / 2; if (pFromT(mid, df) > 0.05) lo = mid; else hi = mid; }
+    return (lo + hi) / 2;
+  }
+  function seeded(seed) {
+    return function () {
+      seed = seed + 0x6D2B79F5 | 0;
+      var t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  function avgOf(v) { return v.reduce(function (a, b) { return a + b; }, 0) / v.length; }
+
+  // Bedömningen. Utan p under 0,05 dras ingen slutsats. Med signifikans avgör effektens storlek om sambandet kallas
+  // starkt eller svagt: en korrelation på minst 0,5, eller ett snitt minst en halv standardavvikelse från noll.
+  function strength(p, size) { return !(p < 0.05) ? "none" : Math.abs(size) >= 0.5 ? "strong" : "weak"; }
+  var STRENGTH = { strong: "Starkt samband", weak: "Svagt samband", none: "Inget statistiskt säkerställt samband" };
+
+  // Skiljer sig snittet från noll? Två test: ett t-test och ett permutationstest där varje utfall slumpvis får byta
+  // tecken (utan någon effekt är ett utfall lika troligt positivt som negativt). Slutsatsen kräver att båda ger p under
+  // 0,05, och p-värdet som visas är det högsta. Är utfallen skeva kommer intervallet från bootstrap, annars från t-testet.
+  function testMean(v) {
+    var n = v.length, m = avgOf(v), i, r, s;
+    var sd = Math.sqrt(v.reduce(function (a, x) { return a + (x - m) * (x - m); }, 0) / Math.max(1, n - 1));
+    var se = sd / Math.sqrt(n), t = se ? m / se : 0, pT = n > 1 ? pFromT(t, n - 1) : 1;
+    var m3 = v.reduce(function (a, x) { return a + Math.pow(x - m, 3); }, 0) / n, sdN = sd * Math.sqrt((n - 1) / n);
+    var skewed = n > 2 && sdN > 0 && Math.abs(m3 / Math.pow(sdN, 3)) > 1;
+    var rnd = seeded(20261102), R = 10000, B = 5000, hits = 0, boot = [];
+    for (r = 0; r < R; r++) {
+      for (s = 0, i = 0; i < n; i++) s += rnd() < 0.5 ? -v[i] : v[i];
+      if (Math.abs(s / n) >= Math.abs(m) - 1e-12) hits++;
+    }
+    for (r = 0; r < B; r++) {
+      for (s = 0, i = 0; i < n; i++) s += v[Math.floor(rnd() * n)];
+      boot.push(s / n);
+    }
+    boot.sort(function (a, b) { return a - b; });
+    var tc = tCrit(n - 1), pPerm = (hits + 1) / (R + 1), p = Math.max(pT, pPerm);
+    return { n: n, mean: m, sd: sd, d: sd ? m / sd : 0, t: t, pT: pT, pPerm: pPerm, p: p, skewed: skewed, level: strength(p, sd ? m / sd : 0),
+      ci: skewed ? [boot[Math.floor(0.025 * B)], boot[Math.ceil(0.975 * B) - 1]] : [m - tc * se, m + tc * se] };
+  }
+  // Teckentest: hur troligt är det att minst k av n utfall hamnar på samma sida om noll av en slump (tvåsidigt)?
+  function signTest(k, n) {
+    var lo = Math.min(k, n - k), tail = 0;
+    for (var j = 0; j <= lo; j++) tail += Math.exp(lnGamma(n + 1) - lnGamma(j + 1) - lnGamma(n - j + 1) - n * Math.LN2);
+    return Math.min(1, 2 * tail);
+  }
+  function ranks(v) {
+    var idx = v.map(function (x, i) { return i; }).sort(function (a, b) { return v[a] - v[b]; }), r = [];
+    for (var i = 0; i < idx.length;) {
+      var j = i; while (j + 1 < idx.length && v[idx[j + 1]] === v[idx[i]]) j++;
+      for (var k = i; k <= j; k++) r[idx[k]] = (i + j) / 2;
+      i = j + 1;
+    }
+    return r;
+  }
+  // En korrelation med p-värde (t-fördelning) och 95 % konfidensintervall (Fishers z). Med rank räknas rangkorrelation
+  // (Spearman), som inte påverkas av enstaka extremvärden. Lutningen b (för vanlig korrelation) har ett eget intervall.
+  function corr1(xs, ys, rank) {
+    if (rank) { xs = ranks(xs); ys = ranks(ys); }
+    var n = xs.length, mx = avgOf(xs), my = avgOf(ys), sxx = 0, syy = 0, sxy = 0;
+    for (var i = 0; i < n; i++) { sxx += (xs[i] - mx) * (xs[i] - mx); syy += (ys[i] - my) * (ys[i] - my); sxy += (xs[i] - mx) * (ys[i] - my); }
+    var r = sxx && syy ? Math.max(-0.999999, Math.min(0.999999, sxy / Math.sqrt(sxx * syy))) : 0, df = n - 2;
+    var z = 0.5 * Math.log((1 + r) / (1 - r)), sez = Math.sqrt((rank ? 1.06 : 1) / (n - 3));
+    var b = sxx ? sxy / sxx : 0, seB = df > 0 && sxx ? Math.sqrt(Math.max(0, syy - b * sxy) / df / sxx) : 0, tc = tCrit(df);
+    return { r: r, p: pFromT(r * Math.sqrt(df / (1 - r * r)), df), ci: [Math.tanh(z - 1.96 * sez), Math.tanh(z + 1.96 * sez)], b: b, ciB: [b - tc * seB, b + tc * seB] };
+  }
+  // Vanlig korrelation och rangkorrelation. Med vanlig korrelation som huvudtest är rangkorrelationen en kontroll mot
+  // extremvärden: sambandet räknas som säkerställt bara om båda ger p under 0,05 och pekar åt samma håll. Där utfallen
+  // har extremvärden (rankMain) avgör rangkorrelationen ensam, och den vanliga korrelationen visas bara som upplysning.
+  function corrTest(xs, ys, rankMain) {
+    var pe = corr1(xs, ys, false), sp = corr1(xs, ys, true), main = rankMain ? sp : pe, alt = rankMain ? pe : sp;
+    var p = rankMain ? sp.p : pe.r * sp.r > 0 ? Math.max(pe.p, sp.p) : 1;
+    return { n: xs.length, r: main.r, ci: main.ci, pMain: main.p, rAlt: alt.r, pAlt: alt.p, p: p, b: pe.b, ciB: pe.ciB, r2: pe.r * pe.r,
+      level: strength(p, rankMain ? sp.r : Math.min(Math.abs(pe.r), Math.abs(sp.r))) };
+  }
+
+  var nf3 = new Intl.NumberFormat("sv-SE", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  function pText(p) { return p < 0.001 ? "under 0,001" : (p < 0.01 ? nf3 : nf2).format(p); }
+  function rText(r) { return (r > 0 ? "+" : "") + fixMinus(nf2.format(r)); }
+  // "i ungefär 13 fall av 100": p-värdet i ord
+  function pChance(p) { return p < 0.01 ? "i färre än 1 fall av 100" : "i ungefär " + nf0.format(Math.max(1, Math.round(p * 100))) + " fall av 100"; }
+  function ciText(ci, f) { return f(ci[0]) + " till " + f(ci[1]); }
+
+  // Förklaringen som står under varje statistikruta
+  var STAT_HELP =
+    "<p><b>Urval</b> är hur många observationer testet bygger på. Ju färre, desto osäkrare svar.</p>" +
+    "<p><b>Korrelation</b> går från −1 till +1. Noll betyder inget samband, +1 att punkterna ligger på en stigande rak linje och −1 på en fallande.</p>" +
+    "<p><b>95 % konfidensintervall</b> visar osäkerheten. Det rymmer de värden som stämmer med datan: räknas intervallet på samma sätt i många undersökningar " +
+    "fångar det det verkliga värdet i 95 av 100. Ligger noll inne i intervallet kan sambandet lika gärna saknas.</p>" +
+    "<p><b>p-värdet</b> är sannolikheten att få ett minst lika tydligt resultat av ren slump, om det i verkligheten inte fanns något samband. " +
+    "Under 0,05 (5 av 100) räknas sambandet som statistiskt säkerställt.</p>" +
+    "<p><b>Bedömningen.</b> Starkt samband: p under 0,05 och en stor effekt (korrelation minst 0,5, eller ett snitt minst en halv standardavvikelse från noll). " +
+    "Svagt samband: p under 0,05 men en mindre effekt. Annars dras ingen slutsats. Snitt prövas med både t-test och permutationstest, och båda måste ge p under 0,05. " +
+    "En vanlig korrelation kontrolleras med rangkorrelation, som inte påverkas av enstaka extremvärden. Där extremvärden är vanliga används rangkorrelationen direkt.</p>" +
+    "<p><b>Samband är inte orsak.</b> Även ett säkerställt samband visar bara att två saker har hängt ihop, inte att den ena orsakar den andra eller att det fortsätter.</p>";
+
+  // Statistikrutan under varje analys. o: { level, text, figs: [[rubrik, värde, notering]], caveats: [...], method }
+  function statBox(o) {
+    return '<section class="stat-box sb-' + o.level + '"><div class="sb-head"><h3>Statistisk prövning</h3><span class="sb-verdict">' + STRENGTH[o.level] + "</span></div>" +
+      '<p class="sb-text">' + o.text + "</p>" +
+      '<dl class="sb-figs">' + o.figs.map(function (f) { return "<div><dt>" + f[0] + "</dt><dd>" + f[1] + "</dd>" + (f[2] ? "<small>" + f[2] + "</small>" : "") + "</div>"; }).join("") + "</dl>" +
+      (o.caveats && o.caveats.length ? '<div class="sb-caveats"><h4>Källkritik</h4><ul>' + o.caveats.map(function (c) { return "<li>" + c + "</li>"; }).join("") + "</ul></div>" : "") +
+      '<details class="sb-more"><summary>Så ska du läsa siffrorna</summary>' + (o.method ? "<p>" + o.method + "</p>" : "") + STAT_HELP + "</details></section>";
+  }
+  // Statistikrutan för en korrelation. o: { t (testet), text, unit (vad en observation är), xName, yName, caveats, method, extra }
+  function corrBox(o) {
+    var t = o.t, rName = o.rank ? "Rangkorrelation" : "Korrelation";
+    var figs = [["Urval", int(t.n) + " " + o.unit, o.unitNote || ""], [rName, rText(t.r), t.r2 != null && !o.rank ? "r² = " + nf2.format(t.r2) : ""],
+      ["95 % konfidensintervall", ciText(t.ci, rText), ""], ["p-värde", pText(t.p), "under 0,05 krävs för en slutsats"]].concat(o.extra || []);
+    var odd = t.p >= 0.05 && (t.ci[0] > 0 || t.ci[1] < 0) ? " Intervallet ligger på ena sidan om noll, men kontrolltestet ger p över 0,05, så resultatet räknas inte som säkerställt." : "";
+    return statBox({ level: t.level, text: o.text + odd, figs: figs, caveats: o.caveats,
+      method: (o.method ? o.method + " " : "") + "Kontroll: " + (o.rank ? "vanlig korrelation " : "rangkorrelation ") + rText(t.rAlt) + " (p-värde " + pText(t.pAlt) + ")." });
   }
 
   // ---------- Backtest: lönar det sig att följa fonderna? ----------
@@ -3210,46 +3392,65 @@
         if (g === 0) part.forEach(function (c) { retsBottom.push(c.ret); });
       }
       var all = cand.reduce(function (a, c) { return a + c.ret; }, 0) / cand.length;
-      periods.push({ signal: Q[q], held: Q[t], groups: groups, all: all, n: cand.length });
+      // Rangkorrelationen mellan köp och kommande avkastning över alla aktier, inte bara ytterkvintilerna (en kontroll)
+      var ic = corr1(cand.map(function (c) { return c.sig; }), cand.map(function (c) { return c.ret; }), true).r;
+      periods.push({ signal: Q[q], held: Q[t], groups: groups, all: all, n: cand.length, ic: ic });
     }
-    // Sammanfattning
+    // Sammanfattning. Testen räknas per kvartal: aktierna samma kvartal rör sig ihop med börsen och är inte oberoende.
     var N = periods.length;
+    if (!N) return { N: 0 };
     var mean = function (f) { return periods.reduce(function (a, p) { return a + f(p); }, 0) / N; };
     var cagr = function (f) { var v = periods.reduce(function (a, p) { return a * (1 + f(p)); }, 1); return Math.pow(v, 4 / N) - 1; };
     var spread = periods.map(function (p) { return p.groups[BT_GROUPS - 1].ret - p.groups[0].ret; });
-    var mS = spread.reduce(function (a, b) { return a + b; }, 0) / N;
-    var sd = Math.sqrt(spread.reduce(function (a, b) { return a + (b - mS) * (b - mS); }, 0) / (N - 1));
     var excess = periods.map(function (p) { return p.groups[BT_GROUPS - 1].ret - p.all; });
-    var mE = excess.reduce(function (a, b) { return a + b; }, 0) / N;
-    var sdE = Math.sqrt(excess.reduce(function (a, b) { return a + (b - mE) * (b - mE); }, 0) / (N - 1));
+    var hits = spread.filter(function (x) { return x > 0; }).length;
     return {
       periods: periods, N: N, spreads: spread, retsTop: retsTop, retsBottom: retsBottom,
-      groupMean: periods.length ? periods[0].groups.map(function (_, g) { return mean(function (p) { return p.groups[g].ret; }); }) : [],
+      groupMean: periods[0].groups.map(function (_, g) { return mean(function (p) { return p.groups[g].ret; }); }),
       allMean: mean(function (p) { return p.all; }),
       cagrTop: cagr(function (p) { return p.groups[BT_GROUPS - 1].ret; }),
       cagrBottom: cagr(function (p) { return p.groups[0].ret; }),
       cagrAll: cagr(function (p) { return p.all; }),
-      spread: mS, tSpread: sd ? mS / (sd / Math.sqrt(N)) : 0,
-      excess: mE, tExcess: sdE ? mE / (sdE / Math.sqrt(N)) : 0,
-      hit: spread.filter(function (x) { return x > 0; }).length / N,
-      hitAll: excess.filter(function (x) { return x > 0; }).length / N,
+      test: testMean(spread), testExcess: testMean(excess), testIc: testMean(periods.map(function (p) { return p.ic; })),
+      hit: hits / N, pHit: signTest(hits, N),
       avgN: mean(function (p) { return p.n; })
     };
   }
 
   function pctS(v, d) { return (v > 0 ? "+" : v < 0 ? "−" : "") + (d === 0 ? nf0 : nf1).format(Math.abs(v * 100)) + " %"; }
 
+  // Slutsatsen i ord. Utan statistisk säkerhet sägs bara att datan inte visar något, åt något håll.
   function backtestVerdict(b) {
-    var t = Math.abs(b.tSpread);
-    var dir = b.spread > 0 ? "bättre" : "sämre";
-    var sure = t >= 2 ? "Skillnaden är statistiskt säkerställd (t-värde " + nf1.format(b.tSpread) + ")." :
-      t >= 1.5 ? "Skillnaden är svagt statistiskt säkerställd (t-värde " + nf1.format(b.tSpread) + "), så den kan delvis vara slump." :
-      "Skillnaden är inte statistiskt säkerställd (t-värde " + nf1.format(b.tSpread) + "), så den kan lika gärna vara slump.";
-    var gm = b.groupMean, best = gm.indexOf(Math.max.apply(null, gm)), worst = gm.indexOf(Math.min.apply(null, gm));
-    var where = best === 0 ? " Det är de aktier fonderna sålt mest som gått bäst efteråt, vilket kan tyda på att kurserna ofta studsar tillbaka efter tunga försäljningar." :
-      best === gm.length - 1 && worst === 0 ? " Ju mer fonderna köpt, desto bättre har aktierna gått efteråt." : "";
-    return "De aktier fonderna köpte mest gick i snitt " + pctS(Math.abs(b.spread)).replace(/^[+−]/, "") + " " + dir + " per kvartal än de fonderna sålde mest, " +
-      "räknat kvartalet efter att datan blivit offentlig. " + sure + where;
+    var s = b.test;
+    var head = "Under " + s.n + " kvartal gick de aktier fonderna köpte mest i snitt " + pctS(Math.abs(s.mean)).replace(/^[+−]/, "") + " " + (s.mean > 0 ? "bättre" : "sämre") +
+      " per kvartal än de fonderna sålde mest, räknat kvartalet efter att datan blivit offentlig. ";
+    if (s.level === "none") return head + "Skillnaden är inte statistiskt säkerställd (p-värde " + pText(s.p) + "). Den är liten jämfört med hur mycket utfallen svänger " +
+      "från kvartal till kvartal och kan mycket väl vara slump. Datan visar alltså varken att det lönar sig att följa fondernas köp eller att det lönar sig att göra tvärtom.";
+    return head + "Skillnaden är statistiskt säkerställd (p-värde " + pText(s.p) + ")" + (s.level === "strong" ? " och stor." : ", men liten jämfört med hur mycket utfallen svänger.") +
+      " Det är ett historiskt samband, inte ett bevis för att fondernas köp orsakar kursrörelserna eller att mönstret håller framåt.";
+  }
+
+  function backtestStatBox(b) {
+    var s = b.test, pc = function (v) { return pctS(v); };
+    return statBox({
+      level: s.level,
+      text: "Om det i verkligheten inte fanns någon skillnad mellan grupperna skulle en minst så här stor skillnad uppstå av en slump " + pChance(s.p) + ". " +
+        "Den verkliga skillnaden kan rimligen ligga någonstans mellan " + pc(s.ci[0]) + " och " + pc(s.ci[1]) + " per kvartal" +
+        (s.ci[0] < 0 && s.ci[1] > 0 ? ", alltså också vara noll." : ".") + (s.level === "none" && s.ci[0] * s.ci[1] > 0 ? " Det försiktigare av de två testen ger ändå p över 0,05, så resultatet räknas inte som säkerställt." : ""),
+      figs: [["Urval", s.n + " kvartal", "i snitt " + nf0.format(b.avgN) + " aktier per kvartal"], ["Skillnad per kvartal", pc(s.mean), "mest köpta minus mest sålda"],
+        ["95 % konfidensintervall", ciText(s.ci, pc), s.skewed ? "bootstrap" : ""], ["p-värde", pText(s.p), "under 0,05 krävs för en slutsats"]],
+      caveats: [
+        "<b>Testet räknas per kvartal, inte per aktie.</b> Aktierna samma kvartal rör sig ihop med börsen, så tusentals aktieutfall är inte tusentals oberoende försök. Att räkna dem var för sig skulle ge ett alldeles för lågt p-värde.",
+        "<b>Kort period.</b> " + s.n + " kvartal är lite. Ett verkligt men litet samband kan behöva många fler kvartal för att synas, och en enstaka extrem period väger tungt.",
+        "<b>Överlevnadsbias.</b> Aktier som försvinner från börsen under mätkvartalet (uppköp, konkurs) saknar kurs och faller bort. Konkurser drar ner och uppköp drar upp, så felet kan gå åt båda hållen.",
+        "<b>Ingen framtidsinformation.</b> Signalen används först kvartalet efter att innehaven blivit offentliga, och urvalet bygger på innehaven kvartalet innan.",
+        "<b>Flera varianter.</b> Testet kan visas för alla fonder och för bara aktiva fonder. Ju fler varianter som prövas, desto större är risken att någon ser säkerställd ut av en slump.",
+        "<b>Utan utdelningar och kostnader.</b> Kurserna är fondernas rapporterade kvartalskurser. Utdelningar, courtage och skatt ingår inte."
+      ],
+      method: "Skillnaden mellan mest köpta och mest sålda räknas varje kvartal. Snittet prövas med ett t-test (p-värde " + pText(s.pT) + ") och ett permutationstest där " +
+        "kvartalens tecken byts slumpvis 10 000 gånger (p-värde " + pText(s.pPerm) + "). Kontroller: mest köpta mot alla aktier " + pc(b.testExcess.mean) + " per kvartal (p-värde " +
+        pText(b.testExcess.p) + "), och rangkorrelationen mellan köp och kommande avkastning över alla aktier, i snitt per kvartal " + rText(b.testIc.mean) + " (p-värde " + pText(b.testIc.p) + ")."
+    });
   }
 
   function viewBacktest() {
@@ -3298,11 +3499,11 @@
       '<section class="bt-answer"><div class="bt-answer-text"><p class="kicker">Slutsats</p><p class="bt-verdict">' + backtestVerdict(b) + "</p></div>" +
       '<div class="bt-duel"><div><span>Mest köpta</span><b class="' + cls(b.cagrTop) + '">' + pctS(b.cagrTop) + '</b><small>per år</small></div>' +
       '<div class="bt-vs">mot</div><div><span>Mest sålda</span><b class="' + cls(b.cagrBottom) + '">' + pctS(b.cagrBottom) + "</b><small>per år</small></div></div></section>" +
-      '<dl class="figures">' +
+      backtestStatBox(b) +
+      '<dl class="figures section-gap">' +
       fig("Alla aktier, per år", '<span class="' + cls(b.cagrAll) + '">' + pctS(b.cagrAll) + "</span>", "lika vikt, jämförelse") +
-      fig("Mest köpta slog mest sålda", nf0.format(b.hit * 100) + " %", "av kvartalen") +
-      fig("t-värde", nf1.format(b.tSpread), Math.abs(b.tSpread) >= 2 ? "statistiskt säkerställt" : "inte säkerställt (under 2)") +
-      fig("Period", b.N + " kvartal", quarterLabel(first.held) + "–" + quarterLabel(last.held) + ", " + nf0.format(b.avgN) + " aktier per kvartal") + "</dl>" +
+      fig("Mest köpta slog mest sålda", nf0.format(b.hit * 100) + " % av kvartalen", "slumpen ger 50 %, p-värde " + pText(b.pHit)) +
+      fig("Period", b.N + " kvartal", quarterLabel(first.held) + "–" + quarterLabel(last.held)) + "</dl>" +
       block("Utveckling för 100 kronor", "Grupperna köps i slutet av varje kvartal och byts kvartalet efter. Kursutveckling utan utdelningar, före avgifter och courtage.",
         '<div class="chart-card">' + chart(function (node) {
           FFCharts.lines(node, series, { height: 300, format: function (v) { return nf0.format(v); }, tip: function (rws) {
@@ -3328,21 +3529,6 @@
       "<p><b>Begränsningar.</b> Aktier som försvinner från börsen under mätkvartalet (uppköp, konkurs) saknar kurs och faller bort. Perioden är kort, sju år, och historisk avkastning säger inget säkert om framtiden. Detta är ett test av en idé, inte en investeringsrekommendation.</p>" +
       '<p><a href="#/metod">Läs hela metodrapporten</a></p></section>';
   }
-  // Rangkorrelation (Spearman): tål enstaka extremvärden bättre än vanlig korrelation
-  function rankCorr(xs, ys) {
-    var rank = function (v) {
-      var idx = v.map(function (x, i) { return i; }).sort(function (a, b) { return v[a] - v[b]; }), r = [];
-      for (var i = 0; i < idx.length;) {
-        var j = i; while (j + 1 < idx.length && v[idx[j + 1]] === v[idx[i]]) j++;
-        for (var k = i; k <= j; k++) r[idx[k]] = (i + j) / 2;
-        i = j + 1;
-      }
-      return r;
-    };
-    var ry = rank(ys), pts = rank(xs).map(function (rx, i) { return { x: rx, y: ry[i] }; });
-    var reg = FFCharts.regression(pts);
-    return reg ? reg.r : 0;
-  }
 
   // Kvartalets kursutveckling mot fondernas nettoköp per aktie: köpte fonderna aktierna som gått upp (momentum)
   // eller dem som gått ner? Bara aktier där fonderna ägde minst 100 mkr kvartalet innan.
@@ -3355,19 +3541,45 @@
       if (!h) return;
       var cur = h.byQ[qi], prev = h.byQ[qi - 1];
       if (!cur || !prev || prev[2] < 100 || cur[3] == null || cur[5] == null) return;
-      pts.push({ x: cur[5] * 100, y: cur[3] / prev[2] * 100, size: prev[2], cls: cur[3] >= 0 ? "c-pos" : "c-neg", s: s, flow: cur[3] });
+      // Köpet räknas i antal aktier (nettoköpet i kronor delat med kursuppgången), så att kursen inte påverkar båda axlarna
+      pts.push({ x: cur[5] * 100, y: cur[3] / prev[2] / (1 + cur[5]) * 100, size: prev[2], cls: cur[3] >= 0 ? "c-pos" : "c-neg", s: s, flow: cur[3] });
     });
     if (pts.length < 30) return null;
+    // Samma mått för alla tidigare kvartal, för att se om mönstret återkommer över tid
+    var past = [], hs = Object.keys(state.history.stocks).filter(function (isin) { return (isin.slice(0, 2) === "SE") === (state.market !== "world"); }).map(histFor);
+    for (var k = 1; k <= qi; k++) {
+      var X = [], Y = [];
+      hs.forEach(function (h) {
+        var c = h.byQ[k], pr = h.byQ[k - 1];
+        if (!c || !pr || pr[2] < 100 || c[3] == null || c[5] == null) return;
+        X.push(c[5]); Y.push(c[3] / pr[2] / (1 + c[5]));
+      });
+      if (X.length >= 30) past.push(corr1(X, Y, true).r);
+    }
+    var overTime = past.length >= 8 ? testMean(past) : null;
+    // Styrkan över tid avgörs av korrelationens storlek, inte av hur jämn den är mellan kvartalen
+    if (overTime) overTime.level = strength(overTime.p, overTime.mean);
     // Axlarna går till 2:a och 98:e percentilen, extremvärden ritas vid kanten
     var pctl = function (v, p) { var a = v.slice().sort(function (x, y) { return x - y; }); return a[Math.floor(p * (a.length - 1))]; };
     var xsv = pts.map(function (p) { return p.x; }), ysv = pts.map(function (p) { return p.y; });
     var xd = [Math.min(-5, pctl(xsv, 0.02)), Math.max(5, pctl(xsv, 0.98))], yd = [Math.min(-5, pctl(ysv, 0.02)), Math.max(5, pctl(ysv, 0.98))];
-    var rho = rankCorr(xsv, ysv);
+    var ct = corrTest(xsv, ysv, true);
     var winners = pts.filter(function (p) { return p.x > 0; }), losers = pts.filter(function (p) { return p.x <= 0; });
     var share = function (list) { return list.length ? list.filter(function (p) { return p.y > 0; }).length / list.length : 0; };
-    var verdict = Math.abs(rho) < 0.1 ? "Nej, inte tydligt: fonderna köpte vinnare och förlorare ungefär lika mycket."
-      : rho > 0 ? "Ja, i viss mån. Fonderna köpte oftare aktierna som hade gått upp."
-      : "Nej, snarare tvärtom. Fonderna köpte oftare aktierna som hade gått ner.";
+    var verdict = ct.level === "none" ? "Inte så att det går att säkerställa: mönstret är så svagt att det kan vara slump."
+      : (ct.r > 0 ? "Ja, i viss mån. Fonderna köpte oftare aktierna som hade gått upp." : "Snarare tvärtom. Fonderna köpte oftare aktierna som hade gått ner.") +
+        " Sambandet är " + (ct.level === "strong" ? "starkt." : "svagt men statistiskt säkerställt.");
+    var chaseBox = corrBox({ t: ct, rank: true, unit: "aktier", unitNote: "fonderna ägde minst 100 mkr",
+      text: "Om det i verkligheten inte fanns något samband mellan kursrörelse och fondernas köp skulle ett minst så här tydligt mönster uppstå av en slump " + pChance(ct.p) + "." +
+        (overTime ? " Över " + overTime.n + " kvartal sedan " + quarterLabel(state.history.quarters[1]) + " var rangkorrelationen i snitt " + rText(overTime.mean) +
+          " (95 % konfidensintervall " + ciText(overTime.ci, rText) + ", p-värde " + pText(overTime.p) + "): " + STRENGTH[overTime.level].toLowerCase() + " över tid." : ""),
+      caveats: [
+        "<b>Vad kom först?</b> Köpen och kursrörelsen gäller samma kvartal. Fonderna kan ha köpt för att kursen steg, men deras köp kan också ha drivit upp kursen. Datan kan inte skilja på det.",
+        "<b>Inte oberoende.</b> Aktier i samma bransch rör sig ihop, så p-värdet för ett enskilt kvartal är snarare för lågt. Snittet över många kvartal är säkrare.",
+        "<b>Urval.</b> Bara aktier där fonderna ägde minst 100 mkr kvartalet innan. Aktier som avnoterats under kvartalet saknas.",
+        "<b>Kurser.</b> Medianen av fondernas rapporterade kurser, utan utdelningar."
+      ],
+      method: "Köpet räknas som förändringen i fondernas antal aktier, så att kursuppgången inte påverkar båda måtten. Rangkorrelation används eftersom några aktier rör sig extremt mycket." });
     var pct = function (v) { return (v > 0 ? "+" : "") + fixMinus(nf0.format(v)) + " %"; };
     // Några exempel i ord: stora innehav som ligger långt från mitten
     var clip = function (v, d) { return Math.min(Math.abs(v), Math.max(-d[0], d[1])); };
@@ -3378,7 +3590,7 @@
     }).join("");
     return {
       text: verdict + " Av aktierna som steg under kvartalet nettoköptes " + nf0.format(share(winners) * 100) + " %, av dem som föll " + nf0.format(share(losers) * 100) +
-        " % (rangkorrelation " + fixMinus(nf2.format(rho)) + ").",
+        " % (rangkorrelation " + rText(ct.r) + ", p-värde " + pText(ct.p) + ").",
       html: '<div class="chart-card"><p class="chart-howto">Varje prick är en aktie. <b>Högt upp</b> köpte fonderna, <b>långt ner</b> sålde de. ' +
         "<b>Till höger</b> steg kursen under kvartalet, <b>till vänster</b> föll den. Stora prickar är aktier som fonderna äger mycket av. Peka på en prick för att se vilken aktie det är.</p>" +
         '<div class="legend"><span class="legend-item"><i class="dot c-pos"></i>Fonderna köpte</span><span class="legend-item"><i class="dot c-neg"></i>Fonderna sålde</span></div>' +
@@ -3386,7 +3598,7 @@
           FFCharts.xy(node, pts, {
             height: node.clientWidth < 500 ? 320 : 420, xDomain: xd, yDomain: yd,
             xFmt: function (v) { return pct(v); }, yFmt: function (v) { return pct(v); },
-            xLabel: "Kursens förändring under " + quarterLabel(state.q), yLabel: "Köpt eller sålt, i % av fondernas innehav",
+            xLabel: "Kursens förändring under " + quarterLabel(state.q), yLabel: "Köpt eller sålt, i % av fondernas aktier",
             bands: { above: "Fonderna köpte", below: "Fonderna sålde" }, xHint: ["← Kursen föll", "Kursen steg →"],
             tip: function (p) {
               return "<b>" + esc(p.s.name) + "</b><br>Kursen " + (p.x >= 0 ? "steg " : "föll ") + nf0.format(Math.abs(p.x)) + " %<br>Fonderna " + (p.flow >= 0 ? "köpte" : "sålde") +
@@ -3395,7 +3607,7 @@
             onClick: function (p) { location.hash = stockHref(p.s); }
           });
         }) + '<div class="chart-examples"><h3>Exempel ur diagrammet</h3><ul>' + examples + "</ul></div>" +
-        '<p class="chart-note">Med är aktier där fonderna ägde minst 100 mkr kvartalet innan. Kursen är medianen av fondernas rapporterade kurser, utan utdelningar. Enstaka extremvärden ritas vid kanten.</p></div>'
+        '<p class="chart-note">Med är aktier där fonderna ägde minst 100 mkr kvartalet innan. Kursen är medianen av fondernas rapporterade kurser, utan utdelningar. Enstaka extremvärden ritas vid kanten.</p></div>' + chaseBox
     };
   }
 
@@ -3452,14 +3664,16 @@
     var sec = function (n, title, body) { return '<section class="md-sec"><h2><span class="md-n">' + n + "</span>" + title + "</h2>" + body + "</section>"; };
     var pdf = hasPdfName("metodrapport");
     var printHead = '<div class="print-only print-head"><b>Fondinsyn</b><span>Metodrapport</span><span>www.fondinsyn.se</span></div>';
-    var btText = bt ?
+    var btText = bt && bt.N && btA.N ?
       "<p>Resultat " + quarterLabel(bt.periods[0].held) + "–" + quarterLabel(bt.periods[bt.N - 1].held) + " (" + bt.N + " kvartal, i snitt " + nf0.format(bt.avgN) + " aktier per kvartal):</p>" +
       '<table class="md-table"><thead><tr><th class="l">Grupp</th><th>Snitt per kvartal</th><th>Per år</th></tr></thead><tbody>' +
       "<tr><td class=\"l\">Mest köpta (grupp 5)</td><td>" + pctS(bt.groupMean[BT_GROUPS - 1]) + "</td><td>" + pctS(bt.cagrTop) + "</td></tr>" +
       "<tr><td class=\"l\">Alla aktier</td><td>" + pctS(bt.allMean) + "</td><td>" + pctS(bt.cagrAll) + "</td></tr>" +
       "<tr><td class=\"l\">Mest sålda (grupp 1)</td><td>" + pctS(bt.groupMean[0]) + "</td><td>" + pctS(bt.cagrBottom) + "</td></tr></tbody></table>" +
-      "<p>" + backtestVerdict(bt) + " De mest köpta slog de mest sålda " + nf0.format(bt.hit * 100) + " % av kvartalen. " +
-      "Med bara de aktivt förvaltade fondernas köp som signal blev skillnaden " + pctS(btA.spread) + " per kvartal (t-värde " + nf1.format(btA.tSpread) + ").</p>" :
+      "<p>" + backtestVerdict(bt) + "</p><p>Bedömning: <b>" + STRENGTH[bt.test.level].toLowerCase() + "</b>. 95 % konfidensintervall " + ciText(bt.test.ci, pctS) + " per kvartal. " +
+      "De mest köpta slog de mest sålda " + nf0.format(bt.hit * 100) + " % av kvartalen (slumpen ger 50 %, p-värde " + pText(bt.pHit) + "). " +
+      "Med bara de aktivt förvaltade fondernas köp som signal blev skillnaden " + pctS(btA.test.mean) + " per kvartal (95 % konfidensintervall " + ciText(btA.test.ci, pctS) +
+      ", p-värde " + pText(btA.test.p) + "): " + STRENGTH[btA.test.level].toLowerCase() + ".</p>" :
       "<p>Resultaten visas när kurshistoriken har laddats.</p>";
     return '<article class="text-page method">' + printHead +
       '<div class="page-head"><h1>Metodrapport</h1><p class="meta lead">Hur Fondinsyn samlar in och räknar sin data: källor, definitioner, uppskattningar och begränsningar. ' +
@@ -3521,7 +3735,9 @@
         "<p><b>Insynshandel</b> är köp och sälj som insiders anmält till FI, med belopp omräknade till kronor. Köp minus sälj summeras per bolag över 90 dagar.</p>" +
         "<p><b>Dubbelsignal</b> är aktier där fonderna nettoköpt för minst 1 mkr under kvartalet och insiders köpt för minst 500 000 kr mer än de sålt, eller motsvarande för sälj.</p>" +
         "<p><b>Samlad signal</b> väger ihop tre delar till ett tal mellan −100 och +100: fondernas affärer (40 %, hälften andelen fonder som ökade mot minskade, hälften förändringen i antal aktier), " +
-        "insidernas köp minus sälj (40 %, fullt utslag vid 5 mkr) och blankningens förändring på 30 dagar (20 %, fullt utslag vid en procentenhet).</p>") +
+        "insidernas köp minus sälj (40 %, fullt utslag vid 5 mkr) och blankningens förändring på 30 dagar (20 %, fullt utslag vid en procentenhet). " +
+        "Vikterna och gränserna är valda för hand, inte uppskattade ur data. Signalen beskriver vad fonder, insiders och blankare har gjort och är inte prövad mot " +
+        "aktiernas senare kursutveckling, eftersom historik över blankningen bara finns för det senaste året. Fondernas del prövas för sig i backtestet nedan.</p>") +
 
       sec(8, "Backtest: lönar det sig att följa fonderna?",
         "<p>Testet undersöker om fondernas köp säger något om aktiernas kommande utveckling. Varje kvartal delas svenska aktier där fonderna ägde minst " + BT_MIN_VALUE +
@@ -3530,14 +3746,27 @@
         "eller avnotering räknas inte och enstaka kvartalsavkastningar under −90 % eller över +300 % kapas.</p>" + btText +
         '<p><a href="#/backtest">Se backtestet med diagram och alla kvartal</a></p>') +
 
-      sec(9, "Begränsningar",
+      sec(9, "Statistisk prövning",
+        "<p>Varje analys som drar en slutsats om ett samband redovisar urvalets storlek, effektens storlek, ett 95 % konfidensintervall och ett p-värde, och får en av tre bedömningar:</p><ul>" +
+        "<li><b>Starkt samband:</b> p-värde under 0,05 och en stor effekt, det vill säga en korrelation på minst 0,5 eller ett snitt minst en halv standardavvikelse från noll.</li>" +
+        "<li><b>Svagt samband:</b> p-värde under 0,05 men en mindre effekt.</li>" +
+        "<li><b>Inget statistiskt säkerställt samband:</b> p-värde på 0,05 eller mer. Då dras ingen slutsats åt något håll.</li></ul>" +
+        "<p><b>Två test.</b> Snitt prövas med t-test och permutationstest (10 000 slumpvisa teckenbyten), och båda måste ge p under 0,05. Det högsta p-värdet visas, " +
+        "och är utfallen skeva räknas konfidensintervallet med bootstrap. En vanlig korrelation kontrolleras med rangkorrelation, som inte påverkas av extremvärden. " +
+        "Där extremvärden är vanliga, som i aktiers kursrörelser, används rangkorrelationen direkt.</p>" +
+        "<p><b>Rätt enhet.</b> Backtestet räknas per kvartal och inte per aktie, eftersom aktier samma kvartal rör sig ihop. Fonder som äger samma aktier är inte heller " +
+        "oberoende, så p-värdena för jämförelser mellan fonder är snarare för låga än för höga.</p>" +
+        "<p><b>Källkritik.</b> Varje analys listar sina svagheter, till exempel överlevnadsbias, korta perioder och att en tredje faktor kan ligga bakom sambandet. " +
+        "Ett säkerställt samband visar bara att två saker har hängt ihop, inte att den ena orsakar den andra.</p>") +
+
+      sec(10, "Begränsningar",
         "<ul><li>Innehaven gäller kvartalets sista dag. Affärer under kvartalet syns bara som nettot mellan två kvartal.</li>" +
         "<li>Bara fonder som rapporterar till Finansinspektionen ingår, inte utländska fonder, pensionsbolag eller andra institutioner.</li>" +
         "<li>Fondbolagen rapporterar själva. Felaktiga uppgifter rättas inte, men medianer och kontroller begränsar effekten.</li>" +
         "<li>Uppskattningarna av fondflöden och ägarandel är just uppskattningar och redovisas som det.</li>" +
         "<li>Inget på Fondinsyn är investeringsrådgivning.</li></ul>") +
 
-      sec(10, "Kvalitet och teknik",
+      sec(11, "Kvalitet och teknik",
         "<p>Allt hämtas och räknas automatiskt varje morgon. Innan något publiceras kontrolleras datan (antal fonder, aktier och kvartal ska vara rimliga), och stoppas publiceringen om något ser fel ut. " +
         "Sajten är statisk och kräver inget konto. Datan finns att ladda ner som CSV och JSON, se <a href=\"/oppen-data/\">Data och API</a>.</p>") +
       '<div class="print-only print-foot">Fondinsyn (www.fondinsyn.se). Metodrapport skapad ' + dateText(new Date().toISOString().slice(0, 10)) + ". Inte investeringsrådgivning.</div>" +
@@ -3716,7 +3945,8 @@
     return quarterData().se.stocks.filter(function (s) { return s.netFlow != null && s.price && Math.max(s.val1, s.val2) >= SIGNAL_MIN_VALUE; })
       .map(function (s) { return signalFor(s, insBy); });
   }
-  function signalWord(v) { return v >= 40 ? "Starkt positiv" : v >= 15 ? "Positiv" : v > -15 ? "Neutral" : v > -40 ? "Negativ" : "Starkt negativ"; }
+  // Orden beskriver vad aktörerna har gjort, inte hur aktien kommer att gå: signalen är inte prövad mot kursen
+  function signalWord(v) { return v >= 40 ? "Samstämmigt köp" : v >= 15 ? "Övervägande köp" : v > -15 ? "Blandat" : v > -40 ? "Övervägande sälj" : "Samstämmigt sälj"; }
   function signalBadge(v) {
     var c = v >= 40 ? "sp2" : v >= 15 ? "sp1" : v > -15 ? "s0" : v > -40 ? "sn1" : "sn2";
     return '<span class="sig ' + c + '" title="' + signalWord(v) + '"><b>' + (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v) + "</b></span>";
@@ -3752,13 +3982,27 @@
       { key: "S", label: "Blankning", align: "l", hideSm: true, cell: function (g) { return partArrow(g.S) + " " + partText(g, "S"); }, value: function (g) { return g.S; } }
     ];
     var strong = function (list, lim) { return list.filter(function (g) { return Math.abs(g.score) >= lim; }).length; };
+    // Fondernas del är prövad för sig i backtestet. Historiken laddas här bara om den redan finns.
+    var bt = state.history && state.history.quarters ? computeBacktest(false) : null;
+    var sigBox = statBox({ level: "none",
+      text: "Signalen beskriver vad fonder, insiders och blankare har gjort, inte hur aktien kommer att gå. Den är inte prövad mot aktiernas senare kursutveckling, " +
+        "eftersom historik över blankningen bara finns för det senaste året. Därför går det inte att säga att en hög signal följs av en bättre kurs. " +
+        'Fondernas del prövas för sig i <a href="#/backtest">Följ fonderna</a>' + (bt && bt.N ? ": " + STRENGTH[bt.test.level].toLowerCase() + " (p-värde " + pText(bt.test.p) + ")." : "."),
+      figs: [["Urval", int(all.length) + " aktier", "fonderna äger minst 50 mkr"], ["Prövad mot kursen", "Nej", "blankningshistorik saknas"],
+        ["Vikter", "40 / 40 / 20", "valda för hand, inte ur data"], ["p-värde", "–", "kan inte räknas utan prövning"]],
+      caveats: [
+        "<b>Vikter och gränser</b> (till exempel att 5 mkr i insiderköp ger fullt utslag) är bedömningar, inte uppskattade ur data. Andra val ger andra listor.",
+        "<b>Olika perioder.</b> Fondernas del gäller ett helt kvartal, insidernas de senaste 90 dagarna och blankningen de senaste 30 dagarna.",
+        "<b>Dubbelräkning.</b> När flera insiders i samma bolag handlar räknas beloppen ihop, och en enda stor affär kan ge fullt utslag."
+      ] });
     return head +
       '<dl class="figures">' + fig("Aktier med signal", int(all.length), "fonderna äger minst 50 mkr") +
-      fig("Starkt positiva", '<span class="pos">' + int(strong(pos, 40)) + "</span>", "+40 eller mer") +
-      fig("Starkt negativa", '<span class="neg">' + int(strong(neg, 40)) + "</span>", "−40 eller lägre") + "</dl>" +
-      '<div class="stack">' +
-      block("Starkast positiva", "Aktier där fonderna köper, insiders köper och blankningen minskar.", table("sig-pos", cols, pos.slice(0, 25), { csv: true, sort: { col: "score", dir: -1 } })) +
-      block("Starkast negativa", "Aktier där fonderna säljer, insiders säljer och blankningen ökar.", table("sig-neg", cols, neg.slice(0, 25), { csv: true, sort: { col: "score", dir: 1 } })) +
+      fig("Samstämmigt köp", '<span class="pos">' + int(strong(pos, 40)) + "</span>", "+40 eller mer") +
+      fig("Samstämmigt sälj", '<span class="neg">' + int(strong(neg, 40)) + "</span>", "−40 eller lägre") + "</dl>" +
+      sigBox +
+      '<div class="stack section-gap">' +
+      block("Mest samstämmigt köp", "Aktier där fonderna köper, insiders köper och blankningen minskar.", table("sig-pos", cols, pos.slice(0, 25), { csv: true, sort: { col: "score", dir: -1 } })) +
+      block("Mest samstämmigt sälj", "Aktier där fonderna säljer, insiders säljer och blankningen ökar.", table("sig-neg", cols, neg.slice(0, 25), { csv: true, sort: { col: "score", dir: 1 } })) +
       "</div>" +
       '<section class="block section-gap text-page"><div class="block-head"><h2>Så räknas signalen</h2></div>' +
       "<p><b>Fonderna (40 %).</b> Hälften är hur många fonder som ökade jämfört med hur många som minskade i aktien under " + quarterLabel(state.q) +
