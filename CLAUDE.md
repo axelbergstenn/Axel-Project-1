@@ -12,6 +12,7 @@ node --check site/assets/app.js                                          # synta
 pwsh scripts/build-data.ps1 -History 1 -HistoryQuarters 2                # snabb lokal databyggnad (FI-zippar cachas i .cache/)
 powershell -File scripts/build-pages.ps1 -WriteHome                      # statiska sidor, sitemap, delningsbilder (körs efter versionsnumret i CI)
 py scripts/build-companies.py --raw-cache .cache/bolag --only SE0000115446   # "Känn bolaget" för ett bolag
+py scripts/build-us-companies.py --raw-cache .cache/sec --only US5949181045   # samma för ett amerikanskt bolag (SEC)
 CHROME=... PYTHON=py bash scripts/smoke-test.sh site                     # röktestet som stoppar publicering
 ```
 
@@ -20,7 +21,7 @@ CHROME=... PYTHON=py bash scripts/smoke-test.sh site                     # rökt
 
 ## Arkitektur
 
-**Publicering.** `.github/workflows/update.yml` körs 05, 11 och 17 UTC, vid push till `main` och manuellt. Datastegen körs i ordning: build-data → build-rates → build-shares → build-companies → build-flows → build-shorts → build-insider → build-perf → validate-data. Sedan committas `site/data` och `data`, versionsnumret sätts (`__VERSION__` i index.html och app.js), därefter körs build-pages, PDF:erna byggs, röktestet körs och `site/` publiceras. Körningarna 11 och 17 (`MIDDAY=true`) hoppar över nyhetsbrev, bevakningsmejl, release, PDF och IndexNow. Datakommittar kommer från github-actions-boten, så `git pull --rebase` före push.
+**Publicering.** `.github/workflows/update.yml` körs 05, 11 och 17 UTC, vid push till `main` och manuellt. Datastegen körs i ordning: build-data → build-rates → build-shares → build-companies → build-us-companies → build-flows → build-shorts → build-insider → build-perf → validate-data. Sedan committas `site/data` och `data`, versionsnumret sätts (`__VERSION__` i index.html och app.js), därefter körs build-pages, PDF:erna byggs, röktestet körs och `site/` publiceras. Körningarna 11 och 17 (`MIDDAY=true`) hoppar över nyhetsbrev, bevakningsmejl, release, PDF och IndexNow. Datakommittar kommer från github-actions-boten, så `git pull --rebase` före push.
 
 **Committad eller genererad data.** Kvartalsfiler (`site/data/<Q>.json`, `<Q>-rates*.json`) och `site/data/bolag/` committas. Allt som ändras dagligen och alla sidor som byggs av build-pages är gitignorerade (se `.gitignore`); ändra dem inte för hand.
 
@@ -39,6 +40,7 @@ CHROME=... PYTHON=py bash scripts/smoke-test.sh site                     # rökt
 - MFN:s robots.txt förbjuder `*.json`, så använd HTML-sidorna.
 - Höj `INTERIM_VERSION` eller `PARSER_VERSION` för att läsa om allt. Läget sparas i `data/bolag-state.json`.
 - Om hämtningen slutar fungera öppnas ett ärende på GitHub (`scripts/company-alarm.sh`).
+- Amerikanska aktier (`scripts/build-us-companies.py`): bolagens rapporter till SEC (10-Q, 10-K och resultatbesked i 8-K) via data.sec.gov, i samma format i `site/data/bolag/<ISIN>.json` (med `src: "sec"`). SEC kräver User-Agent med kontaktadress (axelsfondfloden@gmail.com) och högst 10 anrop per sekund; skriptet gör högst två. De största innehaven först, högst 60 bolag per körning. Läget sparas i `data/sec-state.json`. build-companies.py tar bara bort svenska filer i `bolag/`.
 
 ## Design
 

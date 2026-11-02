@@ -1082,6 +1082,14 @@
     var unit = !cur || cur === "SEK" ? "kr" : ({ EUR: "euro", USD: "dollar" }[cur] || cur);
     return fixMinus(nf2.format(v)) + " " + unit;
   }
+  // Valutan i löptext: "av varje 100 kronor" eller "av varje 100 dollar"
+  function curWord(cur) { return ({ USD: "dollar", EUR: "euro" })[cur] || "kronor"; }
+  // Räkenskapsåret: "2025", eller "2025/26" för amerikanska bolag vars år inte följer kalenderåret (Microsoft, Apple, Nvidia)
+  function fyName(r, back) {
+    var y = r.fy - (back || 0);
+    return r.fyl && r.fyl.indexOf("/") > 0 ? (y - 1) + "/" + String(y).slice(2) : String(y);
+  }
+  function fyText(r, back) { return (r.fyl && r.fyl.indexOf("/") > 0 ? "räkenskapsåret " : "helåret ") + fyName(r, back); }
   // Andelar som en nybörjare säger dem: "ungefär hälften", "en fjärdedel"
   function shareWords(v) {
     var words = [[0.25, "en fjärdedel"], [1 / 3, "en tredjedel"], [0.5, "hälften"], [2 / 3, "två tredjedelar"], [0.75, "tre fjärdedelar"]];
@@ -1139,8 +1147,9 @@
     if (g != null && g <= -0.03) add(bad, -g, "Försäljningen minskade med " + nf0.format(-g * 100) + " % jämfört med samma period i fjol.");
     if (rev && rev[0] > 0 && rev[1] > 0 && q.ebit && q.ebit[0] != null && q.ebit[1] != null) {
       var m0 = q.ebit[0] / rev[0], m1 = q.ebit[1] / rev[1], md = m0 - m1;
-      if (md >= 0.01) add(good, md * 4, "Lönsamheten blev bättre: av varje 100 kronor blev " + nf0.format(m0 * 100) + " kronor rörelsevinst, mot " + nf0.format(Math.max(0, m1) * 100) + " ett år tidigare.");
-      if (md <= -0.01) add(bad, -md * 4, "Lönsamheten blev sämre: av varje 100 kronor blev " + nf0.format(Math.max(0, m0) * 100) + " kronor rörelsevinst, mot " + nf0.format(m1 * 100) + " ett år tidigare.");
+      var cw = curWord(cur);
+      if (md >= 0.01) add(good, md * 4, "Lönsamheten blev bättre: av varje 100 " + cw + " blev " + nf0.format(m0 * 100) + " " + cw + " rörelsevinst, mot " + nf0.format(Math.max(0, m1) * 100) + " ett år tidigare.");
+      if (md <= -0.01) add(bad, -md * 4, "Lönsamheten blev sämre: av varje 100 " + cw + " blev " + nf0.format(Math.max(0, m0) * 100) + " " + cw + " rörelsevinst, mot " + nf0.format(m1 * 100) + " ett år tidigare.");
       if (q.ebit[0] < 0) add(bad, 1, "Verksamheten gick med förlust: rörelseresultatet blev " + money(q.ebit[0], cur) + ".");
     }
     var res = q.ebit && q.ebit[0] != null && q.ebit[1] > 0 ? q.ebit : q.net && q.net[0] != null && q.net[1] > 0 ? q.net : null;
@@ -1187,7 +1196,7 @@
       var tn = q.themes[0][0], tl = /^(AI|USA|Kina)$/.test(tn) ? tn : tn.toLowerCase();
       watch = "Rapporten tar ofta upp " + tl + " (" + q.themes[0][1] + " gånger), värt att följa.";
     }
-    if (c.cal && c.cal.next) watch = (watch ? watch + " " : "") + "Nästa rapport kommer " + dateText(c.cal.next[0]) + ".";
+    if (c.cal && c.cal.next) watch = (watch ? watch + " " : "") + (c.cal.est ? "Nästa rapport väntas omkring " : "Nästa rapport kommer ") + dateText(c.cal.next[0]) + ".";
     var best = good.sort(function (a, b) { return b.w - a.w; })[0], worst = bad.sort(function (a, b) { return b.w - a.w; })[0];
     if (!best && !worst) return "";
     var card = function (cls, icon, title, text) {
@@ -1246,7 +1255,7 @@
   }
 
   // Utdelningen år för år (de senaste åtta åren) och hur länge bolaget har delat ut
-  function dividendCard(hist, cur, short) {
+  function dividendCard(hist, cur, short, fiscal) {
     var thisYear = new Date().getFullYear();
     var rows = hist.filter(function (h) { return h[0] <= thisYear; });
     var last8 = rows.slice(-8);
@@ -1266,7 +1275,8 @@
           '<span class="dv-bar" style="height:' + (h[1] / max * 100).toFixed(1) + '%"></span></div><div class="qb-lbl">' + h[0] + "</div></div>";
       }).join("") + "</div>" +
       '<div class="fin-legend"><span><i class="fin-eq"></i>Ordinarie</span>' + (last8.some(function (h) { return h[2]; }) ? '<span><i class="dv-extra-i"></i>Extra</span>' : "") +
-      '<span class="muted">' + (cur === "SEK" || !cur ? "Kronor" : cur) + " per aktie, inte justerat för eventuella aktiesplittar</span></div></div>";
+      '<span class="muted">' + (cur === "SEK" || !cur ? "Kronor" : cur === "USD" ? "Dollar" : cur) + " per aktie" +
+      (fiscal ? " och räkenskapsår, beslutad utdelning" : ", inte justerat för eventuella aktiesplittar") + "</span></div></div>";
   }
 
   // Vad rapporten handlar om, och hur positivt den är skriven
@@ -1326,8 +1336,10 @@
       else if (plus === 0) out.push({ tone: "neg", text: "Bolaget har gått med förlust i alla " + res.length + " kvartal." });
       else out.push({ tone: "", text: "Bolaget har gått med " + what + " i " + plus + " av de senaste " + res.length + " kvartalen." });
     }
-    // Säsong: ett kvartal som år efter år säljer klart mer än de andra
-    if (!finance && run.length >= 8) {
+    // Säsong: ett kvartal som år efter år säljer klart mer än de andra. Inte när bolaget växer snabbt (över 25 % på ett år),
+    // för då är det senaste kvartalet störst på grund av tillväxten (Nvidia), inte säsongen.
+    var yr8 = run.length >= 8 ? change(sum(run.slice(-4), 1), sum(run.slice(-8, -4), 1)) : null;
+    if (!finance && run.length >= 8 && !(yr8 > 0.25)) {
       var byQ = {}, n = {};
       run.slice(-8).forEach(function (x) { var m = x[0].slice(5, 7); if (x[1] != null) { byQ[m] = (byQ[m] || 0) + x[1]; n[m] = (n[m] || 0) + 1; } });
       var ms = Object.keys(byQ).filter(function (m) { return n[m] === 2; });
@@ -1397,7 +1409,7 @@
   }
 
   // Lönsamhet år för år: rörelsemarginal och avkastning på eget kapital
-  function profitCard(h, short, finance) {
+  function profitCard(h, short, finance, cur) {
     var n = h.fy.length, years = h.fy;
     var margins = finance ? [] : years.map(function (y, i) { return histMargin(h, i); });
     var roes = years.map(function (y, i) { return histRoe(h, i); });
@@ -1418,7 +1430,7 @@
     var charts = (mPts.length >= 2 ? yearBars(years, margins, "Rörelsemarginal", pc) : "") + (rPts.length >= 2 ? yearBars(years, roes, "Avkastning på eget kapital", pc) : "");
     return '<div class="know-card know-fin"><h3>Lönsamheten år för år</h3><p class="know-lead">' + lead.join(" ") + "</p>" +
       (charts ? '<div class="qb-charts">' + charts + "</div>" : "") +
-      '<p class="know-explain">' + (finance ? "" : "<b>Rörelsemarginal</b>: hur många kronor av varje 100 kronors försäljning som blir rörelseresultat, alltså vinst före räntor och skatt. ") +
+      '<p class="know-explain">' + (finance ? "" : "<b>Rörelsemarginal</b>: hur många " + curWord(cur) + " av varje 100 i försäljning som blir rörelseresultat, alltså vinst före räntor och skatt. ") +
       "<b>Avkastning på eget kapital</b>: årets resultat i procent av ägarnas pengar i bolaget (det egna kapitalet i genomsnitt under året). Visar hur bra bolaget förräntar ägarnas pengar." +
       (finance ? " Kassaflöden visas inte för banker, försäkrings- och investmentbolag: deras kassaflöden består mest av in- och utlåning eller köp och försäljning av värdepapper och går inte att jämföra med andra bolags." : "") +
       "</p></div>";
@@ -1559,15 +1571,18 @@
   }
 
   function companySection(isin, name, sector) {
-    if (isin.slice(0, 2) !== "SE" || !needCompanyIndex() || !state.companyIndex[isin]) return "";
+    // Svenska bolag (scripts/build-companies.py) och amerikanska (scripts/build-us-companies.py, ur SEC)
+    if (!/^(SE|US)/.test(isin) || !needCompanyIndex() || !state.companyIndex[isin]) return "";
     if (!needCompany(isin)) return failed("bolag-" + isin) ? "" : '<section class="block section-gap">' + loadingBlock("Laddar fakta om bolaget…") + "</section>";
     var c = state.companies[isin], r = c.report || null, f = c.facts || {}, q = c.q || null;
-    var cur = r ? r.cur : "SEK", fin = r ? r.fin || {} : {};
+    var us = c.src === "sec";
+    var cur = r ? r.cur : us ? "USD" : "SEK", fin = r ? r.fin || {} : {};
     var now = function (k) { return fin[k] ? fin[k][0] : null; };
     var before = function (k) { return fin[k] ? fin[k][1] : null; };
-    var short = companyShort(name);
-    // Banker och investmentbolag har inte "försäljning" i vanlig mening, så de siffrorna visas inte för dem
-    var finance = sector === "Finans";
+    var short = c.short || companyShort(name);
+    // Banker och investmentbolag har inte "försäljning" i vanlig mening, så de siffrorna visas inte för dem.
+    // De amerikanska bankerna och försäkringsbolagen känns igen på SEC:s branschkod (inte Visa och Mastercard).
+    var finance = us ? !!c.bank : sector === "Finans";
     var rev = finance ? null : now("rev"), ebit = now("ebit"), net = now("net");
     var yearNow = new Date().getFullYear();
 
@@ -1582,11 +1597,14 @@
     if (f.ceo) facts.push(["Vd", esc(f.ceo)]);
     if (f.industry) facts.push(["Bransch", esc(f.industry)]);
     if (f.list) facts.push(["Handlas på", esc(f.list)]);
+    if (f.ticker && f.ticker.length) facts.push([f.ticker.length > 1 ? "Kortnamn" : "Kortnamn på börsen", esc(f.ticker.join(" och "))]);
+    if (f.inc) facts.push(["Registrerat i", "delstaten " + esc(f.inc)]);
+    if (f.fye) facts.push(["Räkenskapsåret slutar", "i " + esc(f.fye)]);
     if (f.web) facts.push(["Webbplats", '<a href="' + esc(f.web) + '" target="_blank" rel="noopener">' + esc(f.web.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")) + "</a>"]);
     if (about || facts.length) {
       html += '<div class="know-card">' +
         (about ? '<p class="know-about">' + esc(about.text) + (about.url ? ' <a class="src" href="' + esc(about.url) + '" target="_blank" rel="noopener">' +
-          (about.src === "pm" ? "Bolagets egen beskrivning" : "Ur årsredovisningen") + " ↗</a>" : "") + "</p>" : "") +
+          (about.src === "pm" ? "Bolagets egen beskrivning" : about.src === "sec" ? "Bolagets rapporter hos SEC" : "Ur årsredovisningen") + " ↗</a>" : "") + "</p>" : "") +
         (facts.length ? '<dl class="know-facts">' + facts.map(function (x) { return "<div><dt>" + x[0] + "</dt><dd>" + x[1] + "</dd></div>"; }).join("") + "</dl>" : "") +
         "</div>";
     }
@@ -1605,7 +1623,8 @@
       }
       if (qrev && qrev[0] > 0 && q.ebit && q.ebit[0] != null && Math.abs(q.ebit[0]) <= qrev[0]) {
         var m0 = q.ebit[0] / qrev[0], m1 = q.ebit[1] != null && qrev[1] > 0 ? q.ebit[1] / qrev[1] : null;
-        lead.push(m0 >= 0 ? "Av varje 100 kronor blev " + nf0.format(m0 * 100) + " kronor rörelsevinst" + (m1 != null ? " (" + nf0.format(Math.max(0, m1) * 100) + " kronor ett år tidigare)." : ".")
+        var cw = curWord(qcur);
+        lead.push(m0 >= 0 ? "Av varje 100 " + cw + " blev " + nf0.format(m0 * 100) + " " + cw + " rörelsevinst" + (m1 != null ? " (" + nf0.format(Math.max(0, m1) * 100) + " " + cw + " ett år tidigare)." : ".")
           : "Rörelseresultatet var negativt: verksamheten gick med förlust.");
       } else if (q.net && q.net[0] != null) {
         lead.push(q.net[0] >= 0 ? "Bolaget gick med vinst." : "Bolaget gick med förlust.");
@@ -1684,7 +1703,9 @@
 
     // Kalendern: nästa rapport, årsstämman och utdelningen
     var cal = c.cal || {}, calItems = [];
-    if (cal.next) calItems.push(["Nästa rapport", dateText(cal.next[0]) + ' <span class="muted">(' + esc(cal.next[1].replace(/\s+\d{4}(-Q\d)?$/, "").toLowerCase()) + ")</span>"]);
+    // Amerikanska bolag: beräknat utifrån när bolaget rapporterade samma kvartal förra året (est)
+    if (cal.next) calItems.push([cal.est ? "Nästa rapport väntas" : "Nästa rapport", (cal.est ? "omkring " : "") + dateText(cal.next[0]) + ' <span class="muted">(' +
+      esc(cal.next[1].replace(/\s+\d{4}(-Q\d)?$/, "").toLowerCase()) + (cal.est ? ", beräknat utifrån förra året" : "") + ")</span>"]);
     if (cal.agm) calItems.push(["Årsstämma", dateText(cal.agm)]);
     if (cal.div && cal.div.length) {
       // Allt som betalats ut (eller ska betalas ut) det senaste året, även när utdelningen delas upp på flera tillfällen
@@ -1703,7 +1724,7 @@
     // Börsens reaktion på rapporterna och utdelningen genom åren, sida vid sida
     var duo = [];
     if (c.reacts && c.reacts.length >= 2) duo.push(reactCard(c.reacts, short));
-    if (cal.divHist) { var dc = dividendCard(cal.divHist, cal.divHist.length && cal.div && cal.div[0] ? cal.div[0][2] : "SEK", short); if (dc) duo.push(dc); }
+    if (cal.divHist) { var dc = dividendCard(cal.divHist, cal.divHist.length && cal.div && cal.div[0] ? cal.div[0][2] : us ? "USD" : "SEK", short, us); if (dc) duo.push(dc); }
     if (duo.length) html += '<div class="know-grid' + (duo.length === 1 ? " one" : "") + '">' + duo.join("") + "</div>";
 
     // Affärsområden (senaste kvartalet om rapporten har dem, annars helåret ur årsredovisningen) och marknader
@@ -1764,24 +1785,24 @@
     if (rev > 0) {
       var perSec = rev / (365 * 24 * 3600);
       tile(perSec >= 10 ? smallMoney(perSec, cur) : money(rev / 365, cur), perSec >= 10 ? "säljer de för varje sekund" : "säljer de för varje dag",
-        money(rev, cur) + " under " + r.fy);
+        money(rev, cur) + " under " + fyName(r));
     }
     if (net != null && (rev || finance)) {
       tile(money(Math.abs(net) / 365, cur), net >= 0 ? "i vinst varje dag" : "i förlust varje dag", "Årets resultat " + money(net, cur), net < 0 ? "neg" : "");
     }
     var growth = rev > 0 && before("rev") > 0 ? rev / before("rev") - 1 : null;
-    if (growth != null) tile(pct(growth), "försäljningen jämfört med " + (r.fy - 1), growth >= 0 ? "Bolaget växte" : "Försäljningen minskade", cls(growth));
+    if (growth != null) tile(pct(growth), "försäljningen jämfört med " + fyName(r, 1), growth >= 0 ? "Bolaget växte" : "Försäljningen minskade", cls(growth));
     var dps = now("dps");
-    if (dps > 0) tile(nf2.format(dps).replace(/,00$/, "") + " " + (cur === "SEK" ? "kr" : cur), "i utdelning per aktie", "Äger du 100 aktier får du " + smallMoney(dps * 100, cur));
+    if (dps > 0) tile(perShare(dps, cur).replace(/,00 /, " "), "i utdelning per aktie", "Äger du 100 aktier får du " + smallMoney(dps * 100, cur));
     if (rev > 0 && f.employees && f.employees[0] > 0 && (!f.employees[1] || +f.employees[1] >= r.fy - 2)) {
       tile(money(rev / f.employees[0], cur), "i försäljning per anställd", "Med ca " + int(f.employees[0]) + " anställda");
     }
-    if (tiles.length) html += '<h3 class="know-h">Helåret ' + r.fy + " i vardagliga mått</h3>" + '<div class="know-tiles">' + tiles.slice(0, 5).join("") + "</div>";
+    if (tiles.length) html += '<h3 class="know-h">' + capFirst(fyText(r)) + " i vardagliga mått</h3>" + '<div class="know-tiles">' + tiles.slice(0, 5).join("") + "</div>";
 
     // Årsredovisningarna år för år: lönsamhet för alla, kassaflöde och utdelning inte för banker och försäkringsbolag
-    var h = r && r.hist && r.hist.fy && r.hist.fy.length && r.hist.fy[r.hist.fy.length - 1] === r.fy ? r.hist : null, hl = h ? h.fy.length - 1 : -1;
+    var h = r && r.hist && r.hist.fy && r.hist.fy.length && r.hist.fy[r.hist.fy.length - 1] === (r.fyl || r.fy) ? r.hist : null, hl = h ? h.fy.length - 1 : -1;
     if (h) {
-      html += profitCard(h, short, finance);
+      html += profitCard(h, short, finance, cur);
       var cc = finance ? [] : [cashCard(h, short, cur, r.custFin), coverCard(h, short, cur)].filter(Boolean);
       if (cc.length) html += '<div class="know-grid' + (cc.length === 1 ? " one" : "") + '">' + cc.join("") + "</div>";
     }
@@ -1813,7 +1834,7 @@
         '<p class="know-lead">Bolagets tillgångar uppgår till ' + money(assets, cur) + " (anläggningar, varulager, kundfordringar, likvida medel med mera). " +
         (share >= 0 ? nf0.format(share * 100) + " % är finansierat med eget kapital, alltså ägarnas pengar i bolaget, och " + nf0.format(debt * 100) + " % med skulder. Andelen eget kapital kallas soliditet. " : "") +
         verdict + (eqBefore != null && Math.abs(share - eqBefore) >= 0.03 ? " Ett år tidigare var soliditeten " + nf0.format(eqBefore * 100) + " %." : "") + debtText +
-        ' <span class="muted">Helåret ' + r.fy + ".</span></p>" +
+        ' <span class="muted">' + capFirst(fyText(r)) + ".</span></p>" +
         (share >= 0 ? '<div class="fin-bar" role="img" aria-label="' + nf0.format(share * 100) + ' % eget kapital, ' + nf0.format(debt * 100) + ' % skulder">' +
           '<span class="fin-eq" style="width:' + (share * 100).toFixed(1) + '%"></span><span class="fin-debt" style="width:' + (debt * 100).toFixed(1) + '%"></span></div>' +
           '<div class="fin-legend"><span><i class="fin-eq"></i>Eget kapital ' + money(eq, cur) + '</span><span><i class="fin-debt"></i>Skulder ' + money(assets - eq, cur) + "</span></div>" : "") + debtTiles +
@@ -1824,8 +1845,18 @@
     var rk = c.rank || {}, ranks = [];
     var place = function (x, what) { return x && x[0] <= Math.max(25, x[1] * 0.1) ? "nr " + x[0] + " " + what : null; };
     [place(!finance && rk.rev, "i försäljning"), place(rk.emp, "i antal anställda"), place(rk.age, "bland de äldsta")].forEach(function (x) { if (x) ranks.push(x); });
-    if (ranks.length) html += '<p class="know-rank">Bland de svenska bolagen på Fondinsyn: ' + ranks.join(", ") + ".</p>";
+    if (ranks.length) html += '<p class="know-rank">Bland de ' + (us ? "amerikanska" : "svenska") + " bolagen på Fondinsyn: " + ranks.join(", ") + ".</p>";
 
+    if (us) {
+      var usSrc = [];
+      if (q && q.url) usSrc.push('<a href="' + esc(q.url) + '" target="_blank" rel="noopener">' + (/10-K/.test(q.title) ? "årsrapporten (10-K)" : "kvartalsrapporten (10-Q)") + "</a>");
+      if (r && r.url && (!q || r.url !== q.url)) usSrc.push('<a href="' + esc(r.url) + '" target="_blank" rel="noopener">årsrapporten (10-K) för ' + fyText(r) + "</a>");
+      if (c.about && c.about.url) usSrc.push('<a href="' + esc(c.about.url) + '" target="_blank" rel="noopener">alla bolagets rapporter hos SEC</a>');
+      html += '<p class="know-src">Källor: ' + usSrc.join(", ") + ". Allt kommer från bolagets egna rapporter till SEC och läses automatiskt ur deras maskinläsbara siffror (XBRL)." +
+        " Bolagen lämnar ingen egen rapport för det fjärde kvartalet, så det räknas fram som helåret minus årets tre första kvartal, och kvartalens kassaflöde på samma sätt." +
+        (cal.est ? " Nästa rapportdag är beräknad utifrån när bolaget rapporterade samma kvartal förra året." : "") + "</p>";
+      return html + "</section>";
+    }
     var src = [];
     if (q) src.push('<a href="' + esc(q.url) + '" target="_blank" rel="noopener">kvartalsrapporten</a>');
     if (r) src.push((r.url ? '<a href="' + esc(r.url) + '" target="_blank" rel="noopener">årsredovisningen ' + r.fy + "</a>" : "årsredovisningen " + r.fy));

@@ -3035,7 +3035,8 @@ def main():
             written.add(isin)
     if not args.only:
         for name in os.listdir(out_dir):
-            if name.endswith(".json") and not name.startswith("_") and name[:-5] not in written:
+            # bara svenska aktier; de amerikanska byggs av scripts/build-us-companies.py
+            if name.startswith("SE") and name.endswith(".json") and name[:-5] not in written:
                 os.remove(os.path.join(out_dir, name))
     # Vilka aktier som har en fil, så att sajten inte frågar efter filer som inte finns
     have = sorted(n[:-5] for n in os.listdir(out_dir) if n.endswith(".json") and not n.startswith("_"))

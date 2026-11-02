@@ -105,6 +105,25 @@ jobs:
           OUTCOME: ${{ steps.bolag.outcome }}
         run: bash scripts/company-alarm.sh "$RUNNER_TEMP/bolag-health.json"
 
+      # "Lär känna bolaget" för amerikanska aktier, ur bolagens egna rapporter till SEC (10-Q och 10-K). De största
+      # innehaven först, högst 60 bolag per körning; ett bolag hämtas om när en ny rapport väntas, annars en gång i månaden.
+      # Körs efter de svenska bolagen, så att data/bolag/_index.json får med båda. Stoppar aldrig publiceringen.
+      - name: Bygg bolagsfakta för amerikanska aktier
+        id: bolag_us
+        continue-on-error: true
+        timeout-minutes: 15
+        run: python3 scripts/build-us-companies.py --health "$RUNNER_TEMP/bolag-us-health.json"
+
+      - name: Larm om amerikanska bolagsfakta
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUTCOME: ${{ steps.bolag_us.outcome }}
+          ALARM_TITLE: "Larm: bolagsfakta från SEC fungerar inte"
+          ALARM_SCRIPT: scripts/build-us-companies.py
+          ALARM_STEP: Bygg bolagsfakta för amerikanska aktier
+        run: bash scripts/company-alarm.sh "$RUNNER_TEMP/bolag-us-health.json"
+
       # Spararnas nettoflöden per fondtyp (Fondbolagens förening, månadsvis) och uppskattade flöden per fond (ur FI-datan)
       - name: Bygg fondsparandet
         shell: pwsh

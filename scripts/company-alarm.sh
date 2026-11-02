@@ -2,12 +2,15 @@
 # Larm för bolagsfakta: öppnar ett ärende på GitHub (GitHub mejlar om nya ärenden) när hämtningen från MFN eller
 # läsningen av kvartalsrapporterna slutar fungera, och stänger ärendet när det fungerar igen.
 #   bash scripts/company-alarm.sh <hälsokollen.json>     (miljö: GH_TOKEN, OUTCOME = utfallet av steget "Bygg bolagsfakta")
+# Samma larm används för de amerikanska bolagen (SEC) med ALARM_TITLE, ALARM_SCRIPT och ALARM_STEP.
 set -u
 health="$1"
-title="Larm: bolagsfakta från MFN fungerar inte"
+title="${ALARM_TITLE:-Larm: bolagsfakta från MFN fungerar inte}"
+script="${ALARM_SCRIPT:-scripts/build-companies.py}"
+step="${ALARM_STEP:-Bygg bolagsfakta}"
 
 if [ "${OUTCOME:-success}" != "success" ]; then
-  problems="- Skriptet scripts/build-companies.py kraschade eller tog för lång tid (steget \"Bygg bolagsfakta\")."
+  problems="- Skriptet $script kraschade eller tog för lång tid (steget \"$step\")."
 elif [ -f "$health" ]; then
   problems=$(python3 -c 'import json, sys; print("\n".join("- " + p for p in json.load(open(sys.argv[1], encoding="utf-8"))["problems"]))' "$health") ||
     problems="- Hälsokollen gick inte att läsa ($health)."
