@@ -5,7 +5,8 @@ Bygger data/bolag/<ISIN>.json: en lättläst bild av varje svenskt bolag som fon
 Bara bolagens egna rapporter och pressmeddelanden, utan nycklar:
   - Årsredovisningen i ESEF-format (maskinläsbar, obligatorisk för bolag på reglerad marknad), via filings.xbrl.org.
     Därifrån kommer helårets omsättning, resultat, utdelning, anställda, affärsområden (segmentsnoten) och
-    försäljning per land. ISIN kopplas till bolagets LEI-kod via GLEIF.
+    försäljning per land. ISIN kopplas till bolagets LEI-kod via GLEIF. De tre äldre årsredovisningarna ger fem år av
+    resultat, kassaflöde (löpande verksamhet, investeringar, utbetald utdelning) och balansräkning (lån, kassa, eget kapital).
   - Kvartalsrapporterna på MFN (mfn.se): resultaträkningen läses ur rapportens PDF (omsättning, rörelseresultat,
     resultat och resultat per aktie för senaste kvartalet och samma kvartal året innan), pressmeddelandet ger vd:ns
     namn och kommentar och bolagets egen beskrivning ("Om oss"). MFN:s kalender ger nästa rapport, årsstämman och
@@ -25,7 +26,7 @@ Läget sparas i data/bolag-state.json i repot (utanför site/, så att det inte 
 Kräver pypdfium2 för att läsa PDF:erna (pip install pypdfium2). Utan den hämtas allt utom kvartalssiffrorna.
 
   python3 scripts/build-companies.py
-  py -I scripts/build-companies.py --raw-cache .cache/esef --only SE0000667891    (lokalt, sparar nedladdade rapporter)
+  py scripts/build-companies.py --raw-cache .cache/bolag --only SE0000667891    (lokalt, sparar nedladdade rapporter)
 """
 import argparse
 import datetime as dt
@@ -49,7 +50,7 @@ except ImportError:
     pdfium = pdfraw = None
 
 # Höjs när tolkningen av rapporterna ändras, så att alla rapporter läses om
-PARSER_VERSION = 6
+PARSER_VERSION = 7
 INTERIM_VERSION = 5  # samma sak för kvartalsrapporterna
 UA = "Fondinsyn/1.0 (https://www.fondinsyn.se)"
 TODAY = dt.date.today()
@@ -592,6 +593,91 @@ NUM_CONCEPTS = {
 }
 CUSTOM_REV = re.compile(r":(NetSales|NetRevenue|Revenues?|Nettoomsattning|TotalRevenue|TotalIncome|Sales)$", re.I)
 
+# Kassaflöde och balansräkning år för år. Samma sak kan ha flera taggar: den första som finns används.
+CAPEX_PPE = ["ifrs-full:PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities", "ifrs-full:PurchaseOfPropertyPlantAndEquipment"]
+CAPEX_ALL = ["ifrs-full:PurchaseOfPropertyPlantAndEquipmentIntangibleAssetsOtherThanGoodwillInvestmentPropertyAndOtherNoncurrentAssets"]
+CAPEX_INT = ["ifrs-full:PurchaseOfIntangibleAssetsClassifiedAsInvestingActivities"]
+# bolagets egen tagg för investeringar i materiella anläggningstillgångar (Volvo), när standardtaggen saknas
+CUSTOM_CAPEX = re.compile(r":(InvesteringarIMateriellaAnlaggningstillgangar|InvestmentsInPropertyPlantAndEquipment|PurchaseOfTangibleAssets|"
+                          r"AcquisitionOfPropertyPlantAndEquipment)$", re.I)
+DIV_PAID = ["ifrs-full:DividendsPaidToEquityHoldersOfParentClassifiedAsFinancingActivities", "ifrs-full:DividendsPaidClassifiedAsFinancingActivities",
+            "ifrs-full:DividendsPaid"]
+BORROW_LONG = ["ifrs-full:NoncurrentPortionOfNoncurrentBorrowings", "ifrs-full:LongtermBorrowings", "ifrs-full:NoncurrentPortionOfNoncurrentLoansReceived"]
+BORROW_SHORT = ["ifrs-full:CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings", "ifrs-full:CurrentLoansReceivedAndCurrentPortionOfNoncurrentLoansReceived"]
+# Många bolag (Atlas Copco, Essity, Hexagon) märker raden för lån i balansräkningen som finansiella skulder
+BORROW_LONG_FIN = ["ifrs-full:NoncurrentFinancialLiabilities", "ifrs-full:OtherNoncurrentFinancialLiabilities"]
+BORROW_SHORT_FIN = ["ifrs-full:CurrentFinancialLiabilities", "ifrs-full:OtherCurrentFinancialLiabilities"]
+BORROW_SHORT_PARTS = ["ifrs-full:ShorttermBorrowings", "ifrs-full:CurrentPortionOfLongtermBorrowings"]
+LEASE_PARTS = ["ifrs-full:NoncurrentLeaseLiabilities", "ifrs-full:CurrentLeaseLiabilities"]
+HIST_KEYS = ["rev", "ebit", "net", "netOwn", "ocf", "capex", "div", "equity", "eqOwn", "assets", "debt", "cash"]
+OLD_REPORTS = 3  # så många äldre årsredovisningar läses per bolag (ger fem år)
+
+
+def year_rows(raw, fin, fy):
+    """Ett år per kolumn i rapporten (året och året innan): resultat, kassaflöde och balansräkning.
+    Belopp som inte är rimliga i förhållande till bolagets tillgångar och försäljning tas bort."""
+    def first(names, w):
+        for n in names:
+            if (n, w) in raw:
+                return raw[(n, w)]
+        return None
+
+    def parts(names, w):
+        vals = [first([n], w) for n in names]
+        return sum(v or 0 for v in vals) if any(v is not None for v in vals) else None
+
+    out = {}
+    for w, year in ((0, fy), (1, fy - 1)):
+        row = {k: fin[k][w] for k in ("rev", "ebit", "net", "ocf", "equity", "assets") if fin.get(k) and fin[k][w] is not None}
+        row["netOwn"] = first(["ifrs-full:ProfitLossAttributableToOwnersOfParent"], w)
+        row["eqOwn"] = first(["ifrs-full:EquityAttributableToOwnersOfParent"], w)
+        row["cash"] = first(["ifrs-full:CashAndCashEquivalents"], w)
+        # Investeringar (capex): materiella anläggningstillgångar plus immateriella (t.ex. utveckling), som utbetalningar
+        capex = first(CAPEX_PPE, w)
+        if capex is None:
+            capex = first(CAPEX_ALL, w)
+            intang = None if capex is not None else first(CAPEX_INT, w)
+        else:
+            intang = first(CAPEX_INT, w)
+        if capex is None:
+            capex = raw.get(("custom-capex", w))
+        if capex is not None:
+            capex = abs(capex) + abs(intang or 0)
+        row["capex"] = capex
+        div = first(DIV_PAID, w)
+        row["div"] = abs(div) if div is not None else None
+        # Räntebärande skulder: lån och leasingskulder. Bara när lånen är märkta, annars går det inte att veta vad som saknas.
+        long_, short = first(BORROW_LONG, w), first(BORROW_SHORT, w)
+        if short is None:
+            short = parts(BORROW_SHORT_PARTS, w)
+        if long_ is None and short is None:
+            long_ = first(["ifrs-full:Borrowings"], w)
+        if long_ is None and short is None:
+            long_, short = first(BORROW_LONG_FIN, w), first(BORROW_SHORT_FIN, w)
+        if long_ is not None or short is not None:
+            lease = first(["ifrs-full:LeaseLiabilities"], w)
+            row["debt"] = (long_ or 0) + (short or 0) + (lease if lease is not None else parts(LEASE_PARTS, w) or 0)
+        # Rimlighet
+        assets, eq, rev = row.get("assets"), row.get("equity"), row.get("rev")
+        if assets and assets > 0:
+            if row.get("cash") is not None and not 0 <= row["cash"] <= assets:
+                row["cash"] = None
+            if row.get("debt") is not None and (row["debt"] < 0 or (eq is not None and row["debt"] > (assets - eq) * 1.01)):
+                row["debt"] = None
+            if row.get("ocf") is not None and abs(row["ocf"]) > assets:
+                row["ocf"] = None
+            for k in ("capex", "div"):
+                if row.get(k) is not None and row[k] > assets * 0.5:
+                    row[k] = None
+        if rev and rev > 0 and row.get("capex") is not None and row["capex"] > rev:
+            row["capex"] = None
+        if row.get("eqOwn") is not None and eq is not None and abs(row["eqOwn"]) > abs(eq) * 1.5 + 1:
+            row["eqOwn"] = None
+        row = {k: v for k, v in row.items() if v is not None}
+        if len(row) >= 2:
+            out[str(year)] = row
+    return out
+
 
 def slim_report(raw):
     """Det som behövs ur en rapport (ofta 3–10 MB) i en liten fil: textblock och siffror utan dimensioner."""
@@ -655,12 +741,21 @@ def read_report(slim, period_end):
         pass
 
     values = {}
+    raw = {}  # alla taggar för året (0) och året innan (1), till kassaflödet och balansräkningen
     currency = None
     for c, period, unit, v in slim["nums"]:
         try:
             x = float(v)
         except (TypeError, ValueError):
             continue
+        if unit.startswith("iso4217:"):
+            de = duration_end(period)
+            inst = period[:10] if "/" not in period else None
+            w = 0 if after_end in (de, inst) else 1 if prev_end and prev_end in (de, inst) else None
+            if w is not None:
+                raw.setdefault((c, w), x)
+                if not c.startswith("ifrs-full:") and CUSTOM_CAPEX.search(c):
+                    raw.setdefault(("custom-capex", w), x)
         key = None
         for k, concepts in NUM_CONCEPTS.items():
             if c in concepts:
@@ -695,6 +790,11 @@ def read_report(slim, period_end):
         fin["net"] = fin["netOwners"]
     del fin["netOwners"]
     fin = {k: v for k, v in fin.items() if v[0] is not None or v[1] is not None}
+    hist = year_rows(raw, fin, fy)
+    # Bolag som lånar ut till sina kunder (Volvos finansieringsverksamhet): koncernens kassaflöde binds när utlåningen växer
+    lease_rec = sum(raw.get((c, 0)) or 0 for c in ("ifrs-full:NoncurrentFinanceLeaseReceivables", "ifrs-full:CurrentFinanceLeaseReceivables"))
+    assets_now = (fin.get("assets") or [None])[0]
+    cust_fin = round(lease_rec / assets_now, 2) if assets_now and lease_rec / assets_now >= 0.15 else None
     revenue = fin.get("rev", [None])[0]
 
     seg_blocks = [v for c, vs in slim["texts"].items() if "Segment" in c for v in vs]
@@ -720,7 +820,43 @@ def read_report(slim, period_end):
             about = first_sentences(t, 600)
             break
     return {"fy": fy, "end": period_end, "cur": currency or "SEK", "fin": fin, "seg": segments,
-            "geo": [[n, round(v)] for n, v in geo] if geo else None, "about": about}
+            "geo": [[n, round(v)] for n, v in geo] if geo else None, "about": about, "hist": hist, "custFin": cust_fin}
+
+
+def history(rep):
+    """Åren ur den senaste årsredovisningen och de äldre, som kolumner {"fy": [...], "rev": [...], ...}.
+    Ett äldre år tas bara med om året som finns i båda rapporterna stämmer (samma valuta, försäljning och eget kapital
+    inom 10 %). Annars har bolaget räknat om siffrorna eller bytt räkenskapsår, och de äldre åren jämförs inte."""
+    data = rep.get("data") or {}
+    years = {int(y): r for y, r in (data.get("hist") or {}).items()}
+    if not years:
+        return None
+
+    def close(a, b):
+        return a is None or b is None or (a == b == 0) or (a * b > 0 and 0.9 <= a / b <= 1.1)
+
+    for end in sorted(rep.get("old") or {}, reverse=True):
+        o = rep["old"][end]
+        h = {int(y): r for y, r in (o.get("hist") or {}).items()}
+        both = [y for y in h if y in years]
+        if o.get("cur") != data.get("cur") or not both:
+            break
+        y = max(both)
+        a, b = years[y], h[y]
+        if not all(close(a.get(k), b.get(k)) for k in ("rev", "equity", "assets")) or not any(k in a and k in b for k in ("rev", "equity")):
+            break
+        for y, r in h.items():
+            years.setdefault(y, r)
+    fys = sorted(years)
+    # bara en obruten följd av år, räknat bakifrån
+    while len(fys) >= 2 and fys[-1] - fys[0] != len(fys) - 1:
+        fys = fys[1:]
+    out = {"fy": fys}
+    for k in HIST_KEYS:
+        vals = [years[y].get(k) for y in fys]
+        if any(v is not None for v in vals):
+            out[k] = [round(v) if v is not None and abs(v) >= 1000 else v for v in vals]
+    return out
 
 
 # ---------- Kvartalsrapporten (PDF) ----------
@@ -2156,16 +2292,46 @@ def main():
 
     # 2. Senaste årsredovisningen per bolag (LEI)
     leis = sorted({st[i]["lei"] for i in stocks if st.get(i, {}).get("lei")})
-    due = sorted((l for l in leis if args.reparse or days_since(reports.get(l, {}).get("checked")) > 7),
+    # (också när tolkningen ändrats, men högst 40 % av tiden, så att kvartalsrapporterna på MFN hinns med)
+    due = sorted((l for l in leis if args.reparse or days_since(reports.get(l, {}).get("checked")) > 7
+                  or (reports.get(l, {}).get("data") and reports[l].get("v") != PARSER_VERSION)),
                  key=lambda l: (l in reports, reports.get(l, {}).get("checked", "")))
     checks = downloads = 0
+
+    def slim_of(lei, end, url):
+        """Rapporten i liten form, ur --raw-cache eller hämtad. None om den inte gick att hämta (försöks igen nästa gång),
+        False om den inte gick att läsa."""
+        nonlocal downloads
+        raw_path = os.path.join(args.raw_cache, lei + "-" + end + ".slim.json") if args.raw_cache else None
+        if raw_path and os.path.exists(raw_path):
+            return json.load(open(raw_path, encoding="utf-8"))
+        if args.reparse and args.raw_cache:
+            return None
+        try:
+            body = fetch("https://filings.xbrl.org" + url, timeout=180)
+        except Exception as e:
+            print("  %s: kunde inte hämta rapporten (%s)" % (lei, e))
+            return None
+        downloads += 1
+        if not body:
+            return False
+        try:
+            slim = slim_report(json.loads(body))
+        except ValueError:
+            print("  %s: rapporten gick inte att läsa" % lei)
+            return False
+        if raw_path:
+            os.makedirs(args.raw_cache, exist_ok=True)
+            json.dump(slim, open(raw_path, "w", encoding="utf-8"), ensure_ascii=False)
+        return slim
+
     for lei in due:
-        if out_of_time() or checks >= args.max_checks or downloads >= args.max_reports:
+        if out_of_time() or checks >= args.max_checks or downloads >= args.max_reports or time.time() - started > args.max_minutes * 60 * 0.4:
             break
         rep = reports.setdefault(lei, {})
         checks += 1
         try:
-            r = fetch_json("https://filings.xbrl.org/api/entities/%s/filings?sort=-period_end&page%%5Bsize%%5D=6" % lei)
+            r = fetch_json("https://filings.xbrl.org/api/entities/%s/filings?sort=-period_end&page%%5Bsize%%5D=20" % lei)
         except Exception as e:
             print("  %s: kunde inte hämta rapportlistan (%s)" % (lei, e))
             continue
@@ -2173,35 +2339,20 @@ def main():
         files = [f["attributes"] for f in (r or {}).get("data", []) if f["attributes"].get("json_url")]
         if not files:
             continue
+        # En rapport per år: den svenska om det finns, annars den första
+        by_end = {}
+        for x in files:
+            by_end.setdefault(x["period_end"], []).append(x)
+        for same in by_end.values():
+            same.sort(key=lambda x: not re.search(r"[-_]sv\.json$", x["json_url"]))
+        rep["files"] = [[e, by_end[e][0]["json_url"]] for e in sorted(by_end, reverse=True)[:OLD_REPORTS + 1]]
         newest_end = files[0]["period_end"]
-        same = [f for f in files if f["period_end"] == newest_end]
-        # Svensk version om det finns, annars den första
-        f = next((x for x in same if re.search(r"[-_]sv\.json$", x["json_url"])), same[0])
+        f = by_end[newest_end][0]
         if rep.get("file") == f["json_url"] and rep.get("v") == PARSER_VERSION and not args.reparse:
             continue
-        raw_path = os.path.join(args.raw_cache, lei + "-" + newest_end + ".slim.json") if args.raw_cache else None
-        slim = None
-        if raw_path and os.path.exists(raw_path):
-            slim = json.load(open(raw_path, encoding="utf-8"))
-        else:
-            if args.reparse and args.raw_cache:
-                continue
-            try:
-                body = fetch("https://filings.xbrl.org" + f["json_url"], timeout=180)
-            except Exception as e:
-                print("  %s: kunde inte hämta rapporten (%s)" % (lei, e))
-                continue
-            downloads += 1
-            if not body:
-                continue
-            try:
-                slim = slim_report(json.loads(body))
-            except ValueError:
-                print("  %s: rapporten gick inte att läsa" % lei)
-                continue
-            if raw_path:
-                os.makedirs(args.raw_cache, exist_ok=True)
-                json.dump(slim, open(raw_path, "w", encoding="utf-8"), ensure_ascii=False)
+        slim = slim_of(lei, newest_end, f["json_url"])
+        if not slim:
+            continue
         try:
             res = read_report(slim, newest_end)
         except Exception as e:
@@ -2369,11 +2520,48 @@ def main():
     for p in problems:
         print("  LARM: " + p)
 
+    # 3b. Äldre årsredovisningar, för kassaflöde och lönsamhet över flera år. Läses en gång (de ändras inte) och efter
+    # MFN, så att nya kvartalsrapporter alltid går före. Först den näst senaste för alla bolag, sedan den före den, osv.
+    old_read = 0
+    for depth in range(1, OLD_REPORTS + 1):
+        for lei in leis:
+            rep = reports.get(lei) or {}
+            if not rep.get("data") or len(rep.get("files") or []) <= depth:
+                continue
+            end, url = rep["files"][depth]
+            old = rep.setdefault("old", {})
+            if old.get(end, {}).get("v") == PARSER_VERSION and old[end].get("file") == url and not args.reparse:
+                continue
+            if out_of_time() or downloads >= args.max_reports * 2:
+                break
+            slim = slim_of(lei, end, url)
+            if slim is None:
+                continue
+            try:
+                res = read_report(slim, end) if slim else {}
+            except Exception as e:
+                print("  %s: fel vid tolkning av %s (%s)" % (lei, end, e))
+                res = {}
+            old[end] = {"v": PARSER_VERSION, "file": url, "cur": res.get("cur"), "hist": res.get("hist") or {}}
+            old_read += 1
+    for lei in leis:
+        rep = reports.get(lei) or {}
+        keep = {e for e, _ in (rep.get("files") or [])[1:]}
+        for end in list(rep.get("old") or {}):
+            if end not in keep:
+                del rep["old"][end]
+    print("  Äldre årsredovisningar: %d lästa, %d bolag med minst tre år" % (
+        old_read, sum(1 for l in leis if len((history(reports.get(l) or {}) or {}).get("fy", [])) >= 3)))
+
     # 4. En fil per aktie, plus placering bland alla bolag (störst försäljning, flest anställda, äldst)
     merged = {}
     for isin in stocks:
         s = st.get(isin, {})
-        rep = reports.get(s.get("lei") or "-", {}).get("data")
+        rep = reports.get(s.get("lei") or "-", {})
+        rep = dict(rep["data"], hist=history(rep)) if rep.get("data") else None
+        for k in ("hist", "custFin"):
+            if rep and not rep.get(k):
+                rep.pop(k, None)
         mm = mfn.get(s.get("mfn") or "-") or {}
         reps = sorted(((u, r) for u, r in (mm.get("reports") or {}).items()), key=lambda x: x[1]["date"], reverse=True)
         recent = [(u, r) for u, r in reps if days_since(r["date"]) <= 200]

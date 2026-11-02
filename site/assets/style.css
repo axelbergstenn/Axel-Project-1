@@ -880,6 +880,19 @@ a.btn { color: var(--fg); }
 .fin-debt { background: var(--bar-neutral); }
 .fin-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 8px; font-size: 12.5px; color: var(--fg-muted); }
 .fin-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+/* Årsredovisningarna år för år: kassaflöde, utdelning och skulder */
+.know-tiles.in-card.fin-tiles { margin-top: 18px; }
+.cash-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.know-card .know-tiles.in-card + .qb-charts { margin-top: 18px; }
+.know-explain { margin: 14px 0 0; font-size: 12.5px; line-height: 1.55; color: var(--fg-muted); max-width: 80ch; }
+.know-explain b { font-weight: 650; color: var(--fg-soft); }
+.pb-plot { margin-top: 4px; }
+.pb-bar { position: absolute; border-radius: 3px; }
+.pb-bar.a, .pb-a-i { background: var(--brand); }
+.pb-bar.b, .pb-b-i { background: var(--bar-neutral); }
+.pb-bar.a { left: 12%; right: 51%; }
+.pb-bar.b { left: 51%; right: 12%; }
+.pb-bar.neg { background: var(--bar-neg); }
 /* Rapporten på 30 sekunder */
 .qt-wrap { margin: 0 0 16px; }
 .qt-title { margin-top: 4px; }

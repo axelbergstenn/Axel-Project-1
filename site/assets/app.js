@@ -1344,6 +1344,157 @@
     return out;
   }
 
+  // ---------- Årsredovisningarna år för år: lönsamhet, kassaflöde, utdelning och skulder ----------
+  // h = report.hist, kolumner med äldsta året först: { fy: [2021, …], rev: […], ocf: […], capex: […], … }
+  function hv(h, k, i) { return h[k] && h[k][i] != null ? h[k][i] : null; }
+  function histFcf(h, i) { var o = hv(h, "ocf", i), c = hv(h, "capex", i); return o != null && c != null ? o - c : null; }
+  // Avkastning på eget kapital: årets resultat (ägarnas del) i procent av det genomsnittliga egna kapitalet under året
+  function histRoe(h, i) {
+    if (i < 1) return null;
+    var own = hv(h, "netOwn", i) != null && hv(h, "eqOwn", i) != null && hv(h, "eqOwn", i - 1) != null;
+    var res = own ? hv(h, "netOwn", i) : hv(h, "net", i);
+    var e0 = own ? hv(h, "eqOwn", i - 1) : hv(h, "equity", i - 1), e1 = own ? hv(h, "eqOwn", i) : hv(h, "equity", i);
+    return res != null && e0 > 0 && e1 > 0 ? res / ((e0 + e1) / 2) : null;
+  }
+  function histMargin(h, i) {
+    var r = hv(h, "rev", i), e = hv(h, "ebit", i);
+    return r > 0 && e != null && Math.abs(e) <= r ? e / r : null;
+  }
+  function pc(v) { return fixMinus(nf0.format(v * 100)) + " %"; }
+  function yearSpan(a, b) { return a === b ? String(a) : a + "–" + b; }
+  // Staplar per år, som kvartalsstaplarna. Förluster går under nollinjen.
+  function yearBars(years, vals, title, fmt) {
+    var pts = years.map(function (y, i) { return [y, vals[i]]; }).filter(function (x) { return x[1] != null; });
+    if (pts.length < 2) return "";
+    var max = Math.max.apply(null, pts.map(function (x) { return Math.max(0, x[1]); }));
+    var min = Math.min.apply(null, pts.map(function (x) { return Math.min(0, x[1]); }));
+    var span = max - min || 1, zero = max / span * 100, last = pts[pts.length - 1];
+    return '<div class="qb-chart"><div class="qb-title">' + title + '<span class="qb-now">' + last[0] + ": <b>" + fmt(last[1]) + "</b></span></div>" +
+      '<div class="qb-plot" role="img" aria-label="' + esc(title + " per år") + '">' + pts.map(function (x) {
+        var v = x[1], h = Math.abs(v) / span * 100;
+        return '<div class="qb-col" title="' + esc(x[0] + ": " + fmt(v)) + '"><div class="qb-area"><span class="qb-bar' + (v < 0 ? " neg" : "") + (x === last ? " now" : "") +
+          '" style="height:' + Math.max(h, 0.8).toFixed(1) + "%;" + (v < 0 ? "top:" + zero.toFixed(1) + "%" : "bottom:" + (100 - zero).toFixed(1) + "%") + '"></span></div>' +
+          '<div class="qb-lbl">' + x[0] + "</div></div>";
+      }).join("") + "</div></div>";
+  }
+  // Två staplar per år: fritt kassaflöde och utbetald utdelning
+  function pairBars(years, a, b, label, cur) {
+    var idx = years.map(function (y, i) { return i; }).filter(function (i) { return a[i] != null && b[i] != null; });
+    if (!idx.length) return "";
+    var all = [];
+    idx.forEach(function (i) { all.push(a[i], b[i]); });
+    var max = Math.max(0, Math.max.apply(null, all)), min = Math.min(0, Math.min.apply(null, all));
+    var span = max - min || 1, zero = max / span * 100;
+    var bar = function (v, k) {
+      var h = Math.max(Math.abs(v) / span * 100, 0.8);
+      return '<span class="pb-bar ' + k + (v < 0 ? " neg" : "") + '" style="height:' + h.toFixed(1) + "%;" + (v < 0 ? "top:" + zero.toFixed(1) + "%" : "bottom:" + (100 - zero).toFixed(1) + "%") + '"></span>';
+    };
+    return '<div class="qb-plot pb-plot" role="img" aria-label="' + esc(label) + '">' + idx.map(function (i) {
+      return '<div class="qb-col" title="' + esc(years[i] + ": fritt kassaflöde " + money(a[i], cur) + ", utdelning " + money(b[i], cur)) + '"><div class="qb-area">' +
+        bar(a[i], "a") + bar(b[i], "b") + '</div><div class="qb-lbl">' + years[i] + "</div></div>";
+    }).join("") + "</div>" +
+      '<div class="fin-legend"><span><i class="pb-a-i"></i>Fritt kassaflöde</span><span><i class="pb-b-i"></i>Utbetald utdelning</span></div>';
+  }
+
+  // Lönsamhet år för år: rörelsemarginal och avkastning på eget kapital
+  function profitCard(h, short, finance) {
+    var n = h.fy.length, years = h.fy;
+    var margins = finance ? [] : years.map(function (y, i) { return histMargin(h, i); });
+    var roes = years.map(function (y, i) { return histRoe(h, i); });
+    var mPts = margins.filter(function (v) { return v != null; }), rPts = roes.filter(function (v) { return v != null; });
+    if (mPts.length < 2 && rPts.length < 2) return "";
+    var lead = [];
+    if (mPts.length >= 2) {
+      var lo = Math.min.apply(null, mPts), hi = Math.max.apply(null, mPts), lastM = margins[n - 1];
+      var mYears = years.filter(function (y, i) { return margins[i] != null; });
+      lead.push(Math.round(hi * 100) === Math.round(lo * 100) ? "Rörelsemarginalen har legat på " + pc(hi) + " varje år " + yearSpan(mYears[0], mYears[mYears.length - 1]) + "."
+        : "Rörelsemarginalen har legat mellan " + fixMinus(nf0.format(lo * 100)) + " och " + pc(hi) + " " + yearSpan(mYears[0], mYears[mYears.length - 1]) +
+          (lastM != null ? ", senast " + pc(lastM) + " " + years[n - 1] + (lastM >= hi - 0.0001 ? ", den högsta på perioden" : lastM <= lo + 0.0001 ? ", den lägsta på perioden" : "") : "") + ".");
+    }
+    if (rPts.length >= 1) {
+      var lastR = roes[n - 1], avgR = rPts.reduce(function (a, v) { return a + v; }, 0) / rPts.length;
+      if (lastR != null) lead.push("Avkastningen på eget kapital var " + pc(lastR) + " " + years[n - 1] + (rPts.length >= 3 ? " och i snitt " + pc(avgR) + " per år." : "."));
+    }
+    var charts = (mPts.length >= 2 ? yearBars(years, margins, "Rörelsemarginal", pc) : "") + (rPts.length >= 2 ? yearBars(years, roes, "Avkastning på eget kapital", pc) : "");
+    return '<div class="know-card know-fin"><h3>Lönsamheten år för år</h3><p class="know-lead">' + lead.join(" ") + "</p>" +
+      (charts ? '<div class="qb-charts">' + charts + "</div>" : "") +
+      '<p class="know-explain">' + (finance ? "" : "<b>Rörelsemarginal</b>: hur många kronor av varje 100 kronors försäljning som blir rörelseresultat, alltså vinst före räntor och skatt. ") +
+      "<b>Avkastning på eget kapital</b>: årets resultat i procent av ägarnas pengar i bolaget (det egna kapitalet i genomsnitt under året). Visar hur bra bolaget förräntar ägarnas pengar." +
+      (finance ? " Kassaflöden visas inte för banker, försäkrings- och investmentbolag: deras kassaflöden består mest av in- och utlåning eller köp och försäljning av värdepapper och går inte att jämföra med andra bolags." : "") +
+      "</p></div>";
+  }
+
+  // Kassaflödet: kassaflöde från den löpande verksamheten, investeringar (capex), fritt kassaflöde och kassakonvertering
+  function cashCard(h, short, cur, custFin) {
+    var n = h.fy.length, i = n - 1, fy = h.fy[i];
+    var ocf = hv(h, "ocf", i), capex = hv(h, "capex", i), fcf = histFcf(h, i), net = hv(h, "net", i);
+    if (fcf == null) return "";
+    var lead = "Under " + fy + " drog den löpande verksamheten in " + money(ocf, cur) + " (kassaflöde från den löpande verksamheten). " +
+      money(capex, cur) + " gick till investeringar i maskiner, fastigheter, it och utveckling (capex). " +
+      (fcf >= 0 ? "Kvar blev " + money(fcf, cur) + " i fritt kassaflöde: pengar som kan gå till utdelning, förvärv eller att betala av lån."
+        : "Investeringarna var större än det verksamheten drog in, så det fria kassaflödet blev negativt: " + money(fcf, cur) + ".");
+    // Kassakonvertering: hur stor del av årets resultat som blev fritt kassaflöde, helst räknat över alla år
+    var sf = 0, sn = 0, yrs = [];
+    for (var k = 0; k < n; k++) {
+      var f = histFcf(h, k), r = hv(h, "net", k);
+      if (f != null && r != null) { sf += f; sn += r; yrs.push(h.fy[k]); }
+    }
+    var conv = net > 0 ? fcf / net : null, convAll = yrs.length >= 3 && sn > 0 ? sf / sn : null, judge = convAll != null ? convAll : conv;
+    var convText = "";
+    if (conv != null || convAll != null) {
+      convText = (conv != null ? " Det fria kassaflödet motsvarade " + pc(conv) + " av årets resultat (" + money(net, cur) + ")" : " Sammanlagt") +
+        (convAll != null ? (conv != null ? ", och " : " ") + pc(convAll) + " sammanlagt " + yearSpan(yrs[0], yrs[yrs.length - 1]) : "") + ". Det kallas kassakonvertering. " +
+        (judge >= 0.9 ? "Vinsten blir till riktiga pengar." : judge >= 0.6 ? "En stor del av vinsten blir pengar, resten binds i investeringar, lager och kundfordringar."
+          : "Mycket av vinsten binds i investeringar, lager och kundfordringar och blir inte pengar i kassan direkt.");
+    } else if (net != null && net <= 0) {
+      convText = " Bolaget gick med förlust, så kassakonverteringen går inte att räkna ut.";
+    }
+    var tiles = '<div class="know-tiles in-card cash-tiles">' +
+      '<div class="know-tile"><div class="kt-big' + (ocf < 0 ? " neg" : "") + '">' + money(ocf, cur) + '</div><div class="kt-label">kassaflöde från den löpande verksamheten</div></div>' +
+      '<div class="know-tile"><div class="kt-big">' + money(capex, cur) + '</div><div class="kt-label">investeringar (capex)</div></div>' +
+      '<div class="know-tile"><div class="kt-big' + (fcf < 0 ? " neg" : "") + '">' + money(fcf, cur) + '</div><div class="kt-label">fritt kassaflöde</div></div>' +
+      (judge != null ? '<div class="know-tile"><div class="kt-big">' + pc(judge) + '</div><div class="kt-label">kassakonvertering</div><div class="kt-sub">' + (convAll != null ? "Sammanlagt " + yearSpan(yrs[0], yrs[yrs.length - 1]) : fy) + "</div></div>" : "") +
+      "</div>";
+    return '<div class="know-card"><h3>Kassaflödet: blir vinsten pengar?</h3><p class="know-lead">' + lead + convText + "</p>" + tiles +
+      '<div class="qb-charts">' + yearBars(h.fy, h.fy.map(function (y, j) { return histFcf(h, j); }), "Fritt kassaflöde", function (v) { return money(v, cur); }) + "</div>" +
+      '<p class="know-explain"><b>Fritt kassaflöde</b> = kassaflödet från den löpande verksamheten minus investeringar i anläggningar. Köp av andra bolag räknas inte in. ' +
+      "<b>Kassakonvertering</b> = fritt kassaflöde i procent av årets resultat." +
+      (custFin ? " Koncernens kassaflöde räknar med finansieringsverksamheten, alltså lån och leasing till kunder (" + nf0.format(custFin * 100) +
+        " % av tillgångarna). Den binder pengar när utlåningen växer, så bolagets egna mått för industriverksamheten kan se bättre ut." : "") + "</p></div>";
+  }
+
+  // Täcks utdelningen av det fria kassaflödet? Utbetald utdelning enligt kassaflödesanalysen, samma år.
+  function coverCard(h, short, cur) {
+    var n = h.fy.length, years = h.fy;
+    var fcfs = years.map(function (y, i) { return histFcf(h, i); }), divs = years.map(function (y, i) { return hv(h, "div", i); });
+    var both = years.map(function (y, i) { return i; }).filter(function (i) { return fcfs[i] != null && divs[i] != null; });
+    if (!both.length) return "";
+    var i = both[both.length - 1], fcf = fcfs[i], div = divs[i];
+    var sf = 0, sd = 0;
+    both.forEach(function (j) { sf += fcfs[j]; sd += divs[j]; });
+    var times = function (f, d) { return nf1.format(f / d).replace(/,0$/, "") + " gånger"; };
+    var lead, sc = [];
+    if (sd <= 0) {
+      lead = esc(short) + " har inte betalat ut någon utdelning " + yearSpan(years[both[0]], years[i]) + ". Det fria kassaflödet stannar i bolaget, till exempel för investeringar, förvärv eller att betala av lån.";
+    } else {
+      lead = years[i] + " betalade " + esc(short) + " ut " + money(div, cur) + " i utdelning, och det fria kassaflödet var " + money(fcf, cur) + ". " +
+        (div <= 0 ? "Ingen utdelning betalades ut det året."
+          : fcf >= div * 1.2 ? "Utdelningen täcktes " + times(fcf, div) + " om av det fria kassaflödet, alltså med god marginal."
+          : fcf >= div ? "Utdelningen täcktes, men med liten marginal (" + times(fcf, div) + ")."
+          : "Utdelningen var större än det fria kassaflödet. Mellanskillnaden kom från kassan, från lån eller från sålda tillgångar.");
+      if (both.length >= 2) {
+        lead += " Sammanlagt " + yearSpan(years[both[0]], years[i]) + " var det fria kassaflödet " + money(sf, cur) + " och utdelningarna " + money(sd, cur) +
+          (sf >= sd ? ", så utdelningen har betalats med pengar som verksamheten tjänat in." : ", så bolaget har delat ut mer än verksamheten dragit in.");
+      }
+      var tone = function (f, d) { return f >= d ? "pos" : "neg"; };
+      if (div > 0) sc.push({ q: "Täcktes utdelningen " + years[i] + "?", a: fcf >= div ? "Ja, " + times(fcf, div) + " om" : "Nej, " + nf0.format(Math.max(0, fcf) / div * 100) + " % täcktes", tone: tone(fcf, div) });
+      if (both.length >= 2) sc.push({ q: "Täcktes den " + yearSpan(years[both[0]], years[i]) + "?", a: sf >= sd ? "Ja, " + times(sf, sd) + " om" : "Nej, " + nf0.format(Math.max(0, sf) / sd * 100) + " % täcktes", tone: tone(sf, sd) });
+    }
+    return '<div class="know-card"><h3>Räcker pengarna till utdelningen?</h3>' + scoreCard(sc) + '<p class="know-lead">' + lead + "</p>" +
+      (sd > 0 ? pairBars(years, fcfs, divs, "Fritt kassaflöde och utbetald utdelning per år", cur) : "") +
+      '<p class="know-explain">En utdelning som täcks av det fria kassaflödet betalas med pengar som verksamheten tjänar in. Täcks den inte år efter år måste bolaget ta av kassan eller låna, och då kan utdelningen bli svår att behålla.</p></div>';
+  }
+
   function companySection(isin, name, sector) {
     if (isin.slice(0, 2) !== "SE" || !needCompanyIndex() || !state.companyIndex[isin]) return "";
     if (!needCompany(isin)) return failed("bolag-" + isin) ? "" : '<section class="block section-gap">' + loadingBlock("Laddar fakta om bolaget…") + "</section>";
@@ -1561,9 +1712,31 @@
     }
     if (tiles.length) html += '<h3 class="know-h">Helåret ' + r.fy + " i vardagliga mått</h3>" + '<div class="know-tiles">' + tiles.slice(0, 5).join("") + "</div>";
 
+    // Årsredovisningarna år för år: lönsamhet för alla, kassaflöde och utdelning inte för banker och försäkringsbolag
+    var h = r && r.hist && r.hist.fy && r.hist.fy.length && r.hist.fy[r.hist.fy.length - 1] === r.fy ? r.hist : null, hl = h ? h.fy.length - 1 : -1;
+    if (h) {
+      html += profitCard(h, short, finance);
+      var cc = finance ? [] : [cashCard(h, short, cur, r.custFin), coverCard(h, short, cur)].filter(Boolean);
+      if (cc.length) html += '<div class="know-grid' + (cc.length === 1 ? " one" : "") + '">' + cc.join("") + "</div>";
+    }
+
     // Hur bolaget är finansierat: eget kapital mot lån och andra skulder (banker har alltid lite eget kapital, så inte för dem)
     var eq = now("equity"), assets = now("assets");
     if (!finance && eq != null && assets > 0 && eq <= assets) {
+      // Nettoskuld: räntebärande skulder (lån och leasingskulder) minus likvida medel
+      var debtNow = h ? hv(h, "debt", hl) : null, cashNow = h ? hv(h, "cash", hl) : null;
+      var nd = debtNow != null && cashNow != null ? debtNow - cashNow : null, gear = nd != null && eq > 0 ? nd / eq : null;
+      var fcfNow = h ? histFcf(h, hl) : null;
+      var debtText = nd == null ? "" : " Räntebärande skulder (lån och leasingskulder) är " + money(debtNow, cur) + " och likvida medel " + money(cashNow, cur) + ". " +
+        (nd > 0 ? "Nettoskulden är alltså " + money(nd, cur) + (fcfNow > 0 ? ", vilket motsvarar ungefär " + nf1.format(nd / fcfNow).replace(/,0$/, "") + " års fritt kassaflöde." : ".")
+          : "Bolaget har alltså mer pengar i kassan än lån, en nettokassa på " + money(-nd, cur) + ".");
+      var debtTiles = nd == null ? "" : '<div class="know-tiles in-card fin-tiles">' +
+        '<div class="know-tile"><div class="kt-big">' + money(Math.abs(nd), cur) + '</div><div class="kt-label">' + (nd > 0 ? "nettoskuld" : "nettokassa") + '</div><div class="kt-sub">' +
+          (nd > 0 ? "Lån och leasingskulder minus likvida medel" : "Mer likvida medel än lån och leasingskulder") + "</div></div>" +
+        (gear != null ? '<div class="know-tile"><div class="kt-big">' + fixMinus(nf2.format(gear)) + '</div><div class="kt-label">skuldsättningsgrad (netto)</div><div class="kt-sub">Nettoskulden delad med eget kapital. ' +
+          (gear < 0 ? "Under noll: nettokassa." : gear < 0.5 ? "Under 0,5 räknas oftast som låg." : gear < 1 ? "Mellan 0,5 och 1 räknas oftast som måttlig." : "Över 1: lånen är större än ägarnas pengar i bolaget.") + "</div></div>" : "") +
+        '<div class="know-tile"><div class="kt-big">' + nf0.format(Math.max(0, eq / assets) * 100) + ' %</div><div class="kt-label">soliditet</div><div class="kt-sub">Eget kapital i procent av tillgångarna</div></div>' +
+        "</div>";
       var share = eq / assets, debt = 1 - Math.max(0, share);
       var eqBefore = before("equity") != null && before("assets") > 0 ? before("equity") / before("assets") : null;
       var verdict = share < 0 ? "Bolaget har mer skulder än tillgångar (negativt eget kapital), vilket är en varningssignal."
@@ -1573,11 +1746,11 @@
       html += '<div class="know-card know-fin"><h3>Hur finansierar ' + esc(short) + " sina tillgångar?</h3>" +
         '<p class="know-lead">Bolagets tillgångar uppgår till ' + money(assets, cur) + " (anläggningar, varulager, kundfordringar, likvida medel med mera). " +
         (share >= 0 ? nf0.format(share * 100) + " % är finansierat med eget kapital, alltså ägarnas pengar i bolaget, och " + nf0.format(debt * 100) + " % med skulder. Andelen eget kapital kallas soliditet. " : "") +
-        verdict + (eqBefore != null && Math.abs(share - eqBefore) >= 0.03 ? " Ett år tidigare var soliditeten " + nf0.format(eqBefore * 100) + " %." : "") +
+        verdict + (eqBefore != null && Math.abs(share - eqBefore) >= 0.03 ? " Ett år tidigare var soliditeten " + nf0.format(eqBefore * 100) + " %." : "") + debtText +
         ' <span class="muted">Helåret ' + r.fy + ".</span></p>" +
         (share >= 0 ? '<div class="fin-bar" role="img" aria-label="' + nf0.format(share * 100) + ' % eget kapital, ' + nf0.format(debt * 100) + ' % skulder">' +
           '<span class="fin-eq" style="width:' + (share * 100).toFixed(1) + '%"></span><span class="fin-debt" style="width:' + (debt * 100).toFixed(1) + '%"></span></div>' +
-          '<div class="fin-legend"><span><i class="fin-eq"></i>Eget kapital ' + money(eq, cur) + '</span><span><i class="fin-debt"></i>Skulder ' + money(assets - eq, cur) + "</span></div>" : "") +
+          '<div class="fin-legend"><span><i class="fin-eq"></i>Eget kapital ' + money(eq, cur) + '</span><span><i class="fin-debt"></i>Skulder ' + money(assets - eq, cur) + "</span></div>" : "") + debtTiles +
         "</div>";
     }
 
