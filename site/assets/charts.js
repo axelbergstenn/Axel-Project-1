@@ -43,13 +43,13 @@
   }
 
   function setup(container, height) {
-    // Första gången diagrammet ritas animeras det fram, inte när det ritas om efter att fönstret ändrat storlek
+    // Första gången diagrammet ritas tonas det lugnt in, inte när det ritas om efter att fönstret ändrat storlek
     var fresh = !container.hasAttribute("data-drawn");
     container.setAttribute("data-drawn", "");
     container.innerHTML = "";
     container.style.position = "relative";
     var w = Math.max(240, container.clientWidth);
-    var svg = el("svg", { width: w, height: height, viewBox: "0 0 " + w + " " + height, role: "img" }, null);
+    var svg = el("svg", { width: w, height: height, viewBox: "0 0 " + w + " " + height, role: "img", "class": fresh ? "c-in" : "" }, null);
     container.appendChild(svg);
     var tip = document.createElement("div");
     tip.className = "chart-tip";
@@ -79,17 +79,6 @@
     var n = 0;
     scale.ticks.forEach(function (t) { n = Math.max(n, (fmtTick(t) + (unit || "")).length); });
     return Math.max(30, 12 + n * 6.6);
-  }
-
-  // Tonad yta under en linje: en gradient per diagram
-  var gradN = 0;
-  function areaGradient(svg) {
-    var id = "ffg" + (++gradN);
-    var defs = el("defs", {}, svg);
-    var lg = el("linearGradient", { id: id, x1: 0, y1: 0, x2: 0, y2: 1 }, defs);
-    el("stop", { offset: "0%", "class": "c-grad-top" }, lg);
-    el("stop", { offset: "100%", "class": "c-grad-bottom" }, lg);
-    return "url(#" + id + ")";
   }
 
   // Stapel med 4px rundad ände bort från nollinjen, rak vid nollinjen
@@ -149,23 +138,19 @@
     var xAt = function (i) { return m.l + band * i + band / 2; };
 
     grid(ctx, m, scale, y);
-    // Staplarna växer fram en i taget från nollinjen. Med opts.focus tonas alla utom den markerade ner.
-    var g = el("g", { "class": "c-bars" + (ctx.fresh ? " grow" : "") + (opts.focus ? " focus" : "") }, ctx.svg);
+    // Med opts.focus tonas alla staplar utom den markerade ner
+    var g = el("g", { "class": "c-bars" + (opts.focus ? " focus" : "") }, ctx.svg);
     var bars = points.map(function (p, i) {
       if (p.value == null) return null;
       var d = barPath(xAt(i) - bw / 2, y(0), y(p.value), bw);
       if (!d) return null;
-      var a = { d: d, "class": "c-bar " + (p.value >= 0 ? "c-pos" : "c-neg") + (p.highlight ? " c-strong" : "") };
-      if (ctx.fresh) a.style = "animation-delay:" + Math.round(i * Math.min(40, 600 / points.length)) + "ms";
-      return el("path", a, g);
+      return el("path", { d: d, "class": "c-bar " + (p.value >= 0 ? "c-pos" : "c-neg") + (p.highlight ? " c-strong" : "") }, g);
     });
     var negBars = points.map(function (p, i) {
       if (!p.neg) return null;
       var d = barPath(xAt(i) - bw / 2, y(0), y(p.neg), bw);
       if (!d) return null;
-      var a = { d: d, "class": "c-bar c-neg" };
-      if (ctx.fresh) a.style = "animation-delay:" + Math.round(i * Math.min(40, 600 / points.length)) + "ms";
-      return el("path", a, g);
+      return el("path", { d: d, "class": "c-bar c-neg" }, g);
     });
     // Värdet ovanför den markerade stapeln
     if (opts.label) {
@@ -206,7 +191,7 @@
     });
   }
 
-  // Linje med tunn yta under (antal fonder som äger)
+  // Linje med en svag, jämn yta under (antal fonder som äger)
   function line(container, points, opts) {
     opts = opts || {};
     var ctx = setup(container, opts.height || 220);
@@ -229,8 +214,8 @@
     points.forEach(function (p, i) { if (first < 0 && p.value != null) first = i; });
     if (first >= 0) {
       a = d + "L" + xAt(last).toFixed(1) + "," + y(0) + "L" + xAt(first).toFixed(1) + "," + y(0) + "Z";
-      el("path", { d: a, "class": "c-area", fill: areaGradient(ctx.svg) }, ctx.svg);
-      el("path", ctx.fresh ? { d: d, "class": "c-line draw", pathLength: 1 } : { d: d, "class": "c-line" }, ctx.svg);
+      el("path", { d: a, "class": "c-area" }, ctx.svg);
+      el("path", { d: d, "class": "c-line" }, ctx.svg);
       var lp = points[last];
       el("circle", { cx: xAt(last), cy: y(lp.value), r: 4.5, "class": "c-dot" }, ctx.svg);
       text(ctx.svg, xAt(last) + 8, y(lp.value) + 4, opts.format ? opts.format(lp.value) : fmtTick(lp.value), "c-label");
@@ -283,10 +268,10 @@
 
     // Rita markerade punkter sist så att de hamnar överst
     var order = points.slice().sort(function (a, b) { return (a.cat === opts.top) - (b.cat === opts.top); });
-    var dots = el("g", {}, ctx.svg);
+    var dots = el("g", { "class": "c-pts" }, ctx.svg);
     order.forEach(function (p) {
       p._x = x(p.x); p._y = y(p.y);
-      el("circle", { cx: p._x.toFixed(1), cy: p._y.toFixed(1), r: p.cat === opts.top ? 5.5 : 4.5, "class": "c-pt c-" + p.cat }, dots);
+      el("circle", { cx: p._x.toFixed(1), cy: p._y.toFixed(1), r: p.cat === opts.top ? 5 : 4, "class": "c-pt c-" + p.cat }, dots);
     });
     var ring = el("circle", { r: 9, "class": "c-ring", visibility: "hidden" }, ctx.svg);
 
@@ -348,7 +333,7 @@
     series.forEach(function (s) {
       var d = "";
       s.points.forEach(function (p, i) { d += (i ? "L" : "M") + x(p.t).toFixed(1) + "," + y(p.v).toFixed(1); });
-      el("path", ctx.fresh ? { d: d, "class": "c-series draw " + s.cls, pathLength: 1 } : { d: d, "class": "c-series " + s.cls }, ctx.svg);
+      el("path", { d: d, "class": "c-series " + s.cls }, ctx.svg);
       var lp = s.points[s.points.length - 1];
       if (lp) { el("circle", { cx: x(lp.t), cy: y(lp.v), r: 4, "class": "c-end " + s.cls }, ctx.svg); ends.push({ s: s, p: lp, y: y(lp.v) }); }
     });
@@ -399,7 +384,8 @@
   // utan visas när man pekar på en punkt (på mobilen: första trycket visar, andra öppnar).
   // points: [{ x, y, size, cls }]. opts: xFmt, yFmt (axeltext), xLabel, yLabel, trend, quad { tl, tr, bl, br },
   // bands { above, below } (tonad bakgrund över och under noll med text), xHint [vänster, höger] (riktningen i klartext),
-  // tip(p), onClick(p)
+  // ref { x, y, xText, yText } (streckade referenslinjer, t.ex. medianen), label(p) (namn intill några få punkter),
+  // xTicks, yTicks (ungefärligt antal skalsteg), tip(p), onClick(p)
   function xy(container, points, opts) {
     opts = opts || {};
     var ctx = setup(container, opts.height || 380);
@@ -411,7 +397,8 @@
       return [lo - d, hi + d];
     };
     var dx = opts.xDomain || ext("x", 0.04), dy = opts.yDomain || ext("y", 0.06);
-    var xs = niceTicks(dx[0], dx[1], ctx.w < 520 ? 4 : 6), ys = niceTicks(dy[0], dy[1], 5);
+    var narrow = ctx.w < 520;
+    var xs = niceTicks(dx[0], dx[1], narrow ? 4 : opts.xTicks || 6), ys = niceTicks(dy[0], dy[1], opts.yTicks || 5);
     var yw = 0; ys.ticks.forEach(function (t) { yw = Math.max(yw, yFmt(t).length); });
     var m = { t: 26, r: 16, b: 44, l: Math.max(34, 14 + yw * 6.6) };
     var ih = ctx.h - m.t - m.b, iw = ctx.w - m.l - m.r;
@@ -446,13 +433,51 @@
       if (opts.bands.below) text(ctx.svg, m.l + 10, ctx.h - m.b - 10, opts.bands.below, "c-band-label neg");
     }
 
-    // Kvadranternas namn i hörnen
+    // Texter i diagrammet placeras på första lediga plats av några förslag [x, y, ankare], så att de inte krockar
+    // med varandra eller hamnar utanför. En text som inte får plats hoppas över, utom när must är satt.
+    var placed = [];
+    function place(parent, str, cls, spots, must) {
+      var t = text(parent, 0, 0, str, cls);
+      var tw = t.getComputedTextLength ? t.getComputedTextLength() : str.length * 6.4;
+      for (var s = 0; s < spots.length; s++) {
+        var sp = spots[s], x0 = sp[2] === "start" ? sp[0] : sp[2] === "end" ? sp[0] - tw : sp[0] - tw / 2;
+        var box = { l: x0 - 2, r: x0 + tw + 2, t: sp[1] - 11, b: sp[1] + 3 };
+        var inside = box.l >= m.l && box.r <= ctx.w - m.r && box.t >= m.t && box.b <= ctx.h - m.b;
+        var free = !placed.some(function (q) { return box.l < q.r && box.r > q.l && box.t < q.b && box.b > q.t; });
+        if ((inside && free) || (must && s === spots.length - 1)) {
+          t.setAttribute("x", sp[0].toFixed(1)); t.setAttribute("y", sp[1].toFixed(1)); t.setAttribute("text-anchor", sp[2]);
+          placed.push(box);
+          return t;
+        }
+      }
+      parent.removeChild(t);
+      return null;
+    }
+
+    // Kvadranternas namn i hörnen, om de får plats
     if (opts.quad) {
       var q = opts.quad;
-      if (q.tl) text(ctx.svg, m.l + 8, m.t + 14, q.tl, "c-quad");
-      if (q.tr) text(ctx.svg, ctx.w - m.r - 8, m.t + 14, q.tr, "c-quad", "end");
-      if (q.bl) text(ctx.svg, m.l + 8, ctx.h - m.b - 8, q.bl, "c-quad");
-      if (q.br) text(ctx.svg, ctx.w - m.r - 8, ctx.h - m.b - 8, q.br, "c-quad", "end");
+      if (q.tl) place(ctx.svg, q.tl, "c-quad", [[m.l + 8, m.t + 14, "start"]]);
+      if (q.tr) place(ctx.svg, q.tr, "c-quad", [[ctx.w - m.r - 8, m.t + 14, "end"]]);
+      if (q.bl) place(ctx.svg, q.bl, "c-quad", [[m.l + 8, ctx.h - m.b - 8, "start"]]);
+      if (q.br) place(ctx.svg, q.br, "c-quad", [[ctx.w - m.r - 8, ctx.h - m.b - 8, "end"]]);
+    }
+
+    // Referenslinjer (t.ex. medianfonden) med en kort etikett vid linjen, där kvadranternas namn inte står.
+    // Etiketterna flyttas sedan ovanpå punkterna.
+    var front = [];
+    if (opts.ref) {
+      var rf = opts.ref;
+      if (rf.x != null) {
+        var rx = Math.round(x(rf.x)) + 0.5, top = m.t + 14, bot = ctx.h - m.b - 8;
+        el("line", { x1: rx, x2: rx, y1: m.t, y2: ctx.h - m.b, "class": "c-ref" }, ctx.svg);
+        if (rf.xText) front.push(place(ctx.svg, rf.xText, "c-ref-label", [[rx + 6, top, "start"], [rx + 6, bot, "start"], [rx - 6, top, "end"], [rx - 6, bot, "end"]], true));
+      }
+      if (rf.y != null) {
+        var ry = Math.round(y(rf.y)) + 0.5;
+        el("line", { x1: m.l, x2: ctx.w - m.r, y1: ry, y2: ry, "class": "c-ref" }, ctx.svg);
+        if (rf.yText) front.push(place(ctx.svg, rf.yText, "c-ref-label", [[ctx.w - m.r - 4, ry - 6, "end"], [ctx.w - m.r - 4, ry + 15, "end"]], true));
+      }
     }
 
     // Trendlinjen ritas bara inom diagrammet
@@ -462,18 +487,28 @@
       el("line", { x1: x(x0), y1: y(ya), x2: x(x1), y2: y(yb), "class": "c-trend" }, ctx.svg);
     }
 
-    // Stora punkter först så att små hamnar ovanpå. Punkterna tonas in från vänster till höger.
+    // Stora punkter först så att små hamnar ovanpå.
     // Storleken räknas mot den 95:e percentilen, så att en jätte (AP7) inte gör alla andra till prickar
     var sizes = points.map(function (p) { return p.size || 0; }).sort(function (a, b) { return a - b; });
     var maxS = Math.max(1e-9, sizes[Math.floor(0.95 * (sizes.length - 1))]);
-    points.forEach(function (p) { p._r = p.size != null ? 2.5 + 9 * Math.sqrt(Math.min(1, p.size / maxS)) : 4.5; p._x = x(p.x); p._y = y(p.y); });
+    var rMax = narrow ? 6 : 8;
+    points.forEach(function (p) { p._r = p.size != null ? 2.5 + rMax * Math.sqrt(Math.min(1, p.size / maxS)) : 4.5; p._x = x(p.x); p._y = y(p.y); });
     var order = points.slice().sort(function (a, b) { return b._r - a._r; });
-    var dots = el("g", { "class": "c-pts" + (ctx.fresh ? " pop" : "") }, ctx.svg);
+    var dots = el("g", { "class": "c-pts" }, ctx.svg);
     order.forEach(function (p) {
-      var a = { cx: p._x.toFixed(1), cy: p._y.toFixed(1), r: p._r.toFixed(1), "class": "c-pt " + (p.cls || "c-brand") };
-      if (ctx.fresh) a.style = "animation-delay:" + Math.round((p._x - m.l) / iw * 500) + "ms";
-      p._el = el("circle", a, dots);
+      p._el = el("circle", { cx: p._x.toFixed(1), cy: p._y.toFixed(1), r: p._r.toFixed(1), "class": "c-pt " + (p.cls || "c-brand") }, dots);
     });
+
+    front.forEach(function (t) { if (t) ctx.svg.appendChild(t); });
+
+    // Namn intill några få punkter, till höger, vänster, över eller under punkten
+    if (opts.label) {
+      var lg = el("g", { "class": "c-ptlabels" }, ctx.svg);
+      order.slice().reverse().forEach(function (p) {
+        var str = opts.label(p);
+        if (str) place(lg, str, "c-ptlabel", [[p._x + p._r + 5, p._y + 4, "start"], [p._x - p._r - 5, p._y + 4, "end"], [p._x, p._y - p._r - 6, "middle"], [p._x, p._y + p._r + 14, "middle"]]);
+      });
+    }
     var ring = el("circle", { r: 9, "class": "c-ring", visibility: "hidden" }, ctx.svg);
 
     var current = null, tapped = null, lastType = "mouse";
@@ -563,29 +598,27 @@
     if (opts.yLabel) text(ctx.svg, 4, 14, opts.yLabel, "c-axis-title");
 
     // Staplarna, med 2px mellanrum
-    var bars = el("g", { "class": "c-bars" + (ctx.fresh ? " grow" : "") }, ctx.svg), barEls = [];
+    var bars = el("g", { "class": "c-bars" }, ctx.svg), barEls = [];
     series.forEach(function (s) {
       if (!s.hist) return;
       s.counts.forEach(function (c, i) {
         var x0 = x(xs.min + i * bw) + 1, w = Math.max(1, x(xs.min + (i + 1) * bw) - x(xs.min + i * bw) - 2);
         var d = barPath(x0, y(0), y(c * s.k), w);
-        var a = { d: d || "M0,0", "class": "c-bar c-hist" };
-        if (ctx.fresh) a.style = "animation-delay:" + Math.round(i * 400 / nb) + "ms";
-        barEls[i] = el("path", a, bars);
+        barEls[i] = el("path", { d: d || "M0,0", "class": "c-bar c-hist" }, bars);
       });
     });
     // Nollan
     if (xs.min < 0 && xs.max > 0) el("line", { x1: x(0), x2: x(0), y1: m.t, y2: ctx.h - m.b, "class": "c-zero" }, ctx.svg);
 
-    // Kurvorna, med tonad yta under, och en linje vid medelvärdet
+    // Kurvorna och en linje vid medelvärdet. En ensam kurva får en svag yta under; flera kurvor ritas utan yta,
+    // eftersom två färgade ytor ovanpå varandra blandas till en tredje färg.
+    var curves = series.filter(function (s) { return s.curve && s.st.sd > 0; }).length;
     series.forEach(function (s) {
       if (!s.curve || !(s.st.sd > 0)) return;
       var d = "", steps = 160;
       for (var i = 0; i <= steps; i++) { var v = xs.min + (xs.max - xs.min) * i / steps; d += (i ? "L" : "M") + x(v).toFixed(1) + "," + y(curveAt(s, v)).toFixed(1); }
-      el("path", { d: d + "L" + x(xs.max) + "," + y(0) + "L" + x(xs.min) + "," + y(0) + "Z", "class": "c-curve-fill " + (s.cls || "c-brand") }, ctx.svg);
-      var ca = { d: d, "class": "c-curve " + (s.cls || "c-brand") + (s.dash ? " dash" : "") };
-      if (ctx.fresh && !s.dash) { ca["class"] += " draw"; ca.pathLength = 1; }
-      el("path", ca, ctx.svg);
+      if (curves === 1 && !s.hist) el("path", { d: d + "L" + x(xs.max) + "," + y(0) + "L" + x(xs.min) + "," + y(0) + "Z", "class": "c-curve-fill " + (s.cls || "c-brand") }, ctx.svg);
+      el("path", { d: d, "class": "c-curve " + (s.cls || "c-brand") + (s.dash ? " dash" : "") }, ctx.svg);
       var mx = x(s.st.mean);
       el("line", { x1: mx, x2: mx, y1: y(0), y2: y(curveAt(s, s.st.mean)), "class": "c-mean " + (s.cls || "c-brand") }, ctx.svg);
     });

@@ -44,9 +44,9 @@
   --warn-fg: #7a2e0e;
   --star-bg: #fff8eb;
   --star-fg: #8a3a0a;
-  --dot-warn: #f08c00;
-  --dot-active: #2f6fbf;
-  --dot-index: #b0b8c4;
+  --dot-warn: #d97a00;
+  --dot-active: #16825d;
+  --dot-index: #aab4af;
   --zone: rgba(240, 140, 0, 0.09);
   --seg-bg: #e6ebe8;
   --seg-active: #ffffff;
@@ -112,7 +112,8 @@
   --warn-fg: #f4c47a;
   --star-bg: rgba(242, 182, 90, 0.12);
   --star-fg: #f4c47a;
-  --dot-index: #5c5c60;
+  --dot-index: #5d6a64;
+  --dot-warn: #c98226;
   --zone: rgba(240, 140, 0, 0.1);
   --seg-bg: #0a100e;
   --seg-active: #22302a;
@@ -130,7 +131,7 @@
   --cat-bostad: #3987e5; --cat-stat: #d95926; --cat-kommun: #199e70; --cat-bank: #c98500;
   --cat-fastighet: #d55181; --cat-foretag: #9085e9; --cat-utland: #646468;
   color-scheme: dark;
-  --dot-active: #74a9ee;
+  --dot-active: #2fa67a;
 }
 
 
@@ -761,7 +762,7 @@ a.btn { color: var(--fg); }
 .mod-big b { font-size: 36px; font-weight: 650; }
 .spark { display: block; width: 100%; height: 44px; margin: 4px 0 10px; }
 .spark path { fill: none; stroke: var(--brand); stroke-width: 1.75; stroke-linejoin: round; stroke-linecap: round; }
-.spark .spark-area { fill: url(#sparkFill); stroke: none; }
+.spark .spark-area { fill: var(--brand); fill-opacity: 0.08; stroke: none; }
 .mod-rates { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; font-size: 13px; margin-top: auto; }
 .mod-rates span { color: var(--fg-muted); }
 .mod-rates b { text-align: right; }
@@ -998,33 +999,35 @@ a.btn { color: var(--fg); }
 .c-neg { fill: var(--bar-neg); }
 .c-bar { transform-box: fill-box; transform-origin: 50% 100%; transition: fill-opacity 0.25s; }
 .c-bar.c-neg { transform-origin: 50% 0; }
-.grow .c-bar { animation: col-grow 0.5s var(--ease) both; }
+.chart svg.c-in { animation: fade-in-plain 0.35s var(--ease) both; }
 .focus .c-bar:not(.c-strong) { fill-opacity: 0.32; }
 .c-bars.hovering .c-bar { fill-opacity: 0.25; }
 .c-bars.hovering .c-bar.on { fill-opacity: 1; }
 .c-label-hl { font-size: 12.5px; font-weight: 700; }
-.c-grad-top { stop-color: var(--brand); stop-opacity: 0.14; }
-.c-grad-bottom { stop-color: var(--brand); stop-opacity: 0; }
 :root[data-theme="dark"] .c-line, :root[data-theme="dark"] .spark path { stroke: var(--brand-ink); }
 :root[data-theme="dark"] .c-dot { fill: var(--brand-ink); }
-:root[data-theme="dark"] .c-grad-top, :root[data-theme="dark"] .c-grad-bottom { stop-color: var(--brand-ink); }
+:root[data-theme="dark"] .c-area, :root[data-theme="dark"] .spark .spark-area { fill: var(--brand-ink); }
 :root[data-theme="dark"] .sb-track i, :root[data-theme="dark"] .mat-bar i, :root[data-theme="dark"] .cmp-bar i { background: var(--brand-ink); }
 .c-line { fill: none; stroke: var(--brand); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.c-area { stroke: none; }
+.c-area { fill: var(--brand); fill-opacity: 0.08; stroke: none; }
 .c-dot { fill: var(--brand); stroke: var(--bg); stroke-width: 2; }
-.c-cross { stroke: var(--fg-muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.c-cross { stroke: var(--border-strong); stroke-width: 1; }
 .c-series { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .c-end { stroke: var(--bg); stroke-width: 2; }
 .c-series.s1 { stroke: var(--s1); } .c-end.s1, .dot.s1 { fill: var(--s1); background: var(--s1); }
 .c-series.s2 { stroke: var(--s2); } .c-end.s2, .dot.s2 { fill: var(--s2); background: var(--s2); }
 .c-series.s3 { stroke: var(--s3); } .c-end.s3, .dot.s3 { fill: var(--s3); background: var(--s3); }
 .c-series.s4 { stroke: var(--s4); } .c-end.s4, .dot.s4 { fill: var(--s4); background: var(--s4); }
+/* Köpt och sålt följer sajtens färger: köpt blått, sålt rött, jämförelsen neutral */
+.c-series.sp { stroke: var(--bar-pos); } .c-end.sp, .dot.sp { fill: var(--bar-pos); background: var(--bar-pos); }
+.c-series.sn { stroke: var(--bar-neg); } .c-end.sn, .dot.sn { fill: var(--bar-neg); background: var(--bar-neg); }
+.c-series.s0 { stroke: var(--fg-muted); } .c-end.s0, .dot.s0 { fill: var(--fg-muted); background: var(--fg-muted); }
 /* Linjer ritas fram och staplar växer upp första gången diagrammet visas */
 .draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 0.7s var(--ease) forwards; }
 @keyframes draw { to { stroke-dashoffset: 0; } }
 .rise { animation: rise 0.55s var(--ease) both; }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.c-pt { stroke: var(--bg); stroke-width: 1.5; }
+.c-pt { stroke: var(--bg); stroke-width: 1; }
 .c-closet, i.c-closet { fill: var(--dot-warn); background: var(--dot-warn); }
 .c-active, i.c-active { fill: var(--dot-active); background: var(--dot-active); }
 .c-index, i.c-index { fill: var(--dot-index); background: var(--dot-index); }
@@ -1036,25 +1039,25 @@ a.btn { color: var(--fg); }
 /* Punktdiagram (FFCharts.xy) och fördelningar (FFCharts.dist) */
 .c-brand { fill: var(--brand); }
 :root[data-theme="dark"] .c-brand { fill: var(--brand-ink); }
-.c-pts .c-pt { fill-opacity: 0.8; transition: fill-opacity 0.2s, opacity 0.2s; }
-.c-pts.hovering .c-pt { opacity: 0.35; }
+.c-pts .c-pt { fill-opacity: 0.78; transition: fill-opacity 0.2s, opacity 0.2s; }
+.c-pts.hovering .c-pt { opacity: 0.3; }
 .c-pts.hovering .c-pt.on { opacity: 1; fill-opacity: 1; }
-.pop .c-pt { transform-box: fill-box; transform-origin: center; animation: pt-pop 0.5s var(--spring) both; }
-@keyframes pt-pop { from { opacity: 0; transform: scale(0.2); } to { opacity: 1; transform: none; } }
 .c-trend { stroke: var(--fg-soft); stroke-width: 1.5; stroke-dasharray: 6 5; animation: fade-in-plain 0.6s 0.4s both; }
-.c-quad { fill: var(--fg-muted); font-size: 11.5px; font-weight: 600; letter-spacing: 0.01em; }
-.c-band-pos { fill: var(--bar-pos); fill-opacity: 0.06; }
-.c-band-neg { fill: var(--bar-neg); fill-opacity: 0.06; }
-.c-band-label { font-size: 12.5px; font-weight: 700; }
+.c-quad { fill: var(--fg-muted); font-size: 11.5px; font-weight: 500; }
+.c-ref { stroke: var(--fg-muted); stroke-width: 1; stroke-dasharray: 4 4; stroke-opacity: 0.7; }
+.c-ref-label { fill: var(--fg-muted); font-size: 11px; font-variant-numeric: tabular-nums; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; }
+.c-band-pos { fill: var(--bar-pos); fill-opacity: 0.04; }
+.c-band-neg { fill: var(--bar-neg); fill-opacity: 0.04; }
+.c-band-label { font-size: 12px; font-weight: 600; }
 .c-band-label.pos { fill: var(--pos); } .c-band-label.neg { fill: var(--neg); }
-.c-hint { fill: var(--fg-soft); font-size: 12px; font-weight: 600; }
-.c-ptlabel { fill: var(--fg); font-size: 11.5px; font-weight: 650; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
+.c-hint { fill: var(--fg-muted); font-size: 12px; font-weight: 500; }
+.c-ptlabel { fill: var(--fg); font-size: 11.5px; font-weight: 600; paint-order: stroke; stroke: var(--bg); stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
 .c-hist { fill: var(--dot-index); }
-.c-curve { stroke-width: 2.25; stroke-linejoin: round; stroke: var(--brand); }
+.c-curve { stroke-width: 2; stroke-linejoin: round; stroke: var(--brand); }
 .c-curve, :root[data-theme="dark"] .c-curve { fill: none; }
 .c-curve.dash { stroke-dasharray: 7 5; }
-.c-curve-fill { stroke: none; fill-opacity: 0.1; }
-.c-mean { stroke-width: 1.5; stroke: var(--brand); stroke-dasharray: 2 3; }
+.c-curve-fill { stroke: none; fill-opacity: 0.08; }
+.c-mean { stroke-width: 1; stroke: var(--brand); }
 .c-curve.c-pos, .c-mean.c-pos { stroke: var(--bar-pos); }
 .c-curve.c-neg, .c-mean.c-neg { stroke: var(--bar-neg); }
 :root[data-theme="dark"] .c-curve.c-brand, :root[data-theme="dark"] .c-mean.c-brand { stroke: var(--brand-ink); }

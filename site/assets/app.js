@@ -824,9 +824,8 @@
     var xy = pts.map(function (p, i) { return [i * step, H - 3 - (p - min) / span * (H - 6)]; });
     var line = xy.map(function (p, i) { return (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1); }).join("");
     return '<svg class="spark" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" aria-hidden="true">' +
-      '<defs><linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" class="c-grad-top"/><stop offset="100%" class="c-grad-bottom"/></linearGradient></defs>' +
       '<path class="spark-area" d="' + line + "L" + W + " " + H + "L0 " + H + 'Z"/>' +
-      '<path class="draw" pathLength="1" vector-effect="non-scaling-stroke" d="' + line + '"/></svg>';
+      '<path vector-effect="non-scaling-stroke" d="' + line + '"/></svg>';
   }
 
   function signalModules() {
@@ -3161,6 +3160,11 @@
         "<b>Urval.</b> Bara fonder i premiepensionen, och avkastningen är räknad efter premiepensionens rabatterade avgift."
       ] });
     // Avkastning per procentenhet risk: ett enkelt mått på hur mycket fonden gett för svängningarna
+    // Medianfonden delar kartan i fyra delar, och de tre största fonderna får namn i diagrammet
+    var mid = function (vals) { vals.sort(function (a, b) { return a - b; }); var n = vals.length; return n % 2 ? vals[(n - 1) / 2] : (vals[n / 2 - 1] + vals[n / 2]) / 2; };
+    var medX = mid(pts.map(function (p) { return p.x; })), medY = mid(pts.map(function (p) { return p.y; }));
+    var big = pts.slice().sort(function (a, b) { return (b.fi.aum || 0) - (a.fi.aum || 0); }).slice(0, 3);
+    var shortFund = function (n) { return n.length <= 26 ? n : n.slice(0, 25).replace(/\s+\S*$/, "") + "…"; };
     var cols = [
       { key: "name", label: "Fond", align: "l", cls: "name", value: function (p) { return p.fi.name; }, cell: function (p) { return nameCell(fundHref(p.fi), p.fi.name, esc(p.fi.co) + " · " + esc(p.p[7] || "")); } },
       { key: "y", label: "Per år, 5 år", cell: function (p) { return retText(p.y); }, value: function (p) { return p.y; } },
@@ -3171,18 +3175,21 @@
     return head + '<section class="block"><div class="block-head"><h2>Fondkartan</h2><span class="note">' + int(pts.length) + " aktiefonder med femårshistorik</span></div>" +
       '<div class="legend">' + catLabel("active") + catLabel("closet") + catLabel("index") + "</div>" +
       '<div class="chart-card"><p class="chart-howto">Varje prick är en aktiefond. <b>Till höger</b> svänger fondens värde mer, alltså högre risk. ' +
-      "<b>Högre upp</b> har fonden gett bättre avkastning. Bäst är uppe till vänster. Peka på en prick för att se vilken fond det är.</p>" + chart(function (node) {
+      "<b>Högre upp</b> har fonden gett bättre avkastning. De streckade linjerna är medianfonden, så uppe till vänster om dem finns fonderna som gett mer avkastning med lägre risk än de flesta. " +
+      "Peka på en prick för att se vilken fond det är.</p>" + chart(function (node) {
         FFCharts.xy(node, pts, {
-          height: node.clientWidth < 500 ? 320 : 420, xHint: ["← Lugnare", "Svänger mer →"],
-          xFmt: function (v) { return nf0.format(v) + " %"; }, yFmt: function (v) { return fixMinus(nf0.format(v)) + " %"; },
+          height: node.clientWidth < 500 ? 340 : 440, xHint: ["← Lugnare", "Svänger mer →"], xTicks: 10, yTicks: 8,
+          xFmt: function (v) { return nf1.format(v).replace(/,0$/, "") + " %"; }, yFmt: function (v) { return fixMinus(nf0.format(v)) + " %"; },
           xLabel: "Risk: standardavvikelse, 24 månader", yLabel: "Avkastning per år, 5 år",
+          ref: { x: medX, y: medY, xText: "Medianrisk " + nf1.format(medX) + " %", yText: "Medianavkastning " + fixMinus(nf1.format(medY)) + " %" },
           quad: { tl: "Mer avkastning, lägre risk", br: "Mindre avkastning, högre risk" },
+          label: function (p) { return big.indexOf(p) >= 0 ? shortFund(p.fi.name) : null; },
           tip: function (p) {
             return "<b>" + esc(p.fi.name) + "</b><br>" + esc(p.fi.co) + " · " + esc(p.p[7] || "") + "<br>" + (p.y > 0 ? "+" : "") + fixMinus(nf0.format(p.y)) + " % per år · risk " + nf1.format(p.x) + " %<br>Avgift " + feeText(p.fi) + " · " + bigSek(p.fi.aum);
           },
           onClick: function (p) { location.hash = fundHref(p.fi); }
         });
-      }) + '<p class="chart-note">Varje punkt är en aktiefond, storleken är fondförmögenheten. ' +
+      }) + '<p class="chart-note">Varje punkt är en aktiefond, storleken är fondförmögenheten. De tre största fonderna har namn i diagrammet. ' +
       "Avkastningen kommer från Pensionsmyndigheten, risken från Finansinspektionen. Fonder utanför premiepensionen saknas.</p></div>" + riskBox + "</section>" +
       block("Alla fonder på kartan", "Sorterat på avkastning per risk: avkastningen per år delat med risken. Högre är bättre. Tryck på en rubrik för att sortera om.",
         table("risk-funds", cols, pts, { sort: { col: "ratio", dir: -1 }, limit: 15, expand: true, csv: true }), "section-gap") +
@@ -3473,9 +3480,9 @@
       return pts;
     };
     var series = [
-      { label: "Mest köpta", cls: "s3", points: mk(function (p) { return p.groups[G - 1].ret; }) },
-      { label: "Alla aktier", cls: "s1", points: mk(function (p) { return p.all; }) },
-      { label: "Mest sålda", cls: "s2", points: mk(function (p) { return p.groups[0].ret; }) }
+      { label: "Mest köpta", cls: "sp", points: mk(function (p) { return p.groups[G - 1].ret; }) },
+      { label: "Alla aktier", cls: "s0", points: mk(function (p) { return p.all; }) },
+      { label: "Mest sålda", cls: "sn", points: mk(function (p) { return p.groups[0].ret; }) }
     ];
     var groupNames = ["Mest sålda", "Sålda", "Mitten", "Köpta", "Mest köpta"];
     var maxAbs = Math.max.apply(null, b.groupMean.map(Math.abs).concat([b.allMean, 0.001]));
