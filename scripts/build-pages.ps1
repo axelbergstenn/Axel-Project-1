@@ -791,7 +791,7 @@ function KnowBlocks($s) {
     if ($f.list) { $figs += Fig "Handlas på" (Esc $f.list) }
   }
   if ($figs) { $inner += '<dl class="figures">' + $figs + "</dl>" }
-  if ($inner) { $html += Block ("Känn " + (Esc $name)) $inner "section-gap" }
+  if ($inner) { $html += Block ("Lär känna " + (Esc $name)) $inner "section-gap" }
   # Senaste kvartalsrapporten
   $kr = $k.q
   $sentence = $null

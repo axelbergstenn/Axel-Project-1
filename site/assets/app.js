@@ -554,17 +554,24 @@
 
   // Överst på startsidan: kvartalsrapporten i liten form, med val av kvartal och marknad
   var repPick = { q: null, market: null };
-  // Överst på startsidan: vad Fondinsyn är och hur ofta datan uppdateras. Kan döljas (sparas i webbläsaren).
+  // Vad Fondinsyn är och hur ofta datan uppdateras. Kan döljas, men bara under besöket (sessionStorage):
+  // den som kommer tillbaka senare, till exempel från en sökning, ser den igen.
+  function aboutHidden(hide) {
+    try {
+      if (hide) sessionStorage.setItem("ff-hide-about", "1");
+      return sessionStorage.getItem("ff-hide-about") === "1";
+    } catch (e) { return false; }
+  }
   function aboutCard() {
-    if (store("ff-hide-about")) return "";
+    if (aboutHidden()) return "";
     var built = state.front && state.front.built ? shortStamp(state.front.built) : null;
     var item = function (what, when, src) { return "<div><dt>" + what + "</dt><dd>" + when + "</dd><span>" + src + "</span></div>"; };
     return '<section class="about-card" aria-label="Om Fondinsyn">' +
       '<button type="button" class="ac-close" data-hide-about aria-label="Dölj rutan" title="Dölj">×</button>' +
       '<div class="ac-text"><h2>Vad är Fondinsyn?</h2>' +
-      "<p>Fondinsyn visar vad svenska fonder köper och säljer. Varje kvartal rapporterar fondbolagen alla sina innehav till Finansinspektionen. " +
-      "Vi jämför kvartalen och räknar ut vad som köpts och sålts per aktie, fond och fondbolag, och lägger till insynshandel, blankning, fondsparande och räntor. " +
-      'Gratis och oberoende. <a href="#/om">Så funkar det</a></p></div>' +
+      "<p>Fondinsyn visar vad svenska fonder köper och säljer. Varje kvartal rapporterar fondbolagen alla sina innehav till Finansinspektionen, " +
+      "och vi jämför kvartalen per aktie, fond och fondbolag. Till det kommer insynshandel, blankning, uppköp, fondsparande, räntor och bolagens egna kvartalsrapporter. " +
+      'All data kommer från officiella källor. Gratis och oberoende. <a href="#/om">Så fungerar det</a></p></div>' +
       '<dl class="ac-freq">' +
       item("Fondernas innehav", "Varje kvartal", "Finansinspektionen") +
       item("Insynshandel och blankning", "Varje dag", "Finansinspektionen") +
@@ -749,7 +756,7 @@
     var streakRows = function (list) { return list.map(function (r) { r.name = r.s.name; r.isin = r.s.isin; return r; }); };
 
 
-    return '<h1 class="visually-hidden">Fondinsyn: vad svenska fonder köper och säljer</h1>' + reportCard() + quickLinks(ds) + watchBlock() + signalModules() + aboutCard() +
+    return '<h1 class="visually-hidden">Fondinsyn: vad svenska fonder köper och säljer</h1>' + aboutCard() + reportCard() + quickLinks(ds) + watchBlock() + signalModules() +
       '<div class="grid-2 section-gap">' +
       block("Störst nettoköp", "Förändring i antal aktier × kurs vid kvartalsslut. " + termLink("nettokop", "Hur räknas det?"), table("ov-buy", flowCols, buys, st) + '<a class="more" href="#/aktier">Alla aktier</a>') +
       block("Störst nettosälj", "&nbsp;", table("ov-sell", flowCols, sells, st)) +
@@ -1039,7 +1046,7 @@
     return html;
   }
 
-  // ---------- Känn bolaget ----------
+  // ---------- Lär känna bolaget ----------
   // Bara bolagets egna rapporter: senaste kvartalsrapporten (via MFN), årsredovisningen (ESEF) med affärsområden och
   // marknader, bolagets egen beskrivning och MFN:s kalender. Byggs av scripts/build-companies.py till data/bolag/<ISIN>.json.
 
@@ -1171,7 +1178,7 @@
       }
     }
     var bk = q.bank || {};
-    if (bk.roe != null && bk.roe >= 12) add(good, 0.2, "Banken tjänar bra på ägarnas pengar: " + nf1.format(bk.roe) + " % avkastning på eget kapital.");
+    if (bk.roe != null && bk.roe >= 12) add(good, 0.2, "Hög avkastning på eget kapital: " + nf1.format(bk.roe) + " % per år.");
     if (bk.ci != null && bk.ci >= 0.6) add(bad, 0.2, "Höga kostnader: banken har " + nf0.format(bk.ci * 100) + " öre i kostnader per intjänad krona.");
     // Något att hålla koll på: bolagets egen syn framåt, det rapporten pratar mest om, eller nästa rapport
     var watch = null;
@@ -1348,7 +1355,7 @@
     var rev = finance ? null : now("rev"), ebit = now("ebit"), net = now("net");
     var yearNow = new Date().getFullYear();
 
-    var html = '<section class="block section-gap know"><div class="block-head"><h2>Känn ' + esc(short) + '</h2><span class="note">Bolaget på en minut</span></div>';
+    var html = '<section class="block section-gap know"><div class="block-head"><h2>Lär känna ' + esc(short) + '</h2><span class="note">Bolaget på en minut</span></div>';
 
     // Om bolaget: bolagets egen beskrivning och fakta
     var about = c.about;
@@ -1412,7 +1419,7 @@
       if (q.cash && q.cash[0] != null) qtile(money(q.cash[0], qcur), "kassaflöde från verksamheten", "Pengar som den vanliga verksamheten drog in" + (q.cash[1] != null ? ". Ett år tidigare " + money(q.cash[1], qcur) : ""), q.cash[0] < 0 ? "neg" : "");
       // Bankernas egna mått, förklarade
       var bk = q.bank || {};
-      if (bk.roe != null) qtile(nf1.format(bk.roe) + " %", "avkastning på eget kapital", "Så mycket vinst banken gör per år på ägarnas pengar", bk.roe < 0 ? "neg" : "");
+      if (bk.roe != null) qtile(nf1.format(bk.roe) + " %", "avkastning på eget kapital", "Årets vinst i procent av eget kapital", bk.roe < 0 ? "neg" : "");
       if (bk.ci != null) qtile(nf2.format(bk.ci), "kostnad per intjänad krona", "Banken har " + nf0.format(bk.ci * 100) + " öre i kostnader för varje krona den tjänar in. Lägre är bättre.");
       if (bk.cet1 != null) qtile(nf1.format(bk.cet1) + " %", "kapitalbuffert (kärnprimärkapital)", "Bankens buffert mot förluster i förhållande till utlåningens risk. Högre är tryggare.");
       var charts = "", insights = [];
@@ -1558,17 +1565,17 @@
       var share = eq / assets, debt = 1 - Math.max(0, share);
       var eqBefore = before("equity") != null && before("assets") > 0 ? before("equity") / before("assets") : null;
       var verdict = share < 0 ? "Bolaget har mer skulder än tillgångar (negativt eget kapital), vilket är en varningssignal."
-        : share >= 0.5 ? "Det är en hög andel egna pengar: bolaget har marginal om det blir sämre tider."
-        : share >= 0.3 ? "Det är en vanlig nivå för ett börsbolag."
-        : "Det är en låg andel egna pengar: bolaget är beroende av lån och är känsligare om det blir sämre tider.";
-      html += '<div class="know-card know-fin"><h3>Hur betalar ' + esc(short) + " för det de äger?</h3>" +
-        '<p class="know-lead">Bolaget äger saker för ' + money(assets, cur) + " (fabriker, lager, kundfordringar, kassa och annat). " +
-        (share >= 0 ? nf0.format(share * 100) + " % av det är betalt med ägarnas egna pengar och " + nf0.format(debt * 100) + " % med lån och andra skulder. " : "") +
-        verdict + (eqBefore != null && Math.abs(share - eqBefore) >= 0.03 ? " Ett år tidigare var andelen egna pengar " + nf0.format(eqBefore * 100) + " %." : "") +
+        : share >= 0.5 ? "Soliditeten är hög: bolaget har marginal om det blir sämre tider."
+        : share >= 0.3 ? "Det är en vanlig soliditet för ett börsbolag."
+        : "Soliditeten är låg: bolaget är beroende av lånefinansiering och känsligare om det blir sämre tider.";
+      html += '<div class="know-card know-fin"><h3>Hur finansierar ' + esc(short) + " sina tillgångar?</h3>" +
+        '<p class="know-lead">Bolagets tillgångar uppgår till ' + money(assets, cur) + " (anläggningar, varulager, kundfordringar, likvida medel med mera). " +
+        (share >= 0 ? nf0.format(share * 100) + " % är finansierat med eget kapital, alltså ägarnas pengar i bolaget, och " + nf0.format(debt * 100) + " % med skulder. Andelen eget kapital kallas soliditet. " : "") +
+        verdict + (eqBefore != null && Math.abs(share - eqBefore) >= 0.03 ? " Ett år tidigare var soliditeten " + nf0.format(eqBefore * 100) + " %." : "") +
         ' <span class="muted">Helåret ' + r.fy + ".</span></p>" +
         (share >= 0 ? '<div class="fin-bar" role="img" aria-label="' + nf0.format(share * 100) + ' % eget kapital, ' + nf0.format(debt * 100) + ' % skulder">' +
           '<span class="fin-eq" style="width:' + (share * 100).toFixed(1) + '%"></span><span class="fin-debt" style="width:' + (debt * 100).toFixed(1) + '%"></span></div>' +
-          '<div class="fin-legend"><span><i class="fin-eq"></i>Egna pengar (eget kapital) ' + money(eq, cur) + '</span><span><i class="fin-debt"></i>Lån och andra skulder ' + money(assets - eq, cur) + "</span></div>" : "") +
+          '<div class="fin-legend"><span><i class="fin-eq"></i>Eget kapital ' + money(eq, cur) + '</span><span><i class="fin-debt"></i>Skulder ' + money(assets - eq, cur) + "</span></div>" : "") +
         "</div>";
     }
 
@@ -2380,7 +2387,7 @@
   function viewPortfolio(arg) {
     document.title = "Min fondportfölj – Fondinsyn";
     var head = '<div class="page-head"><h1>Min fondportfölj</h1><p class="meta lead">Fyll i dina fonder och hur mycket du har i varje. Då ser du vilka aktier du faktiskt äger, ' +
-      "vad du betalar i avgifter och om dina fonder äger samma saker. Portföljen sparas bara i din webbläsare.</p></div>";
+      "vad du betalar i avgifter och om dina fonder har samma innehav. Portföljen sparas bara i din webbläsare.</p></div>";
     if (!needWorld()) return head + (failed("world-" + state.q) ? errorBlock() : loadingBlock("Laddar fondernas innehav…"));
     var d = quarterData();
     var shared = !!arg;
@@ -5346,7 +5353,7 @@
     var csv = e.target.closest("[data-csv]");
     if (csv) { downloadCsv(csv.getAttribute("data-csv")); return; }
     if (e.target.closest("[data-hide-about]")) {
-      store("ff-hide-about", 1);
+      aboutHidden(true);
       var ab = document.querySelector(".about-card");
       if (ab) ab.remove();
       return;
