@@ -1847,39 +1847,15 @@ if ($perf -and $perf.funds) {
 }
 Write-Host "  sidor för sökmotorer: insyn, blankning, uppköp, avgiftskollen, risk"
 
-# ---------- Dubbelsignal: /dubbelsignal/ (samma regler som viewDouble i app.js) ----------
-if ($insider) {
-  $insBy = @{}
-  foreach ($r in $insider.rows) {
-    if ($null -eq $r[11] -or ($r[7] -ne "Förvärv" -and $r[7] -ne "Avyttring")) { continue }
-    $k = [string]$r[3]
-    if (-not $insBy.ContainsKey($k)) { $insBy[$k] = @{ buy = 0.0; sell = 0.0; close = 0.0 } }
-    if ($r[7] -eq "Förvärv") { $insBy[$k].buy += [double]$r[11] } else { $insBy[$k].sell += [double]$r[11] }
-    if ($r[6]) { $insBy[$k].close += $(if ($r[7] -eq "Förvärv") { [double]$r[11] } else { -[double]$r[11] }) }
-  }
-  $dBuy = New-Object System.Collections.Generic.List[object]; $dSell = New-Object System.Collections.Generic.List[object]
-  foreach ($s in $pageStocks) {
-    if ($null -eq $s.netFlow -or -not $insBy.ContainsKey($s.isin)) { continue }
-    $net = $insBy[$s.isin].buy - $insBy[$s.isin].sell
-    if ([math]::Abs([double]$s.flow) -lt 1e6 -or [math]::Abs($net) -lt 5e5 -or (([double]$s.flow -gt 0) -ne ($net -gt 0))) { continue }
-    $x = [pscustomobject]@{ s = $s; net = $net; close = $insBy[$s.isin].close }
-    if ($s.flow -gt 0) { $dBuy.Add($x) } else { $dSell.Add($x) }
-  }
-  $dRows = { param($list) foreach ($x in $list) { ,@((A (StockUrl $x.s) $x.s.name), (Colored $x.s.flow (BigSek $x.s.flow -Sign)), (Colored $x.net (BigSek $x.net -Sign))) } }
-  $topBuy = @($dBuy | Sort-Object net -Descending | Select-Object -First 15)
-  $topSell = @($dSell | Sort-Object net | Select-Object -First 15)
-  $days = $insider.days
-  $content = '<div class="page-head"><h1>Dubbelsignal</h1><p class="meta lead">Aktier där både fonderna och bolagets egna insiders har köpt, eller där båda har sålt. Fondernas affärer gäller ' + $QL +
-    ", insidernas köp och sälj de senaste $days dagarna enligt Finansinspektionens insynsregister.</p></div>" +
-    '<dl class="figures">' + (Fig "Dubbel köpsignal" "$($dBuy.Count) aktier") + (Fig "Dubbel säljsignal" "$($dSell.Count) aktier") + "</dl>" +
-    (Block "Både fonder och insiders köper" (Table @("Aktie", "Fonderna $QL", "Insiders $days dagar") @(& $dRows $topBuy)) "section-gap") +
-    (Block "Både fonder och insiders säljer" (Table @("Aktie", "Fonderna $QL", "Insiders $days dagar") @(& $dRows $topSell)) "section-gap") +
-    '<p class="desc section-gap">En dubbelsignal är en observation, inte en köp- eller säljrekommendation. Insiders kan sälja av skäl som skatt eller lån, och fondernas affärer kan spegla in- och utflöden. ' + (A "/#/dubbelsignal" "Se hela listan") + "</p>"
-  Page "dubbelsignal/" "dubbelsignal" "Dubbelsignal – aktier som både fonder och insiders köper | Fondinsyn" `
-    "Aktier där både svenska fonder och bolagets egna insiders köper ($($dBuy.Count) st) eller säljer ($($dSell.Count) st). Fondernas affärer $QL och insidernas de senaste $days dagarna." `
-    $defaultImg $content -Crumbs @("Dubbelsignal", "dubbelsignal/")
-  Write-Host "  dubbelsignal: $($dBuy.Count) köp, $($dSell.Count) sälj"
+# ---------- Borttagna sidor: /signaler/ och /dubbelsignal/ leder till insynshandeln ----------
+# Signalsidorna är borttagna. Gamla länkar och sökträffar skickas vidare i stället för att ge en tom sida.
+function RedirectPage($rel, $to) {
+  Save ($rel + "index.html") ('<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="robots" content="noindex">' +
+    '<link rel="canonical" href="' + $BaseUrl + $to + '"><meta http-equiv="refresh" content="0; url=' + $to + '"><title>Fondinsyn</title></head>' +
+    '<body><p><a href="' + $to + '">Gå till insynshandeln</a></p></body></html>')
 }
+RedirectPage "dubbelsignal/" "/insyn/"
+RedirectPage "signaler/" "/insyn/"
 
 # ---------- Fondsparandet: /sparande/ (månadsstatistik ur data/flows.json, samma sida som viewSavings i app.js) ----------
 $flowsData = $null
@@ -1910,18 +1886,6 @@ if ($flowsData -and $flowsData.months -and $flowsData.types.TOTALT) {
   Write-Host "  fondsparandet: $lmText"
 }
 
-# ---------- Samlad signal: /signaler/ (listan räknas i appen, här står metoden för sökmotorer) ----------
-$content = '<div class="page-head"><h1>Samlad signal</h1><p class="meta lead">Fondernas köp och sälj, insidernas affärer och blankningen vägda ihop till ett tal per aktie, från −100 till +100. ' +
-  'Ett sätt att se var flera signaler pekar åt samma håll. Det är inte en rekommendation att köpa eller sälja.</p></div>' +
-  '<section class="block section-gap text-page"><div class="block-head"><h2>Så räknas signalen</h2></div>' +
-  '<p><b>Fonderna (40 %).</b> Hur många fonder som ökade jämfört med hur många som minskade i aktien senaste kvartalet, och hur mycket fondernas antal aktier ändrades.</p>' +
-  '<p><b>Insiders (40 %).</b> Köp minus sälj i bolaget de senaste 90 dagarna enligt Finansinspektionens insynsregister.</p>' +
-  '<p><b>Blankning (20 %).</b> Hur den blankade andelen ändrats de senaste 30 dagarna.</p>' +
-  '<p>' + (A "/#/signaler" "Se listan med aktierna") + '</p></section>'
-Page "signaler/" "signaler" "Samlad signal – fonder, insiders och blankning ihop | Fondinsyn" `
-  "Svenska aktier där fonderna köper, insiders köper och blankningen minskar, eller tvärtom. Tre signaler vägda ihop till ett tal per aktie." `
-  $defaultImg $content -Crumbs @("Samlad signal", "signaler/")
-
 # ---------- Fondernas ägarandel (listan räknas i appen) ----------
 $content = '<div class="page-head"><h1>Fondernas ägarandel</h1><p class="meta lead">Hur stor del av bolagen på Stockholmsbörsen och First North som svenska fonder äger tillsammans, ' +
   'och var fonderna ökade och minskade sin andel under ' + $QL + '.</p></div><p class="desc">' + (A "/#/agarandel" "Se listan med alla bolag") + '</p>'
@@ -1938,7 +1902,7 @@ Page "backtest/" "backtest" "Lönar det sig att följa fonderna? Backtest | Fond
 $content = '<div class="page-head"><h1>Metodrapport</h1><p class="meta lead">Hur Fondinsyn samlar in och räknar sin data: källor, nettoköp, splitjustering, fondflöden, ägarandel, signaler och backtest.</p></div>' +
   '<p class="desc">' + (A "/#/metod" "Läs metodrapporten") + '</p>'
 Page "metod/" "metod" "Metodrapport – så räknar Fondinsyn | Fondinsyn" `
-  "Källor, definitioner och begränsningar bakom Fondinsyn: hur fondernas nettoköp, ägarandel, fondflöden och signaler räknas ur Finansinspektionens data." `
+  "Källor, definitioner och begränsningar bakom Fondinsyn: hur fondernas nettoköp, ägarandel, fondflöden och insynshandel räknas ur Finansinspektionens data." `
   $defaultImg $content -Crumbs @("Metodrapport", "metod/")
 
 # ---------- Integritet och villkor: /integritet/ ----------

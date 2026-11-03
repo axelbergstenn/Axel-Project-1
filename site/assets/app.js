@@ -654,7 +654,7 @@
     return '<nav class="quick section-gap" aria-label="Genvägar">' +
       tile("#/aktier", "Aktier", '<span class="' + cls(net) + '">' + bigSek(net, true) + "</span>", "fondernas nettoköp i " + int(t.held) + " " + marketWord() + " aktier") +
       tile("#/fonder", "Fonder", int(Object.keys(quarterData().fi).length), "fonder med innehav, avgifter och avkastning") +
-      tile("#/signaler", "Signaler", f.double ? int(f.double.buy) : "Insyn", f.double ? "aktier som både fonder och insiders köper" : "insynshandel, blankning och samlad signal") +
+      tile("#/insyn", "Insynshandel", f.insider ? bigSek(f.insider.buy30) : "Insyn", f.insider ? "insiders köp de senaste 30 dagarna" : "insiders köp och sälj i sina egna bolag") +
       tile("#/sparande", "Sparande", sav ? '<span class="' + cls(sav[1]) + '">' + bigSek(sav[1] * 1e6, true) + "</span>" : "Fondsparandet",
         sav ? "spararnas nettosparande i " + monthLabel(sav[0], true) : "vart spararnas pengar går") +
       tile("#/rantor", "Räntor", policy ? nf2.format(policy[2]) + " %" : "Räntor", "Riksbankens styrränta, obligationer och räntefonder") +
@@ -776,7 +776,7 @@
       "</div>";
   }
 
-  // ---------- Marknadsremsan och startsidans signaler (data/front.json) ----------
+  // ---------- Marknadsremsan och startsidans moduler (data/front.json) ----------
 
   var RATE_SHORT = { SECBREPOEFF: "Styrränta", SEGVB10YC: "Statsobl. 10 år", SEMB5YCACOMB: "Bostadsobl. 5 år", SEGVB2YC: "Statsobl. 2 år" };
   // Bolagsnamn utan "AB" och "(publ)" i korta listor
@@ -806,7 +806,6 @@
     parts.push('<span class="tk-sep" aria-hidden="true"></span>');
     parts.push(item("#/rapport", "Fonderna " + esc(f.ql), bigSek(f.net, true), null, "Svenska fonders nettoköp av svenska aktier"));
     if (f.insider) parts.push(item("#/insyn", "Insiderköp 30 d", bigSek(f.insider.buy30), null, "Insiders köp de senaste 30 dagarna"));
-    if (f.double) parts.push(item("#/dubbelsignal", "Dubbelsignal", int(f.double.buy) + " aktier", null, "Både fonder och insiders köper"));
     if (f.shorts && f.shorts[0]) parts.push(item("#/blankning", "Mest blankad", esc(shortCo(f.shorts[0][0])) + " " + nf1.format(f.shorts[0][2]) + " %"));
     el.innerHTML = parts.join("");
   }
@@ -856,13 +855,6 @@
         insTop.length ? '<ul class="mod-list">' + insTop.slice(0, 4).map(function (r) {
           return "<li>" + name(r[0], r[1], (r[6] ? "Närstående till " : "") + esc(personName(r[2])) + (r[3] ? " · " + esc(r[3]) : "")) + '<span class="mod-v pos">' + bigSek(r[4]) + "</span></li>";
         }).join("") + "</ul>" : '<p class="desc">Inga större köp de senaste två veckorna.</p>'));
-    }
-    if (f.double) {
-      out.push(mod("Dubbelsignal", "#/dubbelsignal", "Alla dubbelsignaler",
-        "<b>" + int(f.double.buy) + " aktier</b> köps av både fonder och bolagens egna insiders.",
-        '<ul class="mod-list">' + f.double.top.slice(0, 4).map(function (r) {
-          return "<li>" + name(r[0], r[1], "Fonder " + bigSek(r[2], true) + " · insiders " + bigSek(r[3], true) + (r[4] != null ? closeNote(r[3], r[4]) : "")) + "</li>";
-        }).join("") + "</ul>"));
     }
     if (f.shorts && f.shorts.length) {
       out.push(mod("Mest blankade", "#/blankning", "All blankning",
@@ -976,7 +968,6 @@
           s.isNew ? "" : (function (d) { return (d >= 0 ? "+" : "−") + nf1.format(Math.abs(d) * 100) + " p.e. sedan " + quarterLabel(quarterData().meta.prevId); })(ownShare(s) - ownShare(s, true))) : "") + "</dl>";
       if (s.isNew) html += '<p class="notice">Ingen fond ägde aktien förra kvartalet. Det beror oftast på en notering, avknoppning eller ett nytt aktieslag, så innehaven räknas inte som köp i översikten.</p>';
       if (s.isGone) html += '<p class="notice">Ingen fond äger aktien längre. Det beror oftast på uppköp, avnotering eller byte av aktieslag.</p>';
-      html += stockSignalPanel(s);
     }
 
     // Uppköpserbjudanden på bolaget
@@ -2966,7 +2957,7 @@
           items.push({ kind: "Blankare", label: h.name, sub: h.positions.length + " aktier blankade", href: holderHref(h.name) });
         });
       }
-      var pages = [["Räntor", "#/rantor"], ["Dubbelsignal", "#/dubbelsignal"], ["Räntefonder", "#/fonder/rantefonder"], ["Fondbolag", "#/fondbolag"],["Ordlista och vanliga frågor", "#/ordlista"], ["Blankning", "#/blankning"], ["Blankare", "#/blankare"], ["Kvartalsrapport", "#/rapport"], ["Uppköp", "#/uppkop"], ["Avgiftskollen", "#/avgifter"], ["Risk och avkastning", "#/risk"], ["Kända förvaltare", "#/forvaltare"], ["Min fondportfölj", "#/portfolj"], ["Jämför fonder", "#/jamfor"], ["Om datan", "#/om"], ["Kontakt", "#/kontakt"]];
+      var pages = [["Räntor", "#/rantor"], ["Räntefonder", "#/fonder/rantefonder"], ["Fondbolag", "#/fondbolag"],["Ordlista och vanliga frågor", "#/ordlista"], ["Blankning", "#/blankning"], ["Blankare", "#/blankare"], ["Kvartalsrapport", "#/rapport"], ["Uppköp", "#/uppkop"], ["Avgiftskollen", "#/avgifter"], ["Risk och avkastning", "#/risk"], ["Kända förvaltare", "#/forvaltare"], ["Min fondportfölj", "#/portfolj"], ["Jämför fonder", "#/jamfor"], ["Om datan", "#/om"], ["Kontakt", "#/kontakt"]];
       pages.forEach(function (pg) { if (scoreMatch(pg[0], q) >= 0) items.push({ kind: "Sidor", label: pg[0], sub: "", href: pg[1] }); });
       // Inga exakta träffar: sök igen med stavfel tillåtna
       if (!items.length && !search.fuzzy) { search.fuzzy = true; try { runSearch(); } finally { search.fuzzy = false; } return; }
@@ -3804,7 +3795,7 @@
     return head +
       '<div class="bt-tools"><div class="seg" role="group" aria-label="Vilka fonders köp">' + seg(false, "Alla fonder") + seg(true, "Bara aktiva fonder") + "</div>" +
       '<span class="muted">' + (btState.active ? "Indexfondernas köp räknas bort, de följer mest in- och utflöden." : "Alla fonders nettoköp, även indexfondernas.") + "</span></div>" +
-      '<section class="bt-answer"><div class="bt-answer-text"><p class="kicker">Slutsats</p><p class="bt-verdict">' + backtestVerdict(b) + "</p></div>" +
+      '<section class="bt-answer bt-answer-duel">' +
       '<div class="bt-duel"><div><span>Mest köpta</span><b class="' + cls(b.cagrTop) + '">' + pctS(b.cagrTop) + '</b><small>per år</small></div>' +
       '<div class="bt-vs">mot</div><div><span>Mest sålda</span><b class="' + cls(b.cagrBottom) + '">' + pctS(b.cagrBottom) + "</b><small>per år</small></div></div></section>" +
       backtestStatBox(b) +
@@ -4039,13 +4030,8 @@
         "räknas också dit, så det andra kvartalet, när de flesta bolag delar ut, ser för positivt ut. Som kontroll gav metoden −18 mdkr för aktiefonderna första kvartalet 2026, " +
         "mot −16 mdkr enligt Fondbolagens förening.</p>") +
 
-      sec(7, "Signaler",
-        "<p><b>Insynshandel</b> är köp och sälj som insiders anmält till FI, med belopp omräknade till kronor. Köp minus sälj summeras per bolag över 90 dagar.</p>" +
-        "<p><b>Dubbelsignal</b> är aktier där fonderna nettoköpt för minst 1 mkr under kvartalet och insiders köpt för minst 500 000 kr mer än de sålt, eller motsvarande för sälj.</p>" +
-        "<p><b>Samlad signal</b> väger ihop tre delar till ett tal mellan −100 och +100: fondernas affärer (40 %, hälften andelen fonder som ökade mot minskade, hälften förändringen i antal aktier), " +
-        "insidernas köp minus sälj (40 %, fullt utslag vid 5 mkr) och blankningens förändring på 30 dagar (20 %, fullt utslag vid en procentenhet). " +
-        "Vikterna och gränserna är valda för hand, inte uppskattade ur data. Signalen beskriver vad fonder, insiders och blankare har gjort och är inte prövad mot " +
-        "aktiernas senare kursutveckling, eftersom historik över blankningen bara finns för det senaste året. Fondernas del prövas för sig i backtestet nedan.</p>") +
+      sec(7, "Insynshandel",
+        "<p><b>Insynshandel</b> är köp och sälj som insiders anmält till FI, med belopp omräknade till kronor. Köp minus sälj summeras per bolag över 90 dagar.</p>") +
 
       sec(8, "Backtest: lönar det sig att följa fonderna?",
         "<p>Testet undersöker om fondernas köp säger något om aktiernas kommande utveckling. Varje kvartal delas svenska aktier där fonderna ägde minst " + BT_MIN_VALUE +
@@ -4215,196 +4201,6 @@
     return html;
   }
 
-  // ---------- Samlad signal ----------
-  // Väger ihop tre saker som redan finns på sajten: fondernas köp och sälj under kvartalet (40 %), insidernas köp minus
-  // sälj de senaste 90 dagarna (40 %) och hur blankningen ändrats de senaste 30 dagarna (20 %). Varje del blir ett tal
-  // mellan −1 och 1, och summan skalas till −100 … +100. Det är ett sätt att se var flera signaler pekar åt samma håll,
-  // inte en rekommendation.
-
-  var SIGNAL_MIN_VALUE = 50e6; // aktier där fonderna äger minst 50 mkr
-  function clamp1(v) { return Math.max(-1, Math.min(1, v)); }
-
-  function signalFor(s, insBy) {
-    var fb = 0, fs = 0;
-    s.trades.forEach(function (t) { if (t.d > 0) fb++; else if (t.d < 0) fs++; });
-    var breadth = fb + fs ? (fb - fs) / (fb + fs) : 0;
-    var mag = s.chg == null ? 0 : clamp1(s.chg / 0.1);
-    var F = (breadth + mag) / 2;
-    if (fb + fs < 3) F *= 0.5;
-    var e = insBy[s.isin], inet = e ? e.buy - e.sell : 0;
-    var I = Math.abs(inet) < 2e5 ? 0 : clamp1(inet / 5e6);
-    var a = state.shorts && state.shorts.byIsin[s.isin];
-    var S = a && a.ch30 != null ? clamp1(-a.ch30 / 1) : 0;
-    return { s: s, score: Math.round(100 * (0.4 * F + 0.4 * I + 0.2 * S)), F: F, I: I, S: S, fb: fb, fs: fs, inet: e ? inet : null, cnet: e ? e.close : 0, nIns: e ? e.n : 0, short: a || null };
-  }
-  function insiderTotals() {
-    var by = {};
-    state.insider.rows.forEach(function (r) {
-      if (r.sek == null || r.kind === "other") return;
-      var e = by[r.isin] = by[r.isin] || { buy: 0, sell: 0, n: 0, close: 0 };
-      if (r.kind === "buy") e.buy += r.sek; else e.sell += r.sek;
-      if (r.close) e.close += r.kind === "buy" ? r.sek : -r.sek;
-      e.n++;
-    });
-    return by;
-  }
-  function allSignals() {
-    var insBy = insiderTotals();
-    return quarterData().se.stocks.filter(function (s) { return s.netFlow != null && s.price && Math.max(s.val1, s.val2) >= SIGNAL_MIN_VALUE; })
-      .map(function (s) { return signalFor(s, insBy); });
-  }
-  // Orden beskriver vad aktörerna har gjort, inte hur aktien kommer att gå: signalen är inte prövad mot kursen
-  function signalWord(v) { return v >= 40 ? "Samstämmigt köp" : v >= 15 ? "Övervägande köp" : v > -15 ? "Blandat" : v > -40 ? "Övervägande sälj" : "Samstämmigt sälj"; }
-  function signalBadge(v) {
-    var c = v >= 40 ? "sp2" : v >= 15 ? "sp1" : v > -15 ? "s0" : v > -40 ? "sn1" : "sn2";
-    return '<span class="sig ' + c + '" title="' + signalWord(v) + '"><b>' + (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v) + "</b></span>";
-  }
-  function signalMeter(v) {
-    var w = Math.abs(v) / 2;
-    return '<span class="sig-meter" aria-hidden="true"><i class="' + (v >= 0 ? "pos" : "neg") + '" style="width:' + w + "%;" + (v >= 0 ? "left:50%" : "right:50%") + '"></i></span>';
-  }
-  function partText(g, which) {
-    if (which === "F") return (g.fb || g.fs ? g.fb + " köpte, " + g.fs + " sålde" : "Inga affärer") + (g.s.chg != null ? " · aktier " + pct(g.s.chg) : "");
-    if (which === "I") return g.inet == null ? "Ingen handel" : (g.inet >= 0 ? "Köp minus sälj " : "Sälj minus köp ") + bigSek(Math.abs(g.inet)) + closeNote(g.inet, g.cnet);
-    return g.short ? nf2.format(g.short.pct) + " % blankat" + (g.short.ch30 == null ? "" : Math.abs(g.short.ch30) < 0.005 ? ", oförändrat på 30 dagar" : ", " + signed(nf2.format(g.short.ch30), g.short.ch30) + " p.e. på 30 dagar") : "Ingen större blankning";
-  }
-  // En liten färgad punkt per del: grön (positiv), röd (negativ) eller grå (neutral)
-  function partArrow(v) { return '<span class="part ' + (v > 0.05 ? "pos" : v < -0.05 ? "neg" : "") + '" aria-hidden="true"></span>'; }
-
-  function viewSignals() {
-    document.title = "Samlad signal – fonder, insiders och blankning ihop – Fondinsyn";
-    var head = '<div class="page-head"><h1>Samlad signal</h1><p class="meta lead">Fondernas köp och sälj, insidernas affärer och blankningen vägda ihop till ett tal per aktie, ' +
-      "från −100 till +100. Ett sätt att se var flera signaler pekar åt samma håll. Det är inte en rekommendation att köpa eller sälja.</p></div>";
-    var okI = needInsider(), okS = needShorts();
-    if (!okI || !okS) return head + (failed("insider") || failed("shorts") ? errorBlock() : loadingBlock("Laddar insynshandel och blankning…"));
-    var all = allSignals();
-    var pos = all.filter(function (g) { return g.score > 0; }).sort(function (a, b) { return b.score - a.score; });
-    var neg = all.filter(function (g) { return g.score < 0; }).sort(function (a, b) { return a.score - b.score; });
-    var cols = [
-      { key: "name", label: "Aktie", align: "l", cls: "name", cell: function (g) {
-        return nameCell(stockHref(g.s), g.s.name, partArrow(g.F) + " Fonder " + partArrow(g.I) + " Insiders " + partArrow(g.S) + " Blankning");
-      }, value: function (g) { return g.s.name; }, csv: function (g) { return g.s.name; } },
-      { key: "score", label: "Signal", cell: function (g) { return '<span class="sig-cell">' + signalMeter(g.score) + signalBadge(g.score) + "</span>"; }, value: function (g) { return g.score; }, csv: function (g) { return g.score; } },
-      { key: "F", label: "Fonderna " + quarterLabel(state.q), align: "l", hideSm: true, cell: function (g) { return partArrow(g.F) + " " + partText(g, "F"); }, value: function (g) { return g.F; } },
-      { key: "I", label: "Insiders 90 dagar", align: "l", hideSm: true, cell: function (g) { return partArrow(g.I) + " " + partText(g, "I"); }, value: function (g) { return g.I; } },
-      { key: "S", label: "Blankning", align: "l", hideSm: true, cell: function (g) { return partArrow(g.S) + " " + partText(g, "S"); }, value: function (g) { return g.S; } }
-    ];
-    var strong = function (list, lim) { return list.filter(function (g) { return Math.abs(g.score) >= lim; }).length; };
-    // Fondernas del är prövad för sig i backtestet. Historiken laddas här bara om den redan finns.
-    var bt = state.history && state.history.quarters ? computeBacktest(false) : null;
-    var sigBox = statBox({ level: "none",
-      text: "Signalen beskriver vad fonder, insiders och blankare har gjort, inte hur aktien kommer att gå. Den är inte prövad mot aktiernas senare kursutveckling, " +
-        "eftersom historik över blankningen bara finns för det senaste året. Därför går det inte att säga att en hög signal följs av en bättre kurs. " +
-        'Fondernas del prövas för sig i <a href="#/backtest">Följ fonderna</a>' + (bt && bt.N ? ": " + STRENGTH[bt.test.level].toLowerCase() + " (p-värde " + pText(bt.test.p) + ")." : "."),
-      figs: [["Urval", int(all.length) + " aktier", "fonderna äger minst 50 mkr"], ["Prövad mot kursen", "Nej", "blankningshistorik saknas"],
-        ["Vikter", "40 / 40 / 20", "valda för hand, inte ur data"], ["p-värde", "–", "kan inte räknas utan prövning"]],
-      caveats: [
-        "<b>Vikter och gränser</b> (till exempel att 5 mkr i insiderköp ger fullt utslag) är bedömningar, inte uppskattade ur data. Andra val ger andra listor.",
-        "<b>Olika perioder.</b> Fondernas del gäller ett helt kvartal, insidernas de senaste 90 dagarna och blankningen de senaste 30 dagarna.",
-        "<b>Dubbelräkning.</b> När flera insiders i samma bolag handlar räknas beloppen ihop, och en enda stor affär kan ge fullt utslag."
-      ] });
-    return head +
-      '<dl class="figures">' + fig("Aktier med signal", int(all.length), "fonderna äger minst 50 mkr") +
-      fig("Samstämmigt köp", '<span class="pos">' + int(strong(pos, 40)) + "</span>", "+40 eller mer") +
-      fig("Samstämmigt sälj", '<span class="neg">' + int(strong(neg, 40)) + "</span>", "−40 eller lägre") + "</dl>" +
-      sigBox +
-      '<div class="stack section-gap">' +
-      block("Mest samstämmigt köp", "Aktier där fonderna köper, insiders köper och blankningen minskar.", table("sig-pos", cols, pos.slice(0, 25), { csv: true, sort: { col: "score", dir: -1 } })) +
-      block("Mest samstämmigt sälj", "Aktier där fonderna säljer, insiders säljer och blankningen ökar.", table("sig-neg", cols, neg.slice(0, 25), { csv: true, sort: { col: "score", dir: 1 } })) +
-      "</div>" +
-      '<section class="block section-gap text-page"><div class="block-head"><h2>Så räknas signalen</h2></div>' +
-      "<p><b>Fonderna (40 %).</b> Hälften är hur många fonder som ökade jämfört med hur många som minskade i aktien under " + quarterLabel(state.q) +
-      ", hälften hur mycket fondernas antal aktier ändrades (±10 % ger fullt utslag). Färre än tre fonder som handlat ger halv vikt.</p>" +
-      "<p><b>Insiders (40 %).</b> Köp minus sälj i bolaget de senaste 90 dagarna enligt Finansinspektionens insynsregister. Under 200 000 kr räknas som brus, 5 mkr ger fullt utslag.</p>" +
-      "<p><b>Blankning (20 %).</b> Hur den blankade andelen ändrats de senaste 30 dagarna. En procentenhet mindre blankning ger fullt positivt utslag, en mer fullt negativt.</p>" +
-      "<p>Delarna blir tal mellan −1 och 1 och vägs ihop till en signal mellan −100 och +100. Bara svenska aktier där fonderna äger minst 50 mkr är med.</p></section>";
-  }
-
-  // Panelen på aktiesidan
-  function stockSignalPanel(s) {
-    if (!s || s.netFlow == null || !s.price || s.isin.slice(0, 2) !== "SE") return "";
-    if (!needInsider() || !needShorts()) return "";
-    var g = signalFor(s, insiderTotals());
-    var row = function (label, v, which) { return '<li><span class="sp-l">' + partArrow(v) + " " + label + '</span><span class="sp-t">' + partText(g, which) + "</span></li>"; };
-    return '<section class="signal-panel"><div class="sp-head"><div><p class="kicker">Samlad signal</p><p class="sp-word">' + signalWord(g.score) + "</p></div>" +
-      '<div class="sp-score">' + signalBadge(g.score) + signalMeter(g.score) + "</div></div>" +
-      '<ul class="sp-parts">' + row("Fonderna", g.F, "F") + row("Insiders", g.I, "I") + row("Blankning", g.S, "S") + "</ul>" +
-      '<a class="more" href="#/signaler">Så räknas signalen</a></section>';
-  }
-
-  // ---------- Dubbelsignal ----------
-  // Aktier där både fonderna (kvartalets nettoköp) och bolagets egna insiders (köp minus sälj) går åt samma håll.
-  var doubleFilter = { period: "90" };
-  var DOUBLE_MIN_FUND = 1e6, DOUBLE_MIN_INSIDER = 5e5; // under 1 mkr respektive 500 000 kr räknas som brus
-
-  function doubleSignals() {
-    var I = state.insider, ds = quarterData().se, by = {};
-    var yearMode = doubleFilter.period === "365" && state.insiderYear;
-    if (yearMode) {
-      state.insiderYear.rows.forEach(function (y) { by[y[0]] = { buy: y[2], sell: y[3], nBuyers: y[4], last: null }; });
-    } else {
-      I.rows.forEach(function (r) {
-        if (r.sek == null || r.kind === "other") return;
-        var e = by[r.isin] = by[r.isin] || { buy: 0, sell: 0, close: 0, buyers: {}, last: null };
-        if (r.kind === "buy") { e.buy += r.sek; e.buyers[r.person] = 1; if (!e.last || r.tx > e.last) e.last = r.tx; } else e.sell += r.sek;
-        if (r.close) e.close += r.kind === "buy" ? r.sek : -r.sek;
-      });
-      Object.keys(by).forEach(function (k) { by[k].nBuyers = Object.keys(by[k].buyers).length; });
-    }
-    var rows = [];
-    ds.stocks.forEach(function (s) {
-      var e = by[s.isin];
-      if (!e || s.netFlow == null) return;
-      var net = e.buy - e.sell;
-      if (Math.abs(s.flow) < DOUBLE_MIN_FUND || Math.abs(net) < DOUBLE_MIN_INSIDER || (s.flow > 0) !== (net > 0)) return;
-      var nb = 0, nsell = 0;
-      s.trades.forEach(function (t) { if (t.d > 0) nb++; else if (t.d < 0) nsell++; });
-      rows.push({ s: s, flow: s.flow, net: net, cnet: e.close || 0, buy: e.buy, sell: e.sell, nBuyers: e.nBuyers, last: e.last, fb: nb, fs: nsell });
-    });
-    return { buy: rows.filter(function (x) { return x.flow > 0; }), sell: rows.filter(function (x) { return x.flow < 0; }) };
-  }
-
-  function viewDouble() {
-    document.title = "Dubbelsignal – när både fonder och insiders köper – Fondinsyn";
-    var head = '<div class="page-head"><h1>Dubbelsignal</h1><p class="meta lead">Aktier där både fonderna och bolagets egna insiders har köpt, eller där båda har sålt. ' +
-      "Fondernas affärer gäller " + quarterLabel(state.q) + ", insidernas köp och sälj kommer från Finansinspektionens insynsregister.</p></div>";
-    if (!needInsider()) return head + (failed("insider") ? errorBlock() : loadingBlock("Laddar insynshandel…"));
-    var yearMode = doubleFilter.period === "365";
-    if (yearMode && !need("insider-year", function () { return getJSON("data/insider-year.json").then(function (x) { state.insiderYear = x; }); })) {
-      return head + (failed("insider-year") ? errorBlock() : loadingBlock());
-    }
-    var sig = doubleSignals();
-    var period = yearMode ? "12 månader" : state.insider.days + " dagar";
-    var cols = function (sell) {
-      return [
-        { key: "n", label: "Aktie", align: "l", cls: "name", value: function (x) { return x.s.name; }, cell: function (x) {
-          return nameCell(stockHref(x.s), x.s.name, (sell ? int(x.fs) + " fonder sålde" : int(x.fb) + " fonder köpte") + " · insiders " + bigSek(x.net, true) + closeNote(x.net, x.cnet));
-        } },
-        { key: "f", label: "Fonderna " + quarterLabel(state.q), cell: function (x) { return '<span class="' + cls(x.flow) + '">' + bigSek(x.flow, true) + "</span>"; }, value: function (x) { return x.flow; } },
-        { key: "fn", label: sell ? "Fonder som sålt" : "Fonder som köpt", hideSm: true, cell: function (x) { return int(sell ? x.fs : x.fb) + '<span class="vote-other"> / ' + int(sell ? x.fb : x.fs) + "</span>"; }, value: function (x) { return sell ? x.fs : x.fb; } },
-        { key: "i", label: "Insiders " + period, cell: function (x) { return '<span class="' + cls(x.net) + '">' + bigSek(x.net, true) + "</span>"; }, value: function (x) { return x.net; } },
-        { key: "ib", label: "Insiderköpare", hideSm: true, cell: function (x) { return int(x.nBuyers); }, value: function (x) { return x.nBuyers; } },
-        { key: "d", label: "Senaste köp", hideSm: true, cls: "muted", cell: function (x) { return x.last ? esc(x.last) : "–"; }, value: function (x) { return x.last; } }
-      ];
-    };
-    var pseg = function (v, label) { return '<button type="button" class="seg-btn" data-double-period="' + v + '" aria-pressed="' + (doubleFilter.period === v) + '">' + label + "</button>"; };
-    var top = sig.buy.slice().sort(function (a, b) { return b.net - a.net; })[0];
-    var html = head + '<div class="highlights">' +
-      highlight("Dubbel köpsignal", int(sig.buy.length) + " aktier", null, "fonder och insiders köper", "") +
-      highlight("Dubbel säljsignal", int(sig.sell.length) + " aktier", null, "fonder och insiders säljer", "") +
-      highlight("Mest köpt av insiders", top && top.s.name, top ? stockHref(top.s) : null, top ? '<span class="pos">' + bigSek(top.net, true) + "</span>" : "", top ? "insiders" + closeNote(top.net, top.cnet) + ", och fonderna " + bigSek(top.flow, true) : "") +
-      "</div>" +
-      '<div class="toolbar section-gap"><div class="seg" role="group" aria-label="Period för insidernas affärer">' + pseg("90", "Insiders 90 dagar") + pseg("365", "Insiders 12 månader") + "</div></div>" +
-      block("Både fonder och insiders köper", "Fonderna nettoköpte för minst 1 mkr under " + quarterLabel(state.q) + " och insiders köpte för minst 500 000 kr mer än de sålde de senaste " + (yearMode ? "12 månaderna" : state.insider.days + " dagarna") + ".",
-        table("double-buy", cols(false), sig.buy, { sort: { col: "i", dir: -1 }, limit: 25, expand: true, csv: true, empty: "Inga aktier med dubbel köpsignal just nu." })) +
-      block("Både fonder och insiders säljer", "Fonderna nettosålde och insiders sålde mer än de köpte under samma period.",
-        table("double-sell", cols(true), sig.sell, { sort: { col: "i", dir: 1 }, limit: 25, expand: true, csv: true, empty: "Inga aktier med dubbel säljsignal just nu." }), "section-gap") +
-      '<p class="desc section-gap">Så räknas det: fondernas nettoköp är förändringen i antal aktier gånger kursen vid kvartalets slut, bara för fonder som rapporterat båda kvartalen. ' +
-      "Insidernas netto är köp minus sälj i kronor enligt insynsregistret. Insiders kan sälja av skäl som skatt, lån eller optionsprogram, och fondernas affärer kan spegla in- och utflöden. " +
-      "En dubbelsignal är alltså en intressant observation, inte en köp- eller säljrekommendation.</p>";
-    return html;
-  }
-
   // Insiders köp och sälj per vecka (måndag–söndag): köp som staplar uppåt och sälj nedåt, i miljoner kronor
   function isoWeek(date) {
     var d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
@@ -4495,8 +4291,7 @@
     var pseg = function (v, label) { return '<button type="button" class="seg-btn" data-ins-period="' + v + '" aria-pressed="' + (insiderFilter.period === v) + '">' + label + "</button>"; };
     var oseg = function (v, label) { return '<button type="button" class="seg-btn" data-ins-own="' + v + '" aria-pressed="' + (insiderFilter.own === v) + '">' + label + "</button>"; };
     html += '<div class="toolbar section-gap"><div class="seg" role="group" aria-label="Period">' + pseg("90", "90 dagar") + pseg("365", "12 månader") + "</div>" +
-      '<div class="seg" role="group" aria-label="Vems affärer">' + oseg(false, "Alla affärer") + oseg(true, "Bara egna") + "</div>" +
-      '<a class="note" href="#/dubbelsignal">Dubbelsignal: när både fonder och insiders köper</a></div>';
+      '<div class="seg" role="group" aria-label="Vems affärer">' + oseg(false, "Alla affärer") + oseg(true, "Bara egna") + "</div></div>";
     html += '<div class="grid-2">' +
       block("Mest köpt av insiders", "Köp minus sälj de senaste " + periodText + ", i kronor.", table("ins-top", compCols(false), top, { sort: { col: "net", dir: -1 }, limit: 15 })) +
       block("Mest sålt av insiders", "Samma period. Försäljningar kan bero på skatt, lån eller optionsprogram.", table("ins-sold", compCols(true), topSold, { sort: { col: "net", dir: 1 }, limit: 15 })) +
@@ -5487,13 +5282,12 @@
     fonder: { label: "Fonder", items: [["fonder", "Alla fonder", "#/fonder"], ["fondbolag", "Fondbolag", "#/fondbolag"], ["sparande", "Fondsparandet", "#/sparande"],
       ["agarandel", "Fondernas ägarandel", "#/agarandel"], ["forvaltare", "Kända förvaltare", "#/forvaltare"], ["backtest", "Följ fonderna", "#/backtest"],
       ["avgifter", "Avgiftskollen", "#/avgifter"], ["risk", "Risk och avkastning", "#/risk"], ["jamfor", "Jämför fonder", "#/jamfor"]] },
-    signaler: { label: "Signaler", items: [["signaler", "Samlad signal", "#/signaler"], ["dubbelsignal", "Dubbelsignal", "#/dubbelsignal"]] },
     om: { label: "Om Fondinsyn", items: [["om", "Om datan", "#/om"], ["metod", "Metodrapport", "#/metod"], ["ordlista", "Ordlista", "#/ordlista"], ["kontakt", "Kontakt", "#/kontakt"]] }
   };
   // Sidor som hör till en avdelning i menyraden (blankning, uppköp och insynshandel under Aktier, ägarandel och sparande under Fonder, emittenterna under Räntor)
   var PAGE_SECTION = { aktie: "aktier", insyn: "aktier", blankning: "aktier", blankare: "aktier", uppkop: "aktier", rantor: "rantor", emittent: "rantor",
     fond: "fonder", fondbolag: "fonder", sparande: "fonder", agarandel: "fonder", forvaltare: "fonder", backtest: "fonder", avgifter: "fonder", risk: "fonder", jamfor: "fonder",
-    dubbelsignal: "signaler", ordlista: "om", kontakt: "om", metod: "om" };
+    ordlista: "om", kontakt: "om", metod: "om" };
 
   // Kvartalsrapporten har egna flikar för marknaden
   var MARKET_PAGES = { oversikt: 1, aktier: 1, fonder: 1, fondbolag: 1 };
@@ -5544,7 +5338,7 @@
       case "om": html = viewAbout(); break;
       case "kontakt": html = viewContact(); break;
       case "rantor": html = viewRates(); break;
-      case "dubbelsignal": html = viewDouble(); break;
+      case "dubbelsignal": location.replace("#/insyn"); return;
       case "sparande": html = viewSavings(); break;
       case "agarandel": html = viewOwnership(); break;
       // Toppfonderna finns inte längre; gamla länkar går till risk och avkastning
@@ -5553,7 +5347,7 @@
       case "bevakning": html = viewWatch(); break;
       case "backtest": html = viewBacktest(); break;
       case "metod": html = viewMethod(); break;
-      case "signaler": html = viewSignals(); break;
+      case "signaler": location.replace("#/insyn"); return;
       case "emittent": html = viewIssuer(r.arg); break;
       case "oversikt": html = viewOverview(); break;
       default: html = viewNotFound();

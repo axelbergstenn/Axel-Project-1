@@ -43,8 +43,6 @@ ROUTES=(
   "/uppkop/|uppkop"
   "/avgifter/|avgifter"
   "/risk/|risk"
-  "/signaler/|signaler"
-  "/dubbelsignal/|dubbelsignal"
   "/sparande/|sparande"
   "/agarandel/|agarandel"
   "/rantor/|rantor"
