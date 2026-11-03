@@ -700,7 +700,7 @@
       FFCharts.columns(node, pts, { height: 148, ticks: 3, focus: true, barMax: 18,
         label: function (p) { return signed(nf1.format(p.value), p.value); },
         tip: function (p) {
-          return "<b>" + quarterLabel(p.q) + "</b><br>" + (p.value == null ? "Ingen data" : bigSek(p.value * 1e9, true));
+          return "<b>" + quarterLabel(p.q) + "</b>" + (p.value == null ? '<div class="muted">Ingen data</div>' : tipRow(p.value >= 0 ? "c-pos" : "c-neg", p.value >= 0 ? "Köpt netto" : "Sålt netto", bigSek(p.value * 1e9, true), true));
         } });
     }) + "</div>";
   }
@@ -1009,14 +1009,14 @@
         '<div class="chart-card"><div class="chart-title">Nettoköp per kvartal <span>mkr' + (state.excludeIndex ? ", utan indexfonder" : "") + "</span></div>" +
         chart(function (node) {
           FFCharts.columns(node, flowPts, { tip: function (p) {
-            return "<b>" + quarterLabel(p.q) + "</b><br>" + (p.value == null ? "Ingen data" : '<span class="' + cls(p.value) + '">' + msek(p.value, true) + " mkr</span>");
+            return "<b>" + quarterLabel(p.q) + "</b>" + (p.value == null ? '<div class="muted">Ingen data</div>' : tipRow(p.value >= 0 ? "c-pos" : "c-neg", p.value >= 0 ? "Köpt netto" : "Sålt netto", msek(p.value, true) + " mkr", true));
           } });
         }) + "</div>" +
         '<div class="chart-card"><div class="chart-title">Antal fonder som äger</div>' +
         chart(function (node) {
           FFCharts.line(node, pts.map(function (p) { return { q: p.q, value: p.funds, val: p.val }; }), {
             format: function (v) { return int(v); },
-            tip: function (p) { return "<b>" + quarterLabel(p.q) + "</b><br>" + (p.value == null ? "Inga fonder" : int(p.value) + " fonder<br>Innehav " + msek(p.val) + " mkr"); }
+            tip: function (p) { return "<b>" + quarterLabel(p.q) + "</b>" + (p.value == null ? '<div class="muted">Inga fonder</div>' : tipRow("s1", "Fonder som äger", int(p.value)) + tipRow("", "Innehav", msek(p.val) + " mkr")); }
           });
         }) + "</div></div>";
       html += "</section>";
@@ -2219,7 +2219,9 @@
 
     var maxAr = Math.min(14, Math.max.apply(null, funds.map(function (f) { return f.ar; }).concat([6])));
     var maxFee = Math.min(2.5, Math.max.apply(null, funds.map(function (f) { return f.feeMax; }).concat([1.5])));
-    var points = funds.map(function (f) { return { x: f.ar, y: f.feeMax, cat: f.cat, f: f }; });
+    // Indexnära fonder med hög avgift ritas sist så att de hamnar överst
+    var points = funds.map(function (f) { return { x: f.ar, y: f.feeMax, cls: "c-" + f.cat, f: f }; })
+      .sort(function (a, b) { return (a.cls === "c-closet") - (b.cls === "c-closet"); });
 
     var listRows = feeFilter.list === "closet" ? closet : funds;
     var cols = [
@@ -2252,15 +2254,18 @@
       "</div>" +
       '<section class="block section-gap"><div class="block-head"><h2>Avgift mot aktiv risk</h2>' +
       '<div class="seg" role="group" aria-label="Urval">' + seg("scope", "all", "Alla aktiefonder", feeFilter.scope) + seg("scope", "se", "Sverigefonder", feeFilter.scope) + "</div></div>" +
-      '<div class="legend">' + catLabel("closet") + catLabel("active") + catLabel("index") + "</div>" +
       '<div class="chart-card">' + chart(function (node) {
-        FFCharts.scatter(node, points, {
-          height: node.clientWidth < 500 ? 320 : 400,
-          xMax: maxAr, yMax: maxFee, top: "closet",
+        FFCharts.xy(node, points, {
+          height: node.clientWidth < 500 ? 340 : 420,
+          xDomain: [0, maxAr], yDomain: [0, maxFee], xTicks: 7, yTicks: 5,
+          xFmt: function (v) { return fixMinus(nf0.format(v)) + " %"; }, yFmt: function (v) { return nf1.format(v) + " %"; },
+          legend: catLegend(["closet", "active", "index"], points),
           zone: { x: CLOSET_AR, y: CLOSET_FEE, label: "Indexnära men dyr" },
-          xLabel: "Aktiv risk, % (avvikelse mot jämförelseindex)", yLabel: "Avgift, %",
+          xLabel: "Aktiv risk: avvikelse mot jämförelseindex", yLabel: "Avgift per år", xHint: ["← Följer index", "Avviker mer →"],
           tip: function (p) {
-            return "<b>" + esc(p.f.name) + "</b><br>" + esc(p.f.co) + "<br>Avgift " + feeText(p.f) + " · Aktiv risk " + pctPlain(p.f.ar) + "<br>" + bigSek(p.f.aum);
+            return "<b>" + esc(p.f.name) + "</b>" + '<div class="muted">' + esc(p.f.co) + "</div>" +
+              tipRow("", "Avgift", feeText(p.f)) + tipRow("", "Aktiv risk", pctPlain(p.f.ar)) + tipRow("", "Förmögenhet", bigSek(p.f.aum)) +
+              tipRow(p.cls, CAT_NAMES[p.cls.slice(2)], "");
           },
           onClick: function (p) { location.hash = fundHref(p.f); }
         });
@@ -2297,20 +2302,37 @@
         "<b>Avgiften</b> är den högsta fasta avgiften bland fondens andelsklasser. Prestationsbaserade avgifter ingår inte."
       ] });
     return '<section class="block section-gap"><div class="block-head"><h2>Avgift mot avkastning</h2><span class="note">' + int(pts.length) + " fonder med femårshistorik</span></div>" +
-      '<div class="legend">' + catLabel("closet") + catLabel("active") + catLabel("index") + '<span class="legend-item"><i class="ln dash" style="color:var(--fg-soft)"></i>Trend</span></div>' +
       '<div class="chart-card"><p class="chart-howto">Varje prick är en fond. <b>Till höger</b> är avgiften högre, <b>högre upp</b> har fonden gått bättre. ' +
       "Den streckade linjen visar hur det ser ut i genomsnitt. Peka på en prick för att se vilken fond det är.</p>" + chart(function (node) {
         FFCharts.xy(node, pts, {
-          height: node.clientWidth < 500 ? 320 : 400, trend: true, xHint: ["← Billigare", "Dyrare →"],
+          height: node.clientWidth < 500 ? 340 : 420, trend: true, xHint: ["← Billigare", "Dyrare →"], yTicks: 8,
+          legend: catLegend(["closet", "active", "index"], pts).concat([{ label: "Trend", cls: "s-ink", kind: "dash" }]),
+          sizeKey: { values: [1e9, 25e9], fmt: function (v) { return nf0.format(v / 1e9) + " mdkr"; } },
           xDomain: [0, Math.max.apply(null, pts.map(function (p) { return p.x; })) * 1.04],
           xFmt: function (v) { return nf1.format(v) + " %"; }, yFmt: function (v) { return fixMinus(nf0.format(v)) + " %"; },
           xLabel: "Avgift per år", yLabel: "Avkastning per år, 5 år",
           tip: function (p) {
-            return "<b>" + esc(p.f.name) + "</b><br>" + esc(p.f.co) + "<br>Avgift " + feeText(p.f) + " · " + (p.y > 0 ? "+" : "") + fixMinus(nf0.format(p.y)) + " % per år<br>" + bigSek(p.f.aum);
+            return "<b>" + esc(p.f.name) + "</b>" + '<div class="muted">' + esc(p.f.co) + "</div>" +
+              tipRow("", "Avkastning per år", (p.y > 0 ? "+" : "") + fixMinus(nf0.format(p.y)) + " %") + tipRow("", "Avgift", feeText(p.f)) +
+              tipRow("", "Förmögenhet", bigSek(p.f.aum)) + tipRow(p.cls, CAT_NAMES[p.cls.slice(2)], "");
           },
           onClick: function (p) { location.hash = fundHref(p.f); }
         });
       }) + '<p class="chart-note">Punkternas storlek är fondförmögenheten. Den streckade linjen är en vanlig regression över fonderna.</p></div>' + feeBox + "</section>";
+  }
+
+  // En rad i ett diagrams tooltip: serien som en kort linje (bar: en ruta) i seriens färg, namnet svagt och värdet starkt.
+  // Texten står alltid i textfärg, aldrig i seriens färg.
+  function tipRow(key, label, value, bar) {
+    return '<div class="tip-row"><span>' + (key ? '<i class="tk ' + (bar ? "bar " : "") + key + '"></i>' : "") + label + "</span><b>" + value + "</b></div>";
+  }
+  var CAT_NAMES = { closet: "Indexnära med hög avgift", active: "Aktiv fond", index: "Indexfond" };
+  // Teckenförklaring för fondkategorierna i punktdiagrammen, med antal fonder per kategori
+  function catLegend(cats, pts) {
+    return cats.map(function (c) {
+      var n = pts.filter(function (p) { return p.cls === "c-" + c; }).length;
+      return { label: CAT_NAMES[c] + " (" + int(n) + ")", cls: "c-" + c, kind: "dot", key: "c-" + c };
+    });
   }
 
   function catLabel(cat, small) {
@@ -3430,10 +3452,12 @@
         "<b>Urval.</b> Bara fonder i premiepensionen, och avkastningen är räknad efter premiepensionens rabatterade avgift."
       ] });
     // Avkastning per procentenhet risk: ett enkelt mått på hur mycket fonden gett för svängningarna
-    // Medianfonden delar kartan i fyra delar, och de tre största fonderna får namn i diagrammet
-    var mid = function (vals) { vals.sort(function (a, b) { return a - b; }); var n = vals.length; return n % 2 ? vals[(n - 1) / 2] : (vals[n / 2 - 1] + vals[n / 2]) / 2; };
-    var medX = mid(pts.map(function (p) { return p.x; })), medY = mid(pts.map(function (p) { return p.y; }));
+    // Medianfonden delar kartan i fyra delar. De tre största fonderna och fonderna med högst och lägst avkastning
+    // får namn i diagrammet (på mobilen bara de tre största).
+    var medX = FFCharts.median(pts.map(function (p) { return p.x; })), medY = FFCharts.median(pts.map(function (p) { return p.y; }));
     var big = pts.slice().sort(function (a, b) { return (b.fi.aum || 0) - (a.fi.aum || 0); }).slice(0, 3);
+    var byY = pts.slice().sort(function (a, b) { return b.y - a.y || (b.fi.aum || 0) - (a.fi.aum || 0); });
+    var extremes = [byY[0], byY[byY.length - 1]];
     var shortFund = function (n) { return n.length <= 26 ? n : n.slice(0, 25).replace(/\s+\S*$/, "") + "…"; };
     var cols = [
       { key: "name", label: "Fond", align: "l", cls: "name", value: function (p) { return p.fi.name; }, cell: function (p) { return nameCell(fundHref(p.fi), p.fi.name, esc(p.fi.co) + " · " + esc(p.p[7] || "")); } },
@@ -3443,23 +3467,30 @@
       { key: "fee", label: "Avgift", hideSm: true, cell: function (p) { return feeText(p.fi); }, value: function (p) { return p.fi.feeMax; } }
     ];
     return head + '<section class="block"><div class="block-head"><h2>Fondkartan</h2><span class="note">' + int(pts.length) + " aktiefonder med femårshistorik</span></div>" +
-      '<div class="legend">' + catLabel("active") + catLabel("closet") + catLabel("index") + "</div>" +
       '<div class="chart-card"><p class="chart-howto">Varje prick är en aktiefond. <b>Till höger</b> svänger fondens värde mer, alltså högre risk. ' +
       "<b>Högre upp</b> har fonden gett bättre avkastning. De streckade linjerna är medianfonden, så uppe till vänster om dem finns fonderna som gett mer avkastning med lägre risk än de flesta. " +
-      "Peka på en prick för att se vilken fond det är.</p>" + chart(function (node) {
+      "Peka på en prick eller en kategori för att se vilka fonder det är.</p>" + chart(function (node) {
+        var narrow = node.clientWidth < 520;
         FFCharts.xy(node, pts, {
-          height: node.clientWidth < 500 ? 340 : 440, xHint: ["← Lugnare", "Svänger mer →"], xTicks: 10, yTicks: 8,
+          height: narrow ? 360 : 460, xHint: ["← Lugnare", "Svänger mer →"], xTicks: 10, yTicks: 8,
           xFmt: function (v) { return nf1.format(v).replace(/,0$/, "") + " %"; }, yFmt: function (v) { return fixMinus(nf0.format(v)) + " %"; },
           xLabel: "Risk: standardavvikelse, 24 månader", yLabel: "Avkastning per år, 5 år",
+          aria: "Punktdiagram över " + pts.length + " aktiefonder: risk mot avkastning per år. Alla värden finns i tabellen nedanför.",
+          legend: catLegend(["active", "closet", "index"], pts),
+          sizeKey: { values: [1e9, 25e9], fmt: function (v) { return nf0.format(v / 1e9) + " mdkr"; } },
           ref: { x: medX, y: medY, xText: "Medianrisk " + nf1.format(medX) + " %", yText: "Medianavkastning " + fixMinus(nf1.format(medY)) + " %" },
           quad: { tl: "Mer avkastning, lägre risk", br: "Mindre avkastning, högre risk" },
-          label: function (p) { return big.indexOf(p) >= 0 ? shortFund(p.fi.name) : null; },
+          label: function (p) { return big.indexOf(p) >= 0 || (!narrow && extremes.indexOf(p) >= 0) ? shortFund(p.fi.name) : null; },
           tip: function (p) {
-            return "<b>" + esc(p.fi.name) + "</b><br>" + esc(p.fi.co) + " · " + esc(p.p[7] || "") + "<br>" + (p.y > 0 ? "+" : "") + fixMinus(nf0.format(p.y)) + " % per år · risk " + nf1.format(p.x) + " %<br>Avgift " + feeText(p.fi) + " · " + bigSek(p.fi.aum);
+            return "<b>" + esc(p.fi.name) + "</b>" + '<div class="muted">' + esc(p.fi.co) + "</div>" +
+              tipRow("", "Avkastning per år", (p.y > 0 ? "+" : "") + fixMinus(nf0.format(p.y)) + " %") + tipRow("", "Risk", nf1.format(p.x) + " %") +
+              tipRow("", "Avgift", feeText(p.fi)) + tipRow("", "Förmögenhet", bigSek(p.fi.aum)) +
+              tipRow(p.cls, CAT_NAMES[p.cls.slice(2)], "");
           },
           onClick: function (p) { location.hash = fundHref(p.fi); }
         });
-      }) + '<p class="chart-note">Varje punkt är en aktiefond, storleken är fondförmögenheten. De tre största fonderna har namn i diagrammet. ' +
+      }) + '<p class="chart-note">Punktens storlek är fondförmögenheten. Namnen i diagrammet är de tre största fonderna och de med högst och lägst avkastning. ' +
+      "Pensionsmyndigheten avrundar avkastningen till hela procent, därför står många fonder på samma höjd. " +
       "Avkastningen kommer från Pensionsmyndigheten, risken från Finansinspektionen. Fonder utanför premiepensionen saknas.</p></div>" + riskBox + "</section>" +
       block("Alla fonder på kartan", "Sorterat på avkastning per risk: avkastningen per år delat med risken. Högre är bättre. Tryck på en rubrik för att sortera om.",
         table("risk-funds", cols, pts, { sort: { col: "ratio", dir: -1 }, limit: 15, expand: true, csv: true }), "section-gap") +
@@ -3783,10 +3814,10 @@
       fig("Period", b.N + " kvartal", quarterLabel(first.held) + "–" + quarterLabel(last.held)) + "</dl>" +
       block("Utveckling för 100 kronor", "Grupperna köps i slutet av varje kvartal och byts kvartalet efter. Kursutveckling utan utdelningar, före avgifter och courtage.",
         '<div class="chart-card">' + chart(function (node) {
-          FFCharts.lines(node, series, { height: 300, format: function (v) { return nf0.format(v); }, tip: function (rws) {
-            return "<b>" + dateText(rws[0].p.d) + "</b>" + rws.map(function (r) { return '<div class="tip-row"><span><i class="dot ' + r.s.cls + '"></i>' + r.s.label + "</span><b>" + nf0.format(r.p.v) + "</b></div>"; }).join("");
+          FFCharts.lines(node, series, { height: 300, zero: false, ref: { v: 100, label: "Start 100 kr" }, format: function (v) { return nf0.format(v); }, tip: function (rws) {
+            return "<b>" + dateText(rws[0].p.d) + "</b>" + rws.map(function (r) { return tipRow(r.s.cls, r.s.label, nf0.format(r.p.v) + " kr"); }).join("");
           } });
-        }) + '<div class="legend">' + series.map(function (x) { return '<span class="legend-item"><i class="dot ' + x.cls + '"></i>' + x.label + "</span>"; }).join("") + "</div></div>") +
+        }) + "</div>") +
       '<div class="grid-2 section-gap">' +
       block("Snitt per kvartal och grupp", "Från aktierna fonderna sålde mest (1) till dem de köpte mest (5). Alla aktier: " + pctS(b.allMean) + " per kvartal.", bars) +
       block("Mest köpta i senaste signalen", "Signal från " + quarterLabel(last.signal) + ", mätt " + quarterLabel(last.held) + ".",
@@ -3870,16 +3901,16 @@
         " % (rangkorrelation " + rText(ct.r) + ", p-värde " + pText(ct.p) + ").",
       html: '<div class="chart-card"><p class="chart-howto">Varje prick är en aktie. <b>Högt upp</b> köpte fonderna, <b>långt ner</b> sålde de. ' +
         "<b>Till höger</b> steg kursen under kvartalet, <b>till vänster</b> föll den. Stora prickar är aktier som fonderna äger mycket av. Peka på en prick för att se vilken aktie det är.</p>" +
-        '<div class="legend"><span class="legend-item"><i class="dot c-pos"></i>Fonderna köpte</span><span class="legend-item"><i class="dot c-neg"></i>Fonderna sålde</span></div>' +
         chart(function (node) {
           FFCharts.xy(node, pts, {
-            height: node.clientWidth < 500 ? 320 : 420, xDomain: xd, yDomain: yd,
+            height: node.clientWidth < 500 ? 340 : 440, xDomain: xd, yDomain: yd,
+            legend: [{ label: "Fonderna köpte", cls: "c-pos", kind: "dot", key: "c-pos" }, { label: "Fonderna sålde", cls: "c-neg", kind: "dot", key: "c-neg" }],
             xFmt: function (v) { return pct(v); }, yFmt: function (v) { return pct(v); },
             xLabel: "Kursens förändring under " + quarterLabel(state.q), yLabel: "Köpt eller sålt, i % av fondernas aktier",
             bands: { above: "Fonderna köpte", below: "Fonderna sålde" }, xHint: ["← Kursen föll", "Kursen steg →"],
             tip: function (p) {
-              return "<b>" + esc(p.s.name) + "</b><br>Kursen " + (p.x >= 0 ? "steg " : "föll ") + nf0.format(Math.abs(p.x)) + " %<br>Fonderna " + (p.flow >= 0 ? "köpte" : "sålde") +
-                " för " + bigSek(Math.abs(p.flow) * 1e6) + "<br>" + nf0.format(Math.abs(p.y)) + " % av vad de ägde";
+              return "<b>" + esc(p.s.name) + "</b>" + tipRow("", "Kursen " + (p.x >= 0 ? "steg" : "föll"), nf0.format(Math.abs(p.x)) + " %") +
+                tipRow(p.cls, "Fonderna " + (p.flow >= 0 ? "köpte" : "sålde"), bigSek(Math.abs(p.flow) * 1e6)) + tipRow("", "Av vad de ägde", nf0.format(Math.abs(p.y)) + " %");
             },
             onClick: function (p) { location.hash = stockHref(p.s); }
           });
@@ -3901,23 +3932,23 @@
     return '<div class="grid-2 section-gap">' +
       block("Skillnaden kvartal för kvartal", "Mest köpta minus mest sålda. Staplarna är kvartalen, kurvan en normalfördelning med samma snitt och spridning.",
         '<div class="chart-card">' + chart(function (node) {
-          FFCharts.dist(node, [{ values: spreads, hist: true, curve: true, cls: "c-brand", label: "Snitt " + pct(sS.mean) }], {
+          FFCharts.dist(node, [{ values: spreads, hist: true, curve: true, cls: "s-ink", label: "Snitt " + pct(sS.mean) }], {
             height: 280, bins: Math.min(24, Math.round(2 * lim / 2.5)), domain: [-lim, lim], xFmt: tick, yLabel: "Antal kvartal",
-            tip: function (bin, rows) { return "<b>" + tick(bin.from) + " till " + tick(bin.to) + "</b><br>" + rows[0].count + " kvartal"; }
+            tip: function (bin, rows) { return "<b>" + tick(bin.from) + " till " + tick(bin.to) + "</b>" + tipRow("", "Antal kvartal", rows[0].count); }
           });
         }) + '<p class="chart-note">Snitt <b>' + pct(sS.mean) + "</b> per kvartal, standardavvikelse <b>" + nf1.format(sS.sd) + " %</b>. " +
         below + " av " + sS.n + " kvartal hamnade under noll, alltså gick de mest sålda bättre.</p></div>") +
       block("Spridningen inom grupperna", "Varje akties avkastning kvartalet efter signalen, i de två yttersta grupperna.",
-        '<div class="chart-card"><div class="legend"><span class="legend-item"><i class="ln pos"></i>Mest köpta</span><span class="legend-item"><i class="ln dash neg"></i>Mest sålda</span></div>' +
-        chart(function (node) {
+        '<div class="chart-card">' + chart(function (node) {
           FFCharts.dist(node, [
             { values: top, curve: true, cls: "c-pos", label: "Köpta " + pct(sT.mean) },
             { values: bottom, curve: true, dash: true, cls: "c-neg", label: "Sålda " + pct(sB.mean) }
           ], {
             height: 280, bins: 24, domain: [-60, 60], share: true, xFmt: tick, yLabel: "Andel av aktierna",
+            legend: [{ label: "Mest köpta", cls: "c-pos", kind: "line" }, { label: "Mest sålda", cls: "c-neg", kind: "dash" }],
             tip: function (bin, rows) {
               return "<b>" + tick(bin.from) + " till " + tick(bin.to) + "</b>" + rows.map(function (r, i) {
-                return '<div class="tip-row"><span>' + (i ? "Mest sålda" : "Mest köpta") + "</span><b>" + nf1.format(r.share) + " %</b></div>";
+                return tipRow(r.s.cls, i ? "Mest sålda" : "Mest köpta", nf1.format(r.share) + " %");
               }).join("");
             }
           });
@@ -4117,7 +4148,7 @@
         '<p class="desc">Insättningar minus uttag, miljarder kronor. Senaste månaden är markerad.</p>' +
         '<div class="chart-card">' + chart(function (node) {
           FFCharts.columns(node, pts, { height: 240, focus: true, label: function (p) { return signed(nf1.format(p.value), p.value); },
-            tip: function (p) { return "<b>" + monthLabel(p.m, true) + "</b><br>" + (p.value == null ? "Ingen data" : '<span class="' + cls(p.value) + '">' + bigSek(p.value * 1e9, true) + "</span>"); } });
+            tip: function (p) { return "<b>" + monthLabel(p.m, true) + "</b>" + (p.value == null ? '<div class="muted">Ingen data</div>' : tipRow(p.value >= 0 ? "c-pos" : "c-neg", p.value >= 0 ? "Insättningar netto" : "Uttag netto", bigSek(p.value * 1e9, true), true)); } });
         }) + "</div></section>";
 
       // Tabell per fondtyp
@@ -4402,13 +4433,13 @@
     var pts = list.map(function (e) { return { w: e.w, value: e.buy / 1e6, neg: -e.sell / 1e6, e: e }; });
     var weekNo = function (p) { return isoWeek(new Date(p.w + "T00:00:00Z")); };
     return '<section class="chart-card section-gap"><div class="chart-title">Insiders köp och sälj per vecka <span>mkr, de senaste ' + days + " dagarna</span></div>" +
-      '<div class="legend"><span class="legend-item"><i class="dot" style="background:var(--bar-pos)"></i>Köp</span><span class="legend-item"><i class="dot" style="background:var(--bar-neg)"></i>Sälj</span></div>' +
       chart(function (node) {
         FFCharts.columns(node, pts, { height: 200, ticks: 4, barMax: 20,
+          legend: [{ label: "Köp", cls: "c-pos" }, { label: "Sälj", cls: "c-neg" }],
           xLabel: function (p) { return "v. " + weekNo(p); },
           tip: function (p) {
-            return "<b>Vecka " + weekNo(p) + "</b><br>" + '<span class="pos">Köp ' + bigSek(p.e.buy) + "</span> (" + int(p.e.nb) + ")<br>" +
-              '<span class="neg">Sälj ' + bigSek(p.e.sell) + "</span> (" + int(p.e.ns) + ")";
+            return "<b>Vecka " + weekNo(p) + "</b>" + tipRow("c-pos", "Köp, " + int(p.e.nb) + " st", bigSek(p.e.buy), true) +
+              tipRow("c-neg", "Sälj, " + int(p.e.ns) + " st", bigSek(p.e.sell), true);
           } });
       }) + "</section>";
   }
@@ -4565,7 +4596,7 @@
           pts.push({ q: w.slice(5, 7) === "01" && +w.slice(8) <= 7 ? w.slice(0, 4) + "Q1" : "", date: w, value: v });
         });
         FFCharts.line(node, pts, { height: 200, format: function (x) { return nf2.format(x) + " %"; },
-          tip: function (p) { return "<b>" + p.date + "</b><br>" + nf2.format(p.value) + " % blankat"; } });
+          tip: function (p) { return "<b>" + dateText(p.date) + "</b>" + tipRow("s1", "Blankat", nf2.format(p.value) + " %"); } });
       }) + "</div>");
     }
     if (hs.length) {
@@ -5104,8 +5135,8 @@
   RATE_CATS.forEach(function (c) { CAT_LABEL[c[0]] = c[1]; });
   var MAT_LABELS = ["Under 1 år", "1–3 år", "3–5 år", "5–10 år", "Över 10 år", "Okänd"];
   var RATE_SERIES = [
-    ["SECBREPOEFF", "Styrränta", "s1"], ["SEGVB2YC", "Statsobligation 2 år", "s2"],
-    ["SEGVB10YC", "Statsobligation 10 år", "s3"], ["SEMB5YCACOMB", "Bostadsobligation 5 år", "s4"]
+    ["SECBREPOEFF", "Styrränta", "s-ink"], ["SEGVB2YC", "Statsobligation 2 år", "s2"],
+    ["SEGVB10YC", "Statsobligation 10 år", "s3"], ["SEMB5YCACOMB", "Bostadsobligation 5 år", "s1"]
   ];
   var rateState = { range: 5, q: "", cat: "" };
 
@@ -5233,11 +5264,10 @@
       var rangeBtn = function (y, label) { return '<button type="button" class="seg-btn" data-rate-range="' + y + '" aria-pressed="' + (rateState.range === y) + '">' + label + "</button>"; };
       html += '<section class="block section-gap"><div class="block-head"><h2>Marknadsräntor</h2><div class="seg" role="group" aria-label="Period">' +
         rangeBtn(1, "1 år") + rangeBtn(5, "5 år") + rangeBtn(10, "10 år") + rangeBtn(20, "20 år") + '</div></div><div class="chart-card">' +
-        '<div class="legend">' + series.map(function (s) { return '<span class="legend-item"><span class="dot ' + s.cls + '"></span>' + esc(s.label) + "</span>"; }).join("") + "</div>" +
         chart(function (node) {
           FFCharts.lines(node, series, { unit: " %", format: function (v) { return nf2.format(v); }, tip: function (rows) {
             return "<b>" + dateText(rows[0].p.d) + "</b>" + rows.map(function (x) {
-              return '<div class="tip-row"><span><span class="dot ' + x.s.cls + '"></span>' + esc(x.s.label) + "</span><b>" + nf2.format(x.p.v) + " %</b></div>";
+              return tipRow(x.s.cls, esc(x.s.label), nf2.format(x.p.v) + " %");
             }).join("");
           } });
         }) + '<p class="chart-note">Källa: Riksbanken, en notering per vecka. Obligationsräntorna är marknadsräntor för statens och bostadsinstitutens referensobligationer.</p></div></section>';
