@@ -1079,8 +1079,9 @@ a.btn { color: var(--fg); }
 .tip-row { display: flex; align-items: baseline; gap: 14px; justify-content: space-between; }
 .tip-row > span { color: var(--fg-muted); display: inline-flex; align-items: center; }
 .tip-row > b { font-weight: 650; }
-.tk { display: inline-block; flex: none; width: 12px; height: 2px; border-radius: 1px; margin-right: 7px; background: var(--c); }
-.tk.bar { width: 8px; height: 8px; border-radius: 2px; }
+/* tip-key, inte tk: .tk är tickerns poster överst på sidan */
+.tip-key { display: inline-block; flex: none; width: 12px; height: 2px; border-radius: 1px; margin-right: 7px; background: var(--c); }
+.tip-key.bar { width: 8px; height: 8px; border-radius: 2px; }
 .tip-row .dot { width: 8px; height: 8px; margin-right: 6px; }
 
 /* Axlar och stödlinjer */

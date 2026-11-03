@@ -2540,7 +2540,7 @@
   // En rad i ett diagrams tooltip: serien som en kort linje (bar: en ruta) i seriens färg, namnet svagt och värdet starkt.
   // Texten står alltid i textfärg, aldrig i seriens färg.
   function tipRow(key, label, value, bar) {
-    return '<div class="tip-row"><span>' + (key ? '<i class="tk ' + (bar ? "bar " : "") + key + '"></i>' : "") + label + "</span><b>" + value + "</b></div>";
+    return '<div class="tip-row"><span>' + (key ? '<i class="tip-key ' + (bar ? "bar " : "") + key + '"></i>' : "") + label + "</span><b>" + value + "</b></div>";
   }
   var CAT_NAMES = { closet: "Indexnära med hög avgift", active: "Aktiv fond", index: "Indexfond" };
   // Teckenförklaring för fondkategorierna i punktdiagrammen, med antal fonder per kategori
