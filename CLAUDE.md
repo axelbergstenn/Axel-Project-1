@@ -39,6 +39,7 @@ CHROME=... PYTHON=py bash scripts/smoke-test.sh site                     # rökt
 - Kvartalssiffror läses ur rapport-PDF:erna med pypdfium2 och sparas bara om pressmeddelandet eller årsomsättningen bekräftar dem.
 - MFN:s robots.txt förbjuder `*.json`, så använd HTML-sidorna.
 - Höj `INTERIM_VERSION` eller `PARSER_VERSION` för att läsa om allt. Läget sparas i `data/bolag-state.json`.
+- Branschens nyckeltal (`kpi_figures`, `kpi_doc`; `kpiCard` i app.js) väljs efter MFN:s bransch (`KPI_GROUPS`) och sparas bara när nyckeltalstabellen och texten säger samma sak, eller, för produktion och priser, när nästa rapport har samma tal som jämförelse. Höj `KPI_VERSION` för att läsa om dem. Brutna räkenskapsår ("Q1 2026/2027") får sin period ur pressmeddelandets datum (`text_period`).
 - Om hämtningen slutar fungera öppnas ett ärende på GitHub (`scripts/company-alarm.sh`).
 - Amerikanska aktier (`scripts/build-us-companies.py`): bolagens rapporter till SEC (10-Q, 10-K och resultatbesked i 8-K) via data.sec.gov, i samma format i `site/data/bolag/<ISIN>.json` (med `src: "sec"`). SEC kräver User-Agent med kontaktadress (axelsfondfloden@gmail.com) och högst 10 anrop per sekund; skriptet gör högst två. De största innehaven först, högst 60 bolag per körning. Läget sparas i `data/sec-state.json`. build-companies.py tar bara bort svenska filer i `bolag/`.
 

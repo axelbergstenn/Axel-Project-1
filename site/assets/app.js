@@ -1561,6 +1561,228 @@
         (c && c.url !== n.url ? ' · <a href="' + esc(c.url) + '" target="_blank" rel="noopener">Rapporten för ' + dateText(c.end) + " ↗</a>" : "") + "</p></div>";
   }
 
+  // ---------- Branschens nyckeltal ur bolagets rapporter (kpi i data/bolag/<ISIN>.json) ----------
+  // Det som betyder mest i just den branschen: räntenetto och kreditförluster för banker, uthyrningsgrad och snittränta
+  // för fastighetsbolag, produktion och metallpriser för gruvbolag, kassan för läkemedelsbolag och så vidare.
+  // [rubrik, slag, förklaring]. Slag: pct (procent), x (gånger), yr (år), amt (belopp), n (antal).
+  var KPI_META = {
+    nii: ["Räntenetto", "amt", "Ränteintäkterna från utlåningen minus räntekostnaderna för inlåning och upplåning. Den största intäkten för de flesta banker."],
+    fee: ["Provisionsnetto", "amt", "Avgifter för fonder, kort, betalningar och rådgivning, minus bankens egna avgifter."],
+    kf: ["Kreditförluster", "amt", "Lån som banken räknar med att inte få tillbaka. Ett negativt tal betyder att tidigare reserveringar har återförts."],
+    kfn: ["Kreditförlustnivå", "pct", "Kreditförlusterna i procent av utlåningen, räknat per år. Under 0,1 % är lågt."],
+    lend: ["Utlåning till allmänheten", "amt", "Lån till hushåll och företag vid kvartalets slut."],
+    dep: ["Inlåning från allmänheten", "amt", "Pengar som hushåll och företag har på konton i banken."],
+    lcr: ["Likviditetstäckningsgrad", "pct", "Hur väl bankens likvida tillgångar räcker för 30 dagars stress. Kravet är minst 100 %."],
+    aum: ["Sparkapital", "amt", "Kundernas sammanlagda sparande hos bolaget i aktier, fonder och på konton."],
+    cust: ["Antal kunder", "n", "Kunder vid kvartalets slut."],
+    inflow: ["Nettoinflöde", "amt", "Pengar som kunderna satte in minus det de tog ut under kvartalet."],
+    tkp: ["Totalkostnadsprocent", "pct", "Skadeersättningar och kostnader i procent av premieintäkterna. Under 100 % betyder att försäkringsrörelsen går med vinst."],
+    skp: ["Skadeprocent", "pct", "Ersättningarna för skador i procent av premieintäkterna."],
+    prem: ["Premieintäkter", "amt", "Det kunderna betalade för sina försäkringar under kvartalet, efter återförsäkring."],
+    occ: ["Uthyrningsgrad", "pct", "Hyran bolaget får in i procent av vad det skulle få om allt var uthyrt."],
+    surplus: ["Överskottsgrad", "pct", "Hur stor del av hyrorna som blir kvar efter drift, underhåll och fastighetsskatt."],
+    icr: ["Räntetäckningsgrad", "x", "Hur många gånger resultatet före räntor räcker till räntekostnaderna. Långivare brukar vilja se minst 1,5–2 gånger."],
+    rate: ["Genomsnittlig ränta", "pct", "Snitträntan på bolagets lån."],
+    fixyr: ["Räntebindning", "yr", "Hur länge räntorna på lånen är bundna i genomsnitt. Längre bindning skyddar mot högre räntor."],
+    capyr: ["Kapitalbindning", "yr", "Hur länge det i genomsnitt är kvar tills lånen ska betalas tillbaka eller förnyas."],
+    pv: ["Fastigheternas värde", "amt", "Vad fastigheterna är värda enligt bolagets värdering vid kvartalets slut."],
+    mgmt: ["Förvaltningsresultat", "amt", "Resultatet av uthyrningen efter räntor, men före värdeförändringar och skatt. Fastighetsbolagens viktigaste resultatmått."],
+    noi: ["Driftnetto", "amt", "Hyresintäkterna minus kostnaderna för drift, underhåll och fastighetsskatt."],
+    rent: ["Hyresintäkter", "amt", "Hyrorna under kvartalet."],
+    netlet: ["Nettouthyrning", "amt", "Årshyran i nya hyresavtal minus årshyran i avtal som sagts upp. Positivt betyder att uthyrningen växer."],
+    stores: ["Antal butiker", "n", "Butiker vid kvartalets slut."],
+    lfl: ["Jämförbara butiker", "pct", "Förändringen av försäljningen i butiker som funnits i minst ett år, så att nyöppnade butiker inte räknas in."],
+    active: ["Aktiva kunder", "n", "Kunder som spelade under kvartalet."],
+    deposits: ["Kundinsättningar", "amt", "Pengar som spelarna satte in på sina spelkonton under kvartalet."],
+    arr: ["Årligt återkommande intäkter", "amt", "Vad de löpande abonnemangen är värda på ett år (ARR). Visar hur stor den återkommande affären är."],
+    cash: ["Likvida medel", "amt", "Pengar på bank och liknande vid kvartalets slut."],
+    ocf: ["Kassaflöde från verksamheten", "amt", "Pengar som verksamheten drog in, eller förbrukade, under kvartalet."],
+    gm: ["Bruttomarginal", "pct", "Hur mycket av varje 100 kronor i försäljning som blir kvar efter kostnaden för det som såldes."],
+    ebitdam: ["EBITDA-marginal", "pct", "Resultatet före räntor, skatt och avskrivningar i procent av försäljningen."],
+    ndebitda: ["Nettoskuld/EBITDA", "x", "Hur många års resultat före avskrivningar (EBITDA) det skulle ta att betala nettoskulden. Negativt betyder mer pengar i kassan än lån."],
+    roce: ["Avkastning på sysselsatt kapital", "pct", "Rörelseresultatet i procent av kapitalet i verksamheten (eget kapital och lån). Visar hur bra bolaget förräntar pengarna i verksamheten."]
+  };
+  var KPI_TITLE = {
+    bank: "Bankens nyckeltal", ins: "Försäkringsrörelsen", prop: "Fastigheterna och lånen", mine: "Produktion och leveranser",
+    forest: "Produktion och leveranser", retail: "Butikerna och marginalerna", tele: "Lönsamhet och skulder",
+    pharma: "Kassan: hur länge räcker pengarna?", games: "Spelarna och marginalerna", tech: "Den återkommande affären", ind: "Lönsamhet och skulder"
+  };
+  function kpiFmt(v, kind, cur) {
+    // små procenttal med två decimaler: kreditförlustnivån 0,04 %, inte 0 %
+    if (kind === "pct") return fixMinus(Math.abs(v) < 1 && v !== 0 ? nf2.format(v) : nf1.format(v).replace(/,0$/, "")) + " %";
+    if (kind === "x") return fixMinus(nf1.format(v)) + " gånger";
+    if (kind === "yr") return nf1.format(v).replace(/,0$/, "") + " år";
+    if (kind === "n") return int(v);
+    return money(v, cur);
+  }
+  // Förändringen mot samma kvartal året innan, annars mot kvartalet innan: [text, tecken]
+  function kpiChange(s, kind, cur) {
+    if (!s || s.length < 2) return null;
+    var mi = function (p) { return +p.slice(0, 4) * 12 + +p.slice(5, 7); }, last = s[s.length - 1];
+    var yearAgo = s.filter(function (x) { return mi(last[0]) - mi(x[0]) === 12; })[0];
+    var prevQ = s.filter(function (x) { return mi(last[0]) - mi(x[0]) === 3; })[0];
+    var base = yearAgo || prevQ;
+    if (!base) return null;
+    var when = yearAgo ? "mot samma kvartal i fjol" : "mot kvartalet innan", d = last[1] - base[1], txt;
+    var sign = function (s) { return (d > 0 ? "+" : "−") + s; };
+    var small = Math.abs(base[1]) < 1 && Math.abs(last[1]) < 1;  // kreditförlustnivån: hundradelar
+    if (kind === "pct") txt = Math.abs(d) < (small ? 0.005 : 0.05) ? "Oförändrat" : sign((small ? nf2.format(Math.abs(d)) : nf1.format(Math.abs(d)).replace(/,0$/, ""))) +
+      (Math.abs(Math.abs(d) - 1) < 0.05 ? " procentenhet" : " procentenheter");
+    else if (kind === "x" || kind === "yr") txt = Math.abs(d) < 0.05 ? "Oförändrat" : sign(nf1.format(Math.abs(d))) + (kind === "x" ? " gånger" : " år");
+    else if (base[1] > 0 && last[1] >= 0) { var g = last[1] / base[1] - 1; txt = Math.abs(g) < 0.005 ? "Oförändrat" : pct(g); d = g; }
+    else txt = sign(kpiFmt(Math.abs(d), kind, cur));
+    return [txt + " " + when, Math.abs(d) < 1e-9 || /^Oförändrat/.test(txt) ? 0 : d];
+  }
+  // Liten tidsserie i ett nyckeltal: staplar för belopp och antal, en linje för procent, gånger och år
+  function kpiSpark(s, kind, cur) {
+    if (!s || s.length < 3) return "";
+    var label = function (x) { return periodText(x[0], 3) + ": " + kpiFmt(x[1], kind, cur); };
+    var last = s[s.length - 1];
+    // Tiden i kvartal från det första värdet, så att ett kvartal som saknas blir en lucka
+    var mi = function (p) { return +p.slice(0, 4) * 12 + +p.slice(5, 7); }, t0 = mi(s[0][0]), steps = Math.max(1, (mi(last[0]) - t0) / 3);
+    if (kind === "amt" || kind === "n") {
+      var max = Math.max(0, Math.max.apply(null, s.map(function (x) { return x[1]; }))), min = Math.min(0, Math.min.apply(null, s.map(function (x) { return x[1]; })));
+      var span = max - min || 1, zero = max / span * 100, slots = [];
+      for (var q = 0; q <= steps; q++) slots.push(s.filter(function (x) { return mi(x[0]) - t0 === q * 3; })[0] || null);
+      return '<div class="kp-bars" role="img" aria-label="' + esc(s.map(label).join(", ")) + '">' + slots.map(function (x) {
+        if (!x) return '<div class="kp-col"></div>';
+        var h = Math.max(Math.abs(x[1]) / span * 100, 1.5);
+        return '<div class="kp-col" title="' + esc(label(x)) + '"><span class="kp-bar' + (x[1] < 0 ? " neg" : "") + (x === last ? " now" : "") + '" style="height:' + h.toFixed(1) + "%;" +
+          (x[1] < 0 ? "top:" + zero.toFixed(1) + "%" : "bottom:" + (100 - zero).toFixed(1) + "%") + '"></span></div>';
+      }).join("") + '</div><div class="kp-axis"><span>' + periodShort(s[0][0]).replace("<br>", " ") + "</span><span>" + periodShort(last[0]).replace("<br>", " ") + "</span></div>";
+    }
+    var vals = s.map(function (x) { return x[1]; }), lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals);
+    var pad = (hi - lo) * 0.2 || Math.abs(hi) * 0.05 || 1; lo -= pad; hi += pad;
+    var W = 200, H = 44, yp = function (v) { return 4 + (hi - v) / (hi - lo) * (H - 8); };
+    var xp = function (i) { return 5 + (mi(s[i][0]) - t0) / 3 / steps * (W - 10); };
+    // ett kvartal som saknas bryter linjen
+    var path = s.map(function (x, i) { return (i && mi(x[0]) - mi(s[i - 1][0]) === 3 ? "L" : "M") + xp(i).toFixed(1) + " " + yp(x[1]).toFixed(1); }).join(" ");
+    return '<div class="kp-line"><svg viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" role="img" aria-label="' + esc(s.map(label).join(", ")) + '">' +
+      '<path class="ml-line" d="' + path + '" vector-effect="non-scaling-stroke"></path></svg>' +
+      '<div class="ml-dots">' + s.map(function (x, i) {
+        return '<span class="ml-dot' + (x === last ? " now" : "") + '" style="left:' + (xp(i) / W * 100).toFixed(2) + "%;top:" + (yp(x[1]) / H * 100).toFixed(2) + '%" title="' + esc(label(x)) + '"></span>';
+      }).join("") + '</div></div><div class="kp-axis"><span>' + periodShort(s[0][0]).replace("<br>", " ") + "</span><span>" + periodShort(last[0]).replace("<br>", " ") + "</span></div>";
+  }
+  // Ett par meningar om det viktigaste, med bolagets egna siffror
+  function kpiLead(k, by, short, cur) {
+    var v = function (key) { return by[key] ? by[key].v : null; }, out = [];
+    var f = function (key) { return kpiFmt(by[key].v, KPI_META[key][1], cur); };
+    if (k.g === "bank") {
+      if (v("nii") != null) out.push("Räntenettot, det banken tjänar på skillnaden mellan in- och utlåningsräntor, var " + f("nii") + " under kvartalet.");
+      if (v("kfn") != null) out.push(v("kfn") < 0 ? "Kreditförlusterna var negativa (kreditförlustnivå " + f("kfn") + "): banken kunde återföra pengar som den tidigare reserverat för befarade förluster."
+        : v("kfn") === 0 ? "Kreditförlusterna var i stort sett noll."
+        : "Kreditförlustnivån var " + f("kfn") + (v("kfn") < 0.1 ? ", vilket är lågt." : v("kfn") < 0.3 ? ", vilket är normalt för en bank." : ", vilket är högt."));
+      if (v("cust") != null) out.push(esc(short) + " hade " + f("cust") + " kunder vid kvartalets slut.");
+    } else if (k.g === "ins") {
+      if (v("tkp") != null) out.push("Totalkostnadsprocenten var " + f("tkp") + (v("tkp") < 100 ? ": av varje 100 kronor kunderna betalade gick " + nf0.format(v("tkp")) + " till skador och kostnader, och resten blev vinst." : ": skador och kostnader var större än premierna."));
+    } else if (k.g === "prop") {
+      if (v("occ") != null) out.push("Uthyrningsgraden var " + f("occ") + ", alltså stod ungefär " + nf0.format(100 - v("occ")) + " % av hyresvärdet tomt.");
+      if (v("rate") != null) out.push("Lånen hade en snittränta på " + f("rate") + (v("fixyr") != null ? " och räntorna var bundna i " + f("fixyr") + " i genomsnitt." : "."));
+      if (v("icr") != null) out.push("Resultatet före räntor räckte " + f("icr").replace(" gånger", "") + " gånger till räntekostnaderna" + (v("icr") >= 2 ? ", en trygg marginal." : v("icr") >= 1.5 ? ", en godkänd marginal." : ", en tunn marginal."));
+    } else if (k.g === "pharma") {
+      var cash = v("cash"), ocf = by.ocf ? by.ocf.s.slice(-4).map(function (x) { return x[1]; }) : [];
+      var burn = ocf.length >= 2 ? ocf.reduce(function (a, b) { return a + b; }, 0) / ocf.length : null;
+      if (cash != null && burn != null && burn < 0) {
+        var qn = cash / -burn;
+        out.push("Kassan var " + f("cash") + ". Verksamheten förbrukade i snitt " + money(-burn, cur) + " per kvartal de senaste " + ocf.length + " kvartalen. " +
+          (qn >= 12 ? "I den takten räcker pengarna i mer än tre år." : "I den takten räcker pengarna i ungefär " + (qn >= 4 ? nf1.format(qn / 4).replace(/,0$/, "") + " år" : nf0.format(Math.max(1, qn)) + " kvartal") + ".") +
+          " Det är ett räkneexempel: bolaget kan få in nya pengar, till exempel genom en nyemission eller ett licensavtal, eller ändra sina planer.");
+      } else if (cash != null && burn != null) {
+        out.push("Kassan var " + f("cash") + ", och verksamheten drog in pengar de senaste " + ocf.length + " kvartalen.");
+      } else if (cash != null) out.push("Kassan var " + f("cash") + " vid kvartalets slut.");
+    } else if (k.g === "retail") {
+      if (v("gm") != null) out.push("Av varje 100 kronor i försäljning blev " + nf0.format(v("gm")) + " kronor kvar efter kostnaden för varorna (bruttomarginal " + f("gm") + ").");
+      if (v("stores") != null) out.push(esc(short) + " hade " + f("stores") + " butiker vid kvartalets slut.");
+    }
+    // Spel, mjukvara och telekom: marginalen och hur den har ändrats
+    var mg = !out.length && (by.ebitdam || by.gm);
+    if (mg) {
+      var mk = by.ebitdam ? "ebitdam" : "gm", ch = kpiChange(mg.s, "pct", cur);
+      // "−8,7 procentenheter mot samma kvartal i fjol" blir "8,7 procentenheter lägre än samma kvartal i fjol"
+      var cm = ch && ch[1] ? ch[0].match(/^[+−](.*) mot (.*)$/) : null;
+      out.push((mk === "gm" ? "Bruttomarginalen" : "EBITDA-marginalen") + " var " + f(mk) + (cm ? ", " + cm[1] + (ch[1] > 0 ? " högre än " : " lägre än ") + cm[2] : "") + ".");
+    }
+    if (!out.length && v("roce") != null) out.push("Avkastningen på sysselsatt kapital var " + f("roce") + ": för varje 100 kronor i verksamheten blev det " + nf0.format(Math.max(0, v("roce"))) + " kronor i rörelseresultat per år.");
+    if (v("ndebitda") != null && k.g !== "pharma") out.push(v("ndebitda") < 0 ? "Bolaget har mer pengar i kassan än lån (nettoskuld/EBITDA " + f("ndebitda") + ")."
+      : "Nettoskulden motsvarar " + f("ndebitda").replace(" gånger", "") + " års EBITDA" + (v("ndebitda") <= 2 ? ", en måttlig skuldsättning." : v("ndebitda") <= 3.5 ? ", en ganska hög skuldsättning." : ", en hög skuldsättning."));
+    return out.join(" ");
+  }
+  // Enheten som i rapporten, men enhetligt skriven: "Kton" blir "kton", "1 000 m3" blir "tusen m³"
+  function kpiUnit(u) {
+    return String(u || "").replace(/^1 ?000 /, "tusen ").replace(/m3/g, "m³").replace(/^Kton$/, "kton").replace(/^KT$|^kt$/i, "kton");
+  }
+  // Produktion, leveranser, metallpriser och halter ur gruv- och skogsbolagens tabeller
+  function kpiVolRows(list, kindWanted) {
+    var rows = list.filter(function (x) { return x.kind === kindWanted; });
+    if (!rows.length) return "";
+    var mi = function (p) { return +p.slice(0, 4) * 12 + +p.slice(5, 7); };
+    return '<ul class="kp-vol">' + rows.map(function (x) {
+      var last = x.s[x.s.length - 1], prev = x.s.filter(function (y) { return mi(last[0]) - mi(y[0]) === 12; })[0] || x.s.filter(function (y) { return mi(last[0]) - mi(y[0]) === 3; })[0];
+      var g = prev && prev[1] > 0 ? last[1] / prev[1] - 1 : null, when = prev && mi(last[0]) - mi(prev[0]) === 12 ? "mot samma kvartal i fjol" : "mot kvartalet innan";
+      var fmt = function (v) { return (Math.abs(v) >= 100 || v === Math.round(v) ? nf0 : nf1).format(v) + " " + esc(kpiUnit(x.unit)); };
+      var max = Math.max.apply(null, x.s.map(function (y) { return y[1]; })) || 1;
+      return '<li><div class="kpv-top"><span class="kpv-name">' + esc(x.lbl) + '</span><span class="kpv-val">' + fmt(last[1]) + "</span></div>" +
+        '<div class="kpv-bars" role="img" aria-label="' + esc(x.s.map(function (y) { return periodText(y[0], 3) + ": " + fmt(y[1]); }).join(", ")) + '">' + x.s.map(function (y) {
+          return '<span class="kpv-bar' + (y === last ? " now" : "") + '" title="' + esc(periodText(y[0], 3) + ": " + fmt(y[1])) + '"><i style="height:' + Math.max(4, y[1] / max * 100).toFixed(1) + '%"></i></span>';
+        }).join("") + "</div>" +
+        (g != null ? '<div class="kpv-sub"><span class="' + cls(g) + '">' + pct(g) + "</span> " + when + "</div>" : "") + "</li>";
+    }).join("") + "</ul>";
+  }
+  function kpiCard(k, short, cur) {
+    if (!k || (!k.items && !k.vol)) return "";
+    var by = {};
+    // kassaflödet ensamt säger lite: det visas bara tillsammans med kassan (hur länge pengarna räcker)
+    var items = (k.items || []).filter(function (it) { return KPI_META[it.k] && !(it.k === "ocf" && !(k.items || []).some(function (x) { return x.k === "cash"; })); });
+    if (!items.length && !k.vol) return "";
+    items.forEach(function (it) { by[it.k] = it; });
+    var tiles = items.map(function (it) {
+      var m = KPI_META[it.k], ch = kpiChange(it.s, m[1], cur);
+      return '<div class="know-tile kp-tile"><div class="kp-name">' + m[0] + '</div><div class="kt-big' + (it.v < 0 && m[1] === "amt" ? " neg" : "") + '">' + kpiFmt(it.v, m[1], cur) + "</div>" +
+        (ch ? '<div class="kp-change"><span class="' + cls(ch[1]) + '">' + ch[0].replace(/ (mot .*)$/, "</span> $1") + "</div>" : "") +
+        kpiSpark(it.s, m[1], cur) + '<div class="kt-sub">' + m[2] + "</div></div>";
+    });
+    var vol = k.vol || [], lead = kpiLead(k, by, short, cur);
+    if (vol.length) {
+      // "Under jul–sep 2026 var zink i koncentrat 84 744 ton (−22 % mot samma kvartal i fjol) och …"
+      var mi = function (p) { return +p.slice(0, 4) * 12 + +p.slice(5, 7); };
+      var said = function (x, i) {
+        var last = x.s[x.s.length - 1], ago = x.s.filter(function (y) { return mi(last[0]) - mi(y[0]) === 12; })[0];
+        var g = ago && ago[1] > 0 ? last[1] / ago[1] - 1 : null;
+        return esc(x.lbl.charAt(0).toLowerCase() + x.lbl.slice(1)) + " " + (Math.abs(last[1]) >= 100 ? nf0 : nf1).format(last[1]) + " " + esc(kpiUnit(x.unit)) +
+          (g != null ? " (" + pct(g) + (i ? ")" : " mot samma kvartal i fjol)") : "");
+      };
+      var vs = vol.filter(function (x) { return x.kind === "vol"; }).slice(0, 2), ps = vol.filter(function (x) { return x.kind === "pris"; });
+      if (vs.length) lead = (lead ? lead + " " : "") + "Under " + periodText(k.p, 3) + ": " + vs.map(said).join(" och ") + ".";
+      var big = ps.map(function (x) {
+        var last = x.s[x.s.length - 1], ago = x.s.filter(function (y) { return mi(last[0]) - mi(y[0]) === 12; })[0];
+        return ago && ago[1] > 0 ? { x: x, g: last[1] / ago[1] - 1 } : null;
+      }).filter(Boolean).sort(function (a, b) { return Math.abs(b.g) - Math.abs(a.g); })[0];
+      if (big && Math.abs(big.g) >= 0.1) lead += " Största prisrörelsen: " + esc(big.x.lbl.toLowerCase()) + " kostade " + nf0.format(Math.abs(big.g) * 100) + " % " + (big.g > 0 ? "mer" : "mindre") + " än för ett år sedan.";
+    }
+    var volHtml = "";
+    if (vol.length) {
+      var parts = [["vol", "Produktion och leveranser"], ["halt", "Halter i malmen"], ["pris", "Priser"]].map(function (p) {
+        var rows = kpiVolRows(vol, p[0]);
+        return rows ? [p[1], rows] : null;
+      }).filter(Boolean);
+      // en enda lista behöver ingen egen rubrik (kortets rubrik säger redan "Produktion och leveranser")
+      volHtml = '<div class="kp-vol-grid' + (parts.length === 1 ? " one" : "") + '">' + parts.map(function (p) {
+        return "<div>" + (parts.length > 1 || items.length ? '<h4 class="kq-sub">' + p[0] + "</h4>" : "") + p[1] + "</div>";
+      }).join("") + "</div>";
+    }
+    var title = KPI_TITLE[k.g] || "Branschens nyckeltal";
+    if (k.g === "mine" && vol.some(function (x) { return x.kind === "pris"; })) title = "Produktion och metallpriser";
+    // "hur länge räcker pengarna?" bara när verksamheten förbrukar pengar
+    if (k.g === "pharma" && !/räcker pengarna i/.test(lead)) title = "Kassan och kassaflödet";
+    return '<div class="know-card kp-card"><h3>' + title + ' <span class="kq-per">' + periodText(k.p, 3) + "</span></h3>" +
+      (lead ? '<p class="know-lead">' + lead + "</p>" : "") +
+      (tiles.length ? '<div class="know-tiles in-card kp-tiles">' + tiles.join("") + "</div>" : "") + volHtml +
+      '<p class="know-explain">Måtten väljs efter vad som betyder mest i branschen och kommer ur bolagets egen kvartalsrapport. Ett värde visas bara när samma tal står både i rapportens nyckeltalstabell och i texten' +
+      (vol.length ? ", eller, för produktion och priser, när nästa rapport visar samma tal som jämförelse" : "") + ". Staplar och linjer visar de senaste kvartalen." +
+      (vol.some(function (x) { return x.kind === "pris"; }) ? " Priserna är de metallpriser som bolaget själv redovisar i rapporten." : "") + "</p>" +
+      '<p class="kq-link"><a href="' + esc(k.url) + '" target="_blank" rel="noopener">Källa: ' + esc(k.title) + " (" + dateText(k.date) + ") ↗</a></p></div>";
+  }
+
   function companySection(isin, name, sector) {
     // Svenska bolag (scripts/build-companies.py) och amerikanska (scripts/build-us-companies.py, ur SEC)
     if (!/^(SE|US)/.test(isin) || !needCompanyIndex() || !state.companyIndex[isin]) return "";
@@ -1660,7 +1882,7 @@
         return '<li class="' + x.tone + '"><span class="ki-dot" aria-hidden="true"></span>' + x.text + "</li>";
       }).join("") + "</ul></div>" : "";
       var evHtml = q.events && q.events.length ? '<div><h4 class="kq-sub">Viktigt som hänt</h4><ul class="know-ins events">' + q.events.map(function (x) {
-        return '<li><span class="ki-dot" aria-hidden="true"></span>' + esc(x) + "</li>";
+        return '<li><span class="ki-dot" aria-hidden="true"></span>' + esc(x.replace(/^[·•●–-]\s*/, "")) + "</li>";
       }).join("") + "</ul></div>" : "";
       var voice = (q.quote && f.ceo ? '<blockquote class="know-quote"><p>”' + esc(q.quote) + '”</p><footer>' + esc(f.ceo) + ", vd</footer></blockquote>" : "") +
         (q.outlook ? '<h4 class="kq-sub">Bolaget om framtiden</h4><p class="know-outlook">' + esc(q.outlook) + "</p>" : "");
@@ -1691,6 +1913,9 @@
         (thHtml ? '<div class="kq-split th-split">' + thHtml + "</div>" : "") +
         '<p class="kq-link"><a href="' + esc(q.url) + '" target="_blank" rel="noopener">Läs hela rapporten: ' + esc(q.title) + " ↗</a></p></div>";
     }
+
+    // Branschens nyckeltal ur rapporten
+    html += kpiCard(c.kpi, short, q ? q.cur : cur);
 
     // Kalendern: nästa rapport, årsstämman och utdelningen
     var cal = c.cal || {}, calItems = [];

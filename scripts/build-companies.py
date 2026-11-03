@@ -14,6 +14,10 @@ Bara bolagens egna rapporter och pressmeddelanden, utan nycklar:
   - Investmentbolagens substansvärde per aktie och fastighetsbolagens EPRA NRV och belåningsgrad, ur samma
     kvartalsrapporter. Substansrabatten räknas mot kursen vid kvartalsslut (fondernas rapporter till FI) för den
     rapport som gäller samma dag, eller tas ur rapporten om bolaget själv anger den.
+  - Branschens viktigaste nyckeltal ur samma rapporter: räntenetto och kreditförluster för banker, uthyrningsgrad,
+    snittränta och räntetäckningsgrad för fastighetsbolag, produktion, leveranser och metallpriser för gruv- och
+    skogsbolag, kassan för läkemedelsbolag, bruttomarginal och skuldsättning för övriga. Ett värde sparas bara om
+    det står likadant i rapportens nyckeltalstabell och i texten (eller, för produktion, i nästa rapport).
 
 Tabellerna ser olika ut hos olika bolag, så allt kontrolleras innan det används. Affärsområden och länder måste
 gå ihop med bolagets totala omsättning (inom 10 %). Kvartalets siffror måste gå att hitta i pressmeddelandet
@@ -57,6 +61,7 @@ PARSER_VERSION = 7
 INTERIM_VERSION = 5  # samma sak för kvartalsrapporterna
 NAV_VERSION = 1      # substansvärdet i investment- och fastighetsbolagens rapporter (läses om utan att resten läses om)
 NAV_INDUSTRIES = {"Investeringar", "Förvaltning"}  # MFN:s branscher för investmentbolag och fastighetsbolag
+KPI_VERSION = 1     # branschens nyckeltal (läses om utan att resten läses om)
 UA = "Fondinsyn/1.0 (https://www.fondinsyn.se)"
 TODAY = dt.date.today()
 
@@ -1746,13 +1751,13 @@ def events_and_outlook(body):
     for i, l in enumerate(lines):
         if len(events) < 4 and len(l) <= 80 and re.match(r"(väsentliga |viktiga |övriga )?händelser\b", l, re.I) and not re.search(r"finansiella", l, re.I):
             for x in lines[i + 1:i + 12]:
-                if len(x) < 30 and not re.match(r"[•●\-–]", x):
+                if len(x) < 30 and not re.match(r"[•●·\-–]", x):
                     if x is lines[i + 1] and len(x) < 40:
                         continue  # underrubrik ("Andra kvartalet")
                     break
                 if re.match(r"(väsentliga |viktiga )?händelser|vd har ordet|vd-ord|för ytterligare information|denna information", x, re.I):
                     break
-                x = re.sub(r"^[•●\-–]\s*", "", x)
+                x = re.sub(r"^[•●·\-–]\s*", "", x)
                 x = re.sub(r"^\d{1,2} (januari|februari|mars|april|maj|juni|juli|augusti|september|oktober|november|december)( \d{4})?:\s*", "", x, flags=re.I)
                 if BORING_EVENT.search(x) or not swedish(x + " och är av för"):
                     continue
@@ -1998,6 +2003,537 @@ def nav_figures(body, full, end):
             out["ltvVia"] = via
             break
     return out or None
+
+
+# ---------- Branschens nyckeltal: det som betyder mest i just bolagets bransch ----------
+#
+# Banker: räntenetto, kreditförluster, utlåning. Fastighetsbolag: uthyrningsgrad, räntetäckningsgrad, snittränta.
+# Gruvor och skogsbolag: produktion, leveranser och metallpriser. Butikskedjor: bruttomarginal och antal butiker. Och så vidare.
+# Ett värde sparas bara om det går att bekräfta:
+#   - "tabell": samma tal (och samma jämförelsetal) står i rapportens nyckeltalstabell och i texten,
+#   - "text": tabellen saknas, men samma tal med samma jämförelsetal står i både pressmeddelandet och rapporten,
+#   - "rapporter": produktions- och prisrader som bara finns i tabeller bekräftas av nästa rapport, där kvartalets tal
+#     står igen som jämförelsetal (se kpi_doc).
+
+KPI_GROUPS = {
+    "bank": {"Storbank", "Bank", "Nischbank"},
+    "ins": {"Försäkring"},
+    "prop": {"Förvaltning"},
+    "mine": {"Gruvdrift & metaller"},
+    "forest": {"Skog & Cellulosa"},
+    "retail": {"Detaljhandel", "Sällanköpsvaror", "Dagligvaror", "Handel & distribution"},
+    "tele": {"Telekommunikation och -tjänster"},
+    "pharma": {"Bioteknik", "Läkemedel & Handel", "Medicinteknik", "Forskning & Utveckling"},
+    "games": {"Gaming", "Betting"},
+    "tech": {"Programvara", "IT-konsult & onlinetjänster"},
+    "ind": {"Industriprodukter", "Maskinindustri", "Elektronisk utrustning", "Anläggning & bygg", "Fordon", "Fordon & Transport", "Industri",
+            "Projektering", "Teknik-konsult", "Plast, kemikalier & fetter", "Infrastruktur", "Energikällor", "Miljö & Återvinning",
+            "Shipping & Offshore", "Bemanning & Rekrytering", "Allmänna tjänster", "Kommunikation", "Media", "Resor & Fritid", "Vård & Omsorg"},
+}
+NONFIN = {"mine", "forest", "retail", "tele", "pharma", "games", "tech", "ind"}
+
+
+def kpi_group(industry):
+    return next((g for g, s in KPI_GROUPS.items() if industry in s), None)
+
+
+# (nyckel, grupper, slag, radens början i nyckeltalstabellen, ordet i texten, lägsta, högsta, flöde)
+# slag: pct (procent), x (gånger), yr (år), amt (belopp), n (antal). Flöden (räntenetto, förvaltningsresultat) gäller
+# kvartalet och läses bara där texten handlar om kvartalet; ställningar (utlåning, uthyrningsgrad) gäller en dag.
+KPIS = [
+    # banker
+    ("nii", {"bank"}, "amt", r"räntenetto", r"räntenettot?", 1e6, 1e12, True),
+    ("fee", {"bank"}, "amt", r"provisionsnetto", r"provisionsnettot?", 1e6, 1e12, True),
+    ("kf", {"bank"}, "amt", r"kreditförluster(?:,? netto)?", r"kreditförlusterna?(?:,? netto)?", -1e11, 1e11, True),
+    ("kfn", {"bank"}, "pct", r"kreditförlustnivå", r"kreditförlustnivån?", -2, 5, False),
+    ("lend", {"bank"}, "amt", r"utlåning till allmänheten", r"utlåningen? till allmänheten", 1e8, 1e13, False),
+    ("dep", {"bank"}, "amt", r"inlåning från allmänheten", r"inlåningen? från allmänheten", 1e8, 1e13, False),
+    ("lcr", {"bank"}, "pct", r"likviditetstäckning(?:sgrad|skvot)", r"likviditetstäckning(?:sgrad|skvot)(?:en)?", 50, 600, False),
+    ("aum", {"bank"}, "amt", r"sparkapital(?: vid periodens slut)?", r"sparkapital(?:et)?", 1e9, 1e13, False),
+    ("cust", {"bank"}, "n", r"(?:antal )?kunder(?: vid periodens slut)?", r"antal(?:et)? kunder", 1000, 5e7, False),
+    ("inflow", {"bank"}, "amt", r"nettoinflöde", r"nettoinflöde(?:t)?", -1e12, 1e12, True),
+    # försäkring
+    ("tkp", {"ins"}, "pct", r"totalkostnadsprocent", r"totalkostnadsprocenten?", 40, 160, True),
+    ("skp", {"ins"}, "pct", r"skadeprocent", r"skadeprocenten?", 10, 150, True),
+    ("prem", {"ins"}, "amt", r"premieintäkter(?:,? (?:för egen räkning|f\.e\.r\.))?", r"premieintäkterna?(?:,? (?:för egen räkning|f\.e\.r\.))?", 1e6, 1e12, True),
+    # fastigheter
+    ("occ", {"prop"}, "pct", r"(?:ekonomisk )?uthyrningsgrad(?:,? (?:- )?ekonomisk)?", r"(?:ekonomiska? )?uthyrningsgrade?n?", 40, 100, False),
+    ("surplus", {"prop"}, "pct", r"överskottsgrad", r"överskottsgraden?", 20, 100, True),
+    ("icr", {"prop"}, "x", r"räntetäckningsgrad", r"räntetäckningsgraden?", 0, 15, False),
+    ("rate", {"prop"}, "pct", r"(?:genomsnittlig (?:ränta|räntekostnad|låneränta)|snittränta)(?: (?:per bokslutsdagen?|per balansdagen|vid periodens (?:slut|utgång)))?",
+     r"(?:genomsnittliga? (?:räntan?|räntekostnaden?|låneräntan?)|snitträntan?)", 0.2, 12, False),
+    ("fixyr", {"prop"}, "yr", r"(?:genomsnittlig )?räntebindning(?:stid)?", r"(?:genomsnittliga? )?räntebindning(?:en|stiden)?", 0, 20, False),
+    ("capyr", {"prop"}, "yr", r"(?:genomsnittlig )?kapitalbindning(?:stid)?", r"(?:genomsnittliga? )?kapitalbindning(?:en|stiden)?", 0, 25, False),
+    ("pv", {"prop"}, "amt", r"(?:fastigheternas (?:verkliga |redovisade )?(?:marknads)?värde|förvaltningsfastigheter(?:nas)?,? verkligt värde|"
+                            r"verkligt värde (?:på )?förvaltningsfastigheter|marknadsvärde (?:på )?fastigheter(?:na)?)",
+     r"(?:fastigheternas|fastighetsbeståndets|förvaltningsfastigheternas) (?:verkliga |bedömda |totala |redovisade )?(?:marknads)?värde", 1e8, 1e13, False),
+    ("mgmt", {"prop"}, "amt", r"förvaltningsresultat", r"förvaltningsresultat(?:et)?", -1e11, 1e11, True),
+    ("noi", {"prop"}, "amt", r"driftnetto", r"driftnetto(?:t)?", -1e11, 1e11, True),
+    ("rent", {"prop"}, "amt", r"hyresintäkter", r"hyresintäkter(?:na)?", 1e6, 1e11, True),
+    ("netlet", {"prop"}, "amt", r"nettouthyrning", r"nettouthyrning(?:en)?", -1e10, 1e10, True),
+    # butiker och konsument
+    ("stores", {"retail"}, "n", r"(?:antal )?butiker(?: vid periodens (?:slut|utgång))?", r"antal(?:et)? butiker", 2, 20000, False),
+    ("lfl", {"retail"}, "pct", r"(?:försäljning(?:sutveckling|stillväxt)? i )?jämförbara butiker", r"(?:i )?jämförbara butiker", -60, 100, True),
+    # spel och betting
+    ("active", {"games"}, "n", r"(?:antal )?aktiva (?:kunder|spelare|användare)", r"aktiva (?:kunder|spelare|användare)", 100, 5e8, True),
+    ("deposits", {"games"}, "amt", r"kundinsättningar", r"kundinsättningar(?:na)?", 1e6, 1e12, True),
+    # mjukvara
+    ("arr", {"tech"}, "amt", r"(?:arr|årligt återkommande intäkter)", r"(?:arr|årligt? återkommande intäkter(?:na)?)", 1e6, 1e12, False),
+    # läkemedel och bioteknik: kassan och hur mycket verksamheten förbrukar
+    ("cash", {"pharma"}, "amt", r"likvida medel(?: vid periodens slut)?", r"likvida medel", 1e5, 1e12, False),
+    ("ocf", {"pharma"}, "amt", r"kassaflöde(?:,? netto,?)? från (?:den )?löpande verksamhet(?:en)?", r"kassaflödet från (?:den )?löpande verksamhet(?:en)?", -1e11, 1e11, True),
+    # alla bolag utom banker, försäkrings- och fastighetsbolag
+    ("gm", NONFIN, "pct", r"bruttomarginal", r"bruttomarginal(?:en)?", -50, 100, True),
+    ("ebitdam", NONFIN, "pct", r"ebitda[- ]?marginal", r"ebitda[- ]?marginal(?:en)?", -200, 100, True),
+    ("ndebitda", NONFIN, "x", r"nettoskuld(?:sättning)?\s*/\s*ebitda", r"nettoskuld(?:en|sättningen)?\s*(?:/|i förhållande till|i relation till)\s*ebitda", -10, 20, False),
+    ("roce", NONFIN, "pct", r"avkastning på sysselsatt kapital", r"avkastning(?:en)? på sysselsatt kapital", -80, 200, False),
+]
+KPI_BAD_ROW = re.compile(r"justera|exkl|exklusive|underliggande|rullande|r12|förändring|tillväxt| i % av|per aktie|per kvartal|uppdelning|mål\b|"
+                         r"genomsnitt(?!lig (?:ränta|räntekostnad|låneränta|räntebindning|kapitalbindning))|ifrs ?16|före\b", re.I)
+KPI_BAD_TEXT = re.compile(r"justera|exkl|exklusive|underliggande|rullande|mål(?:et|sättning)?\b|ska\b|skall\b|över tid|bör\b|förväntas|bedöm|före\b", re.I)
+
+# Produktion, leveranser och metallpriser (gruvor och skogsbolag): raderna i rapportens tabeller, med bolagets egna namn
+VOL_UNIT = r"(?:kton|kt|ton|tusen ton|1 ?000 ton|mton|m3|m³|km3|km³|tusen m3|tusen m³|1 ?000 m3|1 ?000 m³|m3fub|m³fub|m3sk|m³sk|gwh|twh|kg|oz|koz|moz|uns)"
+VOL_ROW = re.compile(r"^(?P<lab>[A-Za-zÅÄÖåäöé][^\d/]{1,60}?)(?:,\s*|\s+|\s*\()(?P<unit>%s(?: fub| sk)?)\)?\s*\*?$" % VOL_UNIT, re.I)
+VOL_BAD = re.compile(r"co2|utsläpp|scope|vatten|energiförbrukning|energianvändning|avfall|intensitet|per ton|/ton råstål|kapacitet|reserv|tillgång|"
+                     r"inkluderar|leasing|varav|summa|totalt?\b", re.I)
+PRICE_ROW = re.compile(r"^(?P<lab>[A-Za-zÅÄÖåäö][A-Za-zÅÄÖåäö \-]{1,30}?),?\s*\(?(?P<unit>(?:usd|sek|kr|eur)\s*/\s*(?:ton|t|oz|lb|kg|m3|m³))\)?\s*\*?$", re.I)
+GRADE_ROW = re.compile(r"^(?P<lab>(?:genomsnittlig )?[A-Za-zÅÄÖåäö]+halt\w*),?\s*\(?(?P<unit>g\s*/\s*t(?:on)?|%)\)?\s*\*?$", re.I)
+
+KPI_NUM = r"[-−–]?\s?\d{1,3}(?:[  ]\d{3})+(?:[,.]\d+)?|[-−–]?\s?\d+(?:[,.]\d+)?"
+KPI_PCT = r"\s*(?:%|procent(?!enhet)|percent)"
+KPI_X = r"\s*(?:ggr|gånger|x)(?![a-zåäö])"
+KPI_YR = r"\s*år(?![a-zåäö])"
+YTD_MARK = re.compile(r"(jan\w*|feb\w*|mar\w*|apr\w*|maj|jun\w*|jul\w*|aug\w*|sep\w*|okt\w*|nov\w*|dec\w*)\.?\s*[-–—]\s*(jan\w*|feb\w*|mar\w*|apr\w*|maj|jun\w*|jul\w*|aug\w*|sep\w*|okt\w*|nov\w*|dec\w*)|"
+                      r"(niomånaders|nio månader|sex månader|första halvåret|halvåret|delårsperioden|helåret|helår)|"
+                      r"((?:första|andra|tredje|fjärde) kvartalet|kvartalet|\bq[1-4]\b|\bkv\.? ?[1-4]\b|\bkvartal [1-4]\b)", re.I)
+
+
+def kpi_number(s, kind):
+    """Ett tal i texten eller tabellen: (värde, halvt avrundningssteg). "10 051" -> 10051, "0,00" -> 0, "20.6" -> 20,6."""
+    s = s.replace("−", "-").replace("–", "-").replace(" ", " ").replace(" ", " ").strip()
+    neg = s.startswith("-")
+    s = s.lstrip("- ")
+    if re.fullmatch(r"\d{1,3}(?: \d{3})+(?:,\d+)?", s):
+        ip, _, fp = s.replace(" ", "").partition(",")
+    elif re.fullmatch(r"\d+,\d+", s):
+        ip, _, fp = s.partition(",")
+    elif re.fullmatch(r"\d+\.\d{1,2}", s) or (re.fullmatch(r"\d+\.\d+", s) and kind in ("pct", "x", "yr")):
+        ip, _, fp = s.partition(".")
+    elif re.fullmatch(r"\d{1,3}(?:\.\d{3})+", s):
+        ip, fp = s.replace(".", ""), ""
+    elif re.fullmatch(r"\d+", s):
+        ip, fp = s, ""
+    else:
+        return None
+    v = float(ip + ("." + fp if fp else ""))
+    return (-v if neg else v), 0.5 * 10 ** -len(fp)
+
+
+def kpi_text(text):
+    """Texten med PDF:ens radbrytningar mitt i meningar ihopsatta (positionerna behövs för att avgöra perioden)."""
+    text = re.sub(r"[￾­]\s*", "", text or "")
+    return re.sub(r"(?<![.:!?])[ \t]*\r?\n(?=[a-zåäö(\d−–-])", " ", text)
+
+
+def ytd_before(text, pos):
+    """Handlar texten vid pos om mer än ett kvartal ("januari–september", "helåret")? Avgörs av närmaste periodord före."""
+    last = None
+    for m in YTD_MARK.finditer(text, max(0, pos - 1500), pos):
+        if m.group(1) and re.search(r"(rapport\w*|kommuniké)\s*(?:för\s*)?$", text[max(0, m.start() - 30):m.start()], re.I):
+            continue  # rapportens namn i sidhuvudet ("Delårsrapport januari–september 2026")
+        last = m
+    if not last:
+        return False
+    if last.group(1):
+        a, b = (MONTH_NO.get(last.group(i)[:3].lower()) for i in (1, 2))
+        return bool(a and b and (b - a) % 12 + 1 > 3)
+    return bool(last.group(3))
+
+
+def kpi_unit(after, before):
+    """Enheten för ett belopp: efter talet ("10 051 mkr"), efter jämförelsetalet ("14 129 (13 392) MSEK") eller före ("MSEK 13 789")."""
+    for mm in (re.match(r"\s*(?:\(\s*[-−–]?[\d  .,]+\s*\)\s*)?(%s)(?![a-zåäö])" % TEXT_UNIT_RE, after, re.I),
+               re.search(r"(?<![a-zåäö])(%s)\s*$" % TEXT_UNIT_RE, before, re.I)):
+        if mm:
+            w = mm.group(1).lower()
+            u = next(((sc, cur) for rx, sc, cur in TEXT_UNITS if re.fullmatch(rx, w, re.I)), None)
+            if u and u[0] >= 1e3:
+                return u
+    return None
+
+
+OTHER_UNIT = r"\s*(?:%%|procent|ggr|gånger|år(?![a-zåäö])|%s)" % TEXT_UNIT_RE
+
+
+def kpi_in_text(text, word, kind, flow):
+    """Värdet efter ordet i texten: [(värde, halvt steg, jämförelsetal eller None, valuta)]. Hoppar över förändringar
+    ("ökade med 43 mkr till 10 051 mkr (10 008)") och, för flöden, text om flera kvartal ("januari–september")."""
+    out = []
+    for m in re.finditer(r"(?<![a-zåäö])%s(?![a-zåäö])" % word, text, re.I):
+        end = re.search(r"\n|[•■◼▪●]|(?<=[a-zåäö0-9)%])[.!?;]\s+(?=[A-ZÅÄÖ])", text[m.end():m.end() + 180])
+        rest = text[m.end():m.end() + (end.start() if end else 180)]
+        head = text[max(0, m.start() - 40):m.start()]
+        if KPI_BAD_TEXT.search(rest[:40]) or re.search(r"(justera\w*|underliggande|exkl\.?|mål\w*)\s*$", head, re.I):
+            continue
+        if flow and ytd_before(text, m.start()):
+            continue
+        skipped = 0
+        for t in re.finditer(KPI_NUM, rest):
+            before, after = rest[:t.start()], rest[t.end():]
+            if re.search(r"\b(med|på|om)\s*$|\+\s*$", before) and re.search(r"\btill\b", after[:60]):
+                continue  # en förändring före själva värdet: "ökade med 43 mkr till …"
+            if re.match(r"\s*(procentenheter|%-enheter|pe\b|bps|baspunkter|kvartal|månader|dagar|veckor)", after, re.I) \
+                    or (re.fullmatch(r"(19|20)\d\d", t.group(0).strip()) and not re.match(OTHER_UNIT, after, re.I)):
+                skipped += 1
+                if skipped > 2:
+                    break
+                continue
+            v = kpi_number(t.group(0), kind)
+            if v is None:
+                break
+            cur, x, u = None, v[0], None
+            if kind == "pct":
+                um = re.match(KPI_PCT, after, re.I)
+            elif kind == "x":
+                um = re.match(KPI_X, after, re.I)
+            elif kind == "yr":
+                um = re.match(KPI_YR, after, re.I)
+            elif kind == "amt":
+                u = kpi_unit(after, before)
+                um = bool(u)
+                if u:
+                    x, cur = x * u[0], u[1]
+                    v = (x, v[1] * u[0])
+            else:  # antal
+                um = not re.match(OTHER_UNIT, after, re.I)
+            if not um:
+                if kind == "n" or re.match(OTHER_UNIT, after, re.I):
+                    break  # ett tal med en annan enhet: det här är inte värdet
+                skipped += 1
+                if skipped > 2:
+                    break
+                continue
+            y = None
+            ym = re.match(r"(?:%s)?\s*\(\s*(%s)\s*(?:%%|procent|ggr|gånger|x|år|%s)?\s*\)" % (OTHER_UNIT, KPI_NUM, TEXT_UNIT_RE), after, re.I)
+            if ym:
+                yv = kpi_number(ym.group(1), kind)
+                if yv:
+                    y = yv[0] * (u[0] if u else 1)
+            out.append((x, v[1], y, cur))
+            break
+    return out
+
+
+def kpi_rows(pdf_bytes, words):
+    """Nyckeltalsrader i PDF:en, med tal delade efter var de står på sidan (så att "10 051 10 008" blir två tal):
+    [(etikett, [värden], halvt steg för första värdet, texten ovanför, rubrikraden ovanför)]. Bara sidor där något av orden står."""
+    out = []
+    if not pdf_bytes or not pdfium:
+        return out
+    try:
+        pdf = pdfium.PdfDocument(pdf_bytes)
+    except Exception:
+        return out
+    try:
+        for pi in range(len(pdf)):
+            tp = pdf[pi].get_textpage()
+            txt = tp.get_text_range()
+            if not re.search(words, txt, re.I):
+                continue
+            dec = decimal_sep(txt)
+            lines = pdf_lines(tp)
+            for li, (y, cells) in enumerate(lines):
+                label, vals = split_row(cells, dec)
+                label = clean_row(label).strip(" ,:")
+                nums = [v for v in vals if v[1] is not None]
+                if len(nums) >= 3 and re.fullmatch(r"[1-9]\)?", nums[0][2].strip()) and abs(nums[1][1]) >= 100:
+                    nums = nums[1:]  # en fotnot som hamnat först bland talen ("Hyresintäkter 1 2 346 2 321")
+                if not label or not nums:
+                    continue
+                first = nums[0][2].strip("()% ")
+                dm = re.search(r"[.,](\d{1,2})$", first)
+                half = 0.5 * 10 ** -len(dm.group(1)) if dm else 0.5
+                # texten ovanför raden (för gruvornas metaller: "Metaller i koncentrat")
+                ctx = " ".join(c[2] for _, cs in lines[max(0, li - 14):li] for c in cs)
+                # rubrikraden närmast ovanför (för enheten: "Kton Kv3 Kv3 Kv2 Jan-Sep")
+                head = next((" ".join(c[2] for c in cs) for _, cs in reversed(lines[max(0, li - 3):li])
+                             if not split_row(cs, dec)[1] or re.match(r"\s*(kton|ton|tusen|1 ?000|m3|m³|gwh|twh|mkr|msek)\b", " ".join(c[2] for c in cs), re.I)), "")
+                out.append((label, [v[1] for v in nums], half, ctx, head))
+    except Exception:
+        pass
+    finally:
+        pdf.close()
+    return out
+
+
+def kpi_table_unit(label):
+    m = re.search(r"(?<![a-zåäö])(%s)(?![a-zåäö])" % TEXT_UNIT_RE, label, re.I)
+    if m:
+        w = m.group(1).lower()
+        return next((sc for rx, sc, cur in TEXT_UNITS if re.fullmatch(rx, w, re.I)), None)
+    return None
+
+
+def kpi_figures(body, full, pdf_bytes, group):
+    """Branschens nyckeltal ur en kvartalsrapport: {nyckel: {"v": värde, "y": jämförelsetal, "via": …}} och
+    produktionsrader {"vol": [[namn, enhet, slag, [värden]]]} som bekräftas av nästa rapport."""
+    specs = [s for s in KPIS if group in s[1]]
+    if not specs and group not in ("mine", "forest"):
+        return None
+    pm, pdf = kpi_text(body), kpi_text(full)
+    words = "|".join(s[3] for s in specs) + ("|ton|m3|m³|gwh|usd" if group in ("mine", "forest") else "")
+    rows = kpi_rows(pdf_bytes, words) if words else []
+    tail = r"\s*[,(]?\s*(?:%%|\(%%\)|procent|ggr|gånger|x|år|st|antal|\(antal\)|%s)?\s*\)?\s*$" % TEXT_UNIT_RE
+    res = {}
+    for key, _, kind, row_rx, word, lo, hi, flow in specs:
+        cands = [r for r in rows if re.match(r"(?:%s)%s" % (row_rx, tail), r[0], re.I) and not KPI_BAD_ROW.search(r[0])]
+        hits_pm, hits_pdf = kpi_in_text(pm, word, kind, flow), kpi_in_text(pdf, word, kind, flow)
+        found = None
+        # Bara det första värdet i pressmeddelandet och i rapporten som gäller kvartalet: senare i rapporten handlar
+        # texten ofta om ett affärsområde eller ett land ("Räntenettot i Storbritannien minskade till 2 219 mkr").
+        def try_hit(x, half, y):
+            if not lo <= x <= hi:
+                return None
+            if flow and x > 0 and any(0 < r[1][0] * sc < x * 0.62 and any(abs(v * sc - x) <= half + 1e-9 for v in r[1][1:])
+                                      for r in cands for sc in (1, 1e3, 1e6, 1e9)):
+                return "skip"  # talet står längre till höger i en tabell där kvartalet står först: det gäller flera kvartal
+            for lab, vals, rhalf, _, _ in cands:
+                unit = kpi_table_unit(lab) if kind == "amt" else None
+                for sc in ([unit] if unit else [1e3, 1e6, 1e9]) if kind == "amt" else [1]:
+                    tol = max(half, rhalf * sc) + 1e-9
+                    if abs(vals[0] * sc - x) > tol:
+                        continue
+                    if y is not None and len(vals) >= 2:
+                        if not any(abs(v * sc - y) <= tol for v in vals[1:]):
+                            continue
+                    elif kind in ("amt", "n") and len(re.sub(r"\D", "", "%g" % abs(vals[0]))) < 3:
+                        continue  # ett kort belopp utan jämförelsetal kan träffa av en slump
+                    if flow and x > 0 and any(0.2 < v / vals[0] < 0.62 for v in vals[1:4] if v > 0):
+                        return "skip"  # tabellen har flera kvartal först och kvartalet längre till höger
+                    return vals[0] * sc if rhalf * sc <= half else x  # tabellens tal är ofta mer exakt
+            return None
+        for src in (hits_pm, hits_pdf):
+            tried = 0
+            for (x, half, y, cur) in src:
+                v = try_hit(x, half, y)
+                if v == "skip":
+                    continue
+                if v is not None:
+                    found = {"v": v, "via": "tabell"}
+                    if y is not None:
+                        found["y"] = y
+                    if cur:
+                        found["cur"] = cur
+                    break
+                tried += 1
+                if tried >= 2:  # bara de två första värdena i texten (sedan handlar den ofta om ett affärsområde)
+                    break
+            if found:
+                break
+        if not found and not cands and hits_pm and hits_pdf:
+            for (x, half, y, cur) in hits_pm[:1]:
+                if y is None:
+                    continue
+                if any(abs(x - x2) <= max(half, h2) + 1e-9 and y2 is not None and abs(y - y2) <= max(half, h2) + 1e-9 for x2, h2, y2, _ in hits_pdf[:2]):
+                    found = {"v": x, "y": y, "via": "text"}
+                    if cur:
+                        found["cur"] = cur
+                    break
+        if found and lo <= found["v"] <= hi:
+            res[key] = found
+    if group in ("mine", "forest"):
+        # Samma rad kan stå i flera tabeller (koncernen först, sedan varje gruva eller division): den första är koncernens
+        best, order = {}, []
+        for lab, vals, _, ctx, head in rows:
+            m, kind = (PRICE_ROW.match(lab), "pris") if group == "mine" else (None, None)
+            if not m:
+                m, kind = VOL_ROW.match(lab), "vol"
+            if not m and group == "mine":
+                m, kind = GRADE_ROW.match(lab), "halt"
+            unit = m.group("unit") if m else None
+            if not m and re.match(r"^[A-Za-zÅÄÖåäö]*(produktion|leveranser)(, [a-zåäö ]+)?$", lab, re.I):
+                # enheten står i tabellens rubrik: "Kton Kv3 Kv3 Kv2" ovanför "Råstålsproduktion 1 902 1 813 2 041"
+                hm = re.match(r"\s*(%s)\b" % VOL_UNIT, head, re.I)
+                if hm:
+                    m, kind, unit = True, "vol", hm.group(1)
+            if not m or VOL_BAD.search(lab) or len(vals) < 2:
+                continue
+            name = re.sub(r"\s+", " ", m.group("lab") if m is not True else lab).strip(" ,")
+            # gruvornas metall i koncentrat eller smältverkens metall (Boliden har båda, med samma radnamn)
+            if kind == "vol" and group == "mine" and not re.search(r"koncentrat|malm|anrik|halt|smält", name, re.I):
+                if re.search(r"smält", ctx, re.I):
+                    name += " från smältverken"
+                elif re.search(r"koncentrat", ctx, re.I):
+                    name += " i koncentrat"
+            if not name[:1].isupper():
+                continue  # en etikett som börjar mitt i ett ord eller en mening ("vindkraft" av "… egen vindkraft")
+            if kind == "vol" and any(x[2] == "vol" and x[0].lower().replace(" i koncentrat", "") == name.lower() for x in best.values()):
+                continue  # samma metall en gång till (smältverkens "Zink" efter gruvornas "Zink i koncentrat"): oklart vilket
+            k = (name.lower(), re.sub(r"\s", "", unit.lower()))
+            if k not in best:
+                order.append(k)
+                best[k] = [name, unit, kind, vals[:8]]
+        vol = [best[k] for k in order]
+        # "Leveranser" och "Produktion" utan mer: bara om ingen annan rad har samma enhet (SSAB:s plåtleveranser i kton)
+        generic = lambda x: re.fullmatch(r"(leveranser|produktion)", x[0], re.I)
+        units = {re.sub(r"\s", "", x[1].lower()) for x in vol if not generic(x)}
+        vol = [x for x in vol if not generic(x) or re.sub(r"\s", "", x[1].lower()) not in units]
+        if vol:
+            res["vol"] = vol[:30]
+    return res or None
+
+
+def read_kpis(r, url, group):
+    """Läser branschens nyckeltal ur en sparad rapport (pressmeddelandet och rapportens PDF)."""
+    page = mfn_get(url, keep=True)
+    m = re.search(r'<div class="content s-[a-z]+">(.*?)</article>', page, re.S)
+    body = html_text(m.group(1) if m else "")
+    pdfs = list(dict.fromkeys([p for p in (r.get("pdf"),) if p] + re.findall(r'<a[^>]+href="(https://[^"]+\.pdf)"', page, re.I)))
+    pdf_bytes = cached_fetch(pdfs[0], "application/pdf,*/*") if pdfs and pdfium else None
+    k = kpi_figures(body, pdf_text(pdf_bytes), pdf_bytes, group)
+    r["kv"] = KPI_VERSION
+    if k:
+        r["kpi"] = k
+    else:
+        r.pop("kpi", None)
+    tp = text_period(r["date"], body)
+    if tp:
+        r["tp"] = tp
+    else:
+        r.pop("tp", None)
+
+
+SPLIT_YEAR = re.compile(r"\b20\d\d\s*/\s*(?:20)?\d\d\b")
+
+
+def text_period(pub_date, body):
+    """Periodens sista dag enligt pressmeddelandets text: det månadsskifte ("31 juli 2026") som nämns oftast, 3–120 dagar
+    före publiceringen. Behövs för bolag med brutet räkenskapsår, där "Q1 2026/2027" är maj–juli och inte januari–mars."""
+    pub, counts = dt.date.fromisoformat(pub_date), {}
+    for d, mon, y in re.findall(r"\b(\d{1,2})\s+(%s)(?:\s+(\d{4}))?\b" % "|".join(SV_MONTHS), body or "", re.I):
+        # utan årtal ("1 maj till 31 juli"): det år som ger ett datum före publiceringen
+        for year in ([int(y)] if y else [pub.year, pub.year - 1]):
+            try:
+                x = dt.date(year, SV_MONTHS.index(mon.lower()) + 1, int(d))
+            except ValueError:
+                continue
+            if (x + dt.timedelta(days=1)).day == 1 and 3 <= (pub - x).days <= 120:
+                counts[x] = counts.get(x, 0) + 1
+                break
+    if not counts:
+        return None
+    return max(counts, key=lambda x: (counts[x], x)).isoformat()[:7]
+
+
+def fixed_quarter(r):
+    """Kvartalssiffrorna med rätt period: för brutna räkenskapsår ("Q1 2026/2027") gäller textens datum, inte rubrikens
+    kvartalsnummer, om rubriken inte själv anger månaderna ("Första kvartalet, maj–juli 2026/27")."""
+    q = r.get("q")
+    if not q or not r.get("tp") or not SPLIT_YEAR.search(r.get("title") or "") or MONTH_RANGE.search((r.get("title") or "").lower()):
+        return q
+    return dict(q, p=r["tp"]) if r["tp"] != q.get("p") else q
+
+
+def report_period(r):
+    """Rapportens period ("2026-09"): ur kvartalssiffrorna, annars ur rubriken och datumet."""
+    split = SPLIT_YEAR.search(r.get("title") or "") and not MONTH_RANGE.search((r.get("title") or "").lower())
+    if split:
+        return r.get("tp")  # brutet räkenskapsår: bara textens datum går att lita på
+    q = r.get("q")
+    if q and q.get("p"):
+        return q["p"]
+    e = period_end(r["date"], None, r.get("title"))
+    return e.isoformat()[:7] if e else None
+
+
+def month_index(p):
+    return int(p[:4]) * 12 + int(p[5:7])
+
+
+def kpi_doc(reps, group, cur):
+    """Nyckeltalen på aktiesidan: senaste värdet per mått och värdena ur tidigare rapporter som en tidsserie.
+    reps är bolagets rapporter, nyast först. Produktionsraderna visas bara när två rapporter i följd stämmer med
+    varandra: förra rapportens tal står som jämförelsetal i nästa rapport."""
+    per = [(report_period(r), u, r) for u, r in reps if r.get("kpi")]
+    per = [x for x in per if x[0]]
+    if not per or days_since(per[0][2]["date"]) > 200:
+        return None
+    latest = per[0][0]
+    spec = {s[0]: s for s in KPIS}
+    vals = {}  # {nyckel: {period: (värde, jämförelsetal, via)}}
+    for p, u, r in per:
+        for key, val in r["kpi"].items():
+            if key in spec and not (val.get("cur") and cur and val["cur"] != cur):
+                vals.setdefault(key, {}).setdefault(p, (val["v"], val.get("y"), val["via"]))
+    # Kreditförluster: bankerna skriver dem med olika tecken (Handelsbanken -5 för en förlust, Swedbank -701 för
+    # återförda reserver). Tecknet bestäms av kreditförlustnivån, som alla skriver positiv för förluster.
+    if "kf" in vals:
+        signs = [(v[0] > 0) == (vals["kfn"][p][0] > 0) for p, v in vals["kf"].items()
+                 if v[0] and p in vals.get("kfn", {}) and abs(vals["kfn"][p][0]) >= 0.01]
+        if signs and all(signs):
+            pass
+        elif signs and not any(signs):
+            vals["kf"] = {p: (-v[0], -v[1] if v[1] is not None else None, v[2]) for p, v in vals["kf"].items()}
+        else:
+            del vals["kf"]
+    out = []
+    for key in [s[0] for s in KPIS]:
+        s = vals.get(key)
+        if not s or latest not in s:
+            continue  # måttet saknas i senaste rapporten: visas inte
+        kind, flow = spec[key][2], spec[key][7]
+        # Ett belopp som avviker mycket från bolagets andra kvartal är troligen ett affärsområde eller flera kvartal
+        if kind in ("amt", "n") and len(s) >= 3 and key not in ("kf", "netlet", "inflow", "ocf", "mgmt"):
+            for p in list(s):
+                others = sorted(v[0] for q, v in s.items() if q != p)
+                med = others[len(others) // 2]
+                if med > 0 and not med / 2.5 <= s[p][0] <= med * 2.5:
+                    del s[p]
+            if latest not in s:
+                continue
+        series = {p: v[0] for p, v in s.items()}
+        # Flödenas jämförelsetal är samma kvartal året innan, eller kvartalet innan. Det senare syns på att det är
+        # samma tal som förra rapporten; annars gäller det året innan.
+        if flow:
+            for p, v in s.items():
+                y = v[1]
+                pm = month_index(p) - 3
+                pq = "%04d-%02d" % ((pm - 1) // 12, (pm - 1) % 12 + 1)
+                if y is None or pq not in s:
+                    continue
+                if abs(s[pq][0] - y) > max(abs(y) * 0.002, 1e-9):
+                    series.setdefault("%04d%s" % (int(p[:4]) - 1, p[4:]), y)
+        v0 = s[latest]
+        it = {"k": key, "v": v0[0], "via": v0[2], "s": sorted([p, v] for p, v in series.items())[-8:]}
+        out.append(it)
+    # produktion, leveranser och priser
+    vols = {}
+    for i in range(len(per) - 1):
+        (p1, u1, r1), (p0, u0, r0) = per[i], per[i + 1]
+        if not 1 <= month_index(p1) - month_index(p0) <= 3:
+            continue
+        older = {(n.lower(), un.lower()): v for n, un, k, v in r0["kpi"].get("vol") or []}
+        for n, un, k, vv in r1["kpi"].get("vol") or []:
+            ov = older.get((n.lower(), un.lower()))
+            if not ov or not any(abs(v - ov[0]) <= max(0.5, abs(ov[0]) * 1e-6) for v in vv[1:]):
+                continue
+            it = vols.setdefault((n.lower(), un.lower()), {"lbl": n, "unit": un, "kind": k, "s": {}})
+            it["s"].setdefault(p1, vv[0])
+            it["s"].setdefault(p0, ov[0])
+    vol_out = []
+    for it in vols.values():
+        if latest in it["s"]:  # bara rader som är bekräftade i senaste rapporten
+            it["s"] = sorted([p, v] for p, v in it["s"].items())[-8:]
+            vol_out.append(it)
+    if not out and not vol_out:
+        return None
+    doc = {"g": group, "p": latest, "date": per[0][2]["date"], "title": per[0][2]["title"], "url": per[0][1]}
+    if out:
+        doc["items"] = out
+    if vol_out:
+        doc["vol"] = vol_out[:14]
+    return doc
 
 
 def sv_amount(num, unit_word):
@@ -2535,6 +3071,7 @@ def main():
     ap.add_argument("--reinterim", action="store_true", help="läs om sparade kvartalsrapporter ur --raw-cache (efter att INTERIM_VERSION höjts)")
     ap.add_argument("--retext", action="store_true", help="läs bara om pressmeddelandenas text ur --raw-cache (snabbt, utan PDF:erna)")
     ap.add_argument("--max-nav", type=int, default=80, help="högst så många rapporter per körning läses om för substansvärdet")
+    ap.add_argument("--max-kpi", type=int, default=150, help="högst så många rapporter per körning läses för branschens nyckeltal")
     ap.add_argument("--health", default=None, help="fil där hälsokollen sparas (problem blir ett ärende på GitHub)")
     args = ap.parse_args()
     global FILE_CACHE
@@ -2834,6 +3371,30 @@ def main():
                     break
                 r["navv"] = NAV_VERSION
             navs += 1
+    # Branschens nyckeltal i bolagens sparade rapporter: först den senaste rapporten för alla bolag, sedan den
+    # näst senaste, osv. Nya rapporter (och alla när KPI_VERSION höjts) läses på det här sättet.
+    kpis = 0
+    for depth in range(8):
+        for slug in slugs:
+            m = mfn.get(slug) or {}
+            group = kpi_group(m.get("industry"))
+            reps = sorted((m.get("reports") or {}).items(), key=lambda x: x[1]["date"], reverse=True)
+            if not group or len(reps) <= depth or out_of_time() or kpis >= args.max_kpi or failures >= 10:
+                continue
+            url, r = reps[depth]
+            if r.get("kv") == KPI_VERSION or days_since(r["date"]) > 750:
+                continue
+            try:
+                read_kpis(r, url, group)
+            except Exception as e:
+                print("  %s: nyckeltalen gick inte att läsa (%s)" % (url, e))
+                if network_error(e):
+                    failures += 1
+                    continue
+                r["kv"] = KPI_VERSION
+            kpis += 1
+    with_kpi = sum(1 for s in slugs if any(r.get("kpi") for r in (mfn.get(s, {}).get("reports") or {}).values()))
+    print("  Branschens nyckeltal: %d rapporter lästa, %d bolag med nyckeltal" % (kpis, with_kpi))
     if not out_of_time():
         state["mfnRun"] = today
     with_q = sum(1 for s in slugs if any(r.get("q") for r in (mfn.get(s, {}).get("reports") or {}).values()))
@@ -2957,7 +3518,7 @@ def main():
         annual_rev = None
         if m["report"] and (m["report"].get("fin") or {}).get("rev", [None])[0]:
             annual_rev = (m["report"]["cur"], m["report"]["fin"]["rev"][0])
-        checked = {u: sane_quarter(r["q"], annual_rev) for u, r in m["reps"] if r.get("q")}
+        checked = {u: sane_quarter(fixed_quarter(r), annual_rev) for u, r in m["reps"] if r.get("q")}
         latest = next(((u, r) for u, r in m["recent"] if checked.get(u)), None)
         if latest:
             u, r = latest
@@ -2975,8 +3536,8 @@ def main():
             if len(reacts) >= 2:
                 doc["reacts"] = reacts
             # Affärsområdena senaste kvartalet (samma valuta och samma rapport som siffrorna ovan)
-            if r.get("seg") and r["seg"]["p"] == q["p"] and sane_segments(r["seg"]):
-                doc["qseg"] = sane_segments(r["seg"])
+            if r.get("seg") and r["seg"]["p"] == r["q"]["p"] and sane_segments(r["seg"]):
+                doc["qseg"] = dict(sane_segments(r["seg"]), p=q["p"])
             pts = {}
             for x in (checked.get(u) for u, _ in m["reps"]):
                 if x and x["m"] == 3 and x["cur"] == q["cur"] and x["p"] not in pts:
@@ -2991,6 +3552,12 @@ def main():
         nav = nav_doc(m["reps"], prices.get(isin, {}), stocks.get(isin))
         if nav:
             doc["nav"] = nav
+        group = kpi_group(m["mm"].get("industry"))
+        if group:
+            kcur = doc["q"]["cur"] if doc.get("q") else (m["report"] or {}).get("cur") or "SEK"
+            kpi = kpi_doc(m["reps"], group, kcur)
+            if kpi:
+                doc["kpi"] = kpi
         cal = calendar_facts(m["mm"].get("cal") or [], share_ticker(m["mm"].get("tickers") or [], stocks.get(isin)))
         if cal:
             doc["cal"] = cal

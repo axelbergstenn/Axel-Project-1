@@ -929,6 +929,44 @@ a.btn { color: var(--fg); }
 .ml-dot { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--bg); border: 2px solid var(--brand); pointer-events: auto; }
 .ml-dot.now { background: var(--brand); width: 10px; height: 10px; margin: -5px 0 0 -5px; }
 .ml-axis { display: flex; justify-content: space-between; margin-top: 6px; font-size: 10.5px; color: var(--fg-muted); }
+/* Branschens nyckeltal: ett mått per ruta med värde, förändring, de senaste kvartalen och en förklaring */
+.kp-tiles { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+.kp-tile { display: flex; flex-direction: column; }
+.kp-name { font-size: 13.5px; font-weight: 650; color: var(--fg-soft); margin-bottom: 4px; }
+.kp-change { margin-top: 2px; font-size: 12.5px; color: var(--fg-muted); }
+.kp-change .pos { color: var(--pos); font-weight: 600; }
+.kp-change .neg { color: var(--neg); font-weight: 600; }
+.kp-bars { position: relative; display: flex; gap: 3px; height: 40px; margin-top: 12px; border-bottom: 1px solid var(--border); }
+.kp-col { position: relative; flex: 1 1 0; min-width: 0; }
+.kp-bar { position: absolute; left: 14%; right: 14%; max-width: 18px; margin: 0 auto; border-radius: 3px 3px 0 0; background: var(--bar-neutral); }
+.kp-bar.now { background: var(--brand); }
+.kp-bar.neg { background: var(--bar-neg); opacity: 0.55; border-radius: 0 0 3px 3px; }
+.kp-bar.neg.now { opacity: 1; }
+.kp-col:hover .kp-bar { filter: brightness(0.92); }
+.kp-line { position: relative; height: 40px; margin-top: 12px; }
+.kp-line svg { display: block; width: 100%; height: 40px; overflow: visible; }
+.kp-axis { display: flex; justify-content: space-between; margin-top: 4px; font-size: 10.5px; color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+.kp-tile .kt-sub { margin-top: auto; padding-top: 10px; line-height: 1.45; }
+.kp-vol-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 32px; }
+.kp-vol-grid.one { grid-template-columns: minmax(0, 1fr); }
+.kp-card .know-tiles + .kp-vol-grid { margin-top: 4px; }
+.kp-vol { list-style: none; margin: 0; padding: 0; }
+.kp-vol li { display: grid; grid-template-columns: minmax(0, 1fr) 92px; gap: 2px 16px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.kp-vol li:last-child { border-bottom: 0; }
+.kpv-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 12px; min-width: 0; }
+.kpv-name { font-size: 13.5px; color: var(--fg); }
+.kpv-val { font-size: 13.5px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kpv-sub { font-size: 12px; color: var(--fg-muted); }
+.kpv-sub .pos { color: var(--pos); font-weight: 600; }
+.kpv-sub .neg { color: var(--neg); font-weight: 600; }
+.kpv-bars { grid-column: 2; grid-row: 1 / span 2; display: flex; align-items: flex-end; gap: 2px; height: 30px; }
+.kpv-bar { flex: 1 1 0; height: 100%; display: flex; align-items: flex-end; }
+.kpv-bar i { display: block; width: 100%; border-radius: 2px 2px 0 0; background: var(--bar-neutral); }
+.kpv-bar.now i { background: var(--brand); }
+@media (max-width: 760px) {
+  .kp-vol-grid { grid-template-columns: minmax(0, 1fr); }
+  .kp-vol li { grid-template-columns: minmax(0, 1fr) 72px; }
+}
 /* Börsens reaktion */
 .rx-plot { display: flex; gap: 8px; }
 .rx-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
