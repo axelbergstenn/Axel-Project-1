@@ -48,8 +48,11 @@ jobs:
       MIDDAY: ${{ github.event_name == 'schedule' && github.event.schedule != '0 5 * * *' }}
     steps:
       # Hela historiken, så att datasteget kan göra rebase om någon pushat under körningen
+      # Senaste main, inte commiten som startade körningen: en körning som väntat på en annan i kön
+      # ska bygga vidare på den datan den förra sparade, annars krockar datafilerna när de sparas.
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
 
       # FI:s zip-filer sparas mellan körningar så att bara nya kvartal laddas ner
@@ -179,7 +182,18 @@ jobs:
             git add site/data data
             git commit -m "Uppdatera fondinnehav från FI"
             for i in 1 2 3 4; do
-              if git pull --rebase -q origin main && git push -q origin HEAD:main; then break; fi
+              if ! git pull --rebase -q origin main; then
+                # Krock i datafilerna (en annan körning hann spara samma fil): den här körningens version är
+                # nybyggd ur källorna och gäller. Krockar något utanför datan avbryts sparandet som förut.
+                conflicts=$(git diff --name-only --diff-filter=U)
+                if [ -n "$conflicts" ] && ! echo "$conflicts" | grep -qvE '^(site/data|data)/'; then
+                  echo "Datakrock löses med den nya versionen: $conflicts"
+                  echo "$conflicts" | xargs git checkout --theirs --
+                  echo "$conflicts" | xargs git add
+                  GIT_EDITOR=true git rebase --continue || true
+                fi
+              fi
+              if ! git rebase --show-current-patch >/dev/null 2>&1 && git push -q origin HEAD:main; then break; fi
               if [ "$i" = 4 ]; then echo "Kunde inte spara datan"; exit 1; fi
               git rebase --abort 2>/dev/null || true
               sleep $((i * 10))
