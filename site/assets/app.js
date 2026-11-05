@@ -989,6 +989,12 @@
           (o.price != null ? ", " + offerPriceText(o) + " per aktie" : "") + (o.premium != null ? " (premie " + nf1.format(o.premium) + " %)" : "") +
           '. <a href="#/uppkop/' + encodeURIComponent(o.id) + '">Se vilka fonder som ägde bolaget</a></div>';
       });
+      if (needBids()) newBids(isin).forEach(function (b) {
+        html += '<div class="notice offer-notice"><b>Nytt uppköpserbjudande ' + b.date + "</b>" + (b.bidder ? " från " + esc(b.bidder) : "") +
+          (b.price != null ? ", " + bidPriceText(b) + " per aktie" : "") + (b.premium != null ? " (premie " + nf1.format(b.premium) + " %)" : "") +
+          (b.rec === "ja" ? ". Styrelsen rekommenderar budet" : b.rec === "nej" ? ". Styrelsen avråder från budet" : "") +
+          '. <a href="' + esc(b.url) + '" target="_blank" rel="noopener">Pressmeddelandet ↗</a></div>';
+      });
     }
 
     html += companySection(isin, name, s ? s.sector : hs.sector);
@@ -3286,6 +3292,22 @@
       });
     });
   }
+  // Nya bud ur pressmeddelandena på MFN (scripts/build-bids.py), samma dag som de lämnas. Ett bud visas tills
+  // Finansinspektionens erbjudandehandling för samma bolag finns i offers.json.
+  function needBids() {
+    return need("bids", function () {
+      return getJSON("data/bids.json").then(function (d) { state.bids = d.bids || []; }, function () { state.bids = []; });
+    });
+  }
+  function newBids(isin) {
+    if (!state.bids || !state.offers) return [];
+    return state.bids.filter(function (b) {
+      if (isin && b.isins.indexOf(isin) < 0) return false;
+      var from = new Date(Date.parse(b.date) - 14 * 864e5).toISOString().slice(0, 10);
+      return !state.offers.offers.some(function (o) { return o.date >= from && (o.isins || []).some(function (i) { return b.isins.indexOf(i) >= 0; }); });
+    });
+  }
+  function bidPriceText(b) { return b.price == null ? "–" : nf2.format(b.price).replace(/,00$/, "") + " " + (b.cur === "SEK" || !b.cur ? "kr" : b.cur); }
   function cleanTarget(t) { return t ? prettyName(String(t).replace(/\s*\(publ\)\s*/ig, " ").replace(/\s+/g, " ").trim()) : null; }
   function offerUrl(o) { return "https://www.fi.se/sv/vara-register/prospektregistret/details?id=" + encodeURIComponent(o.id); }
   function offersFor(isin) {
@@ -3388,7 +3410,28 @@
       { key: "t", label: "Bolag", align: "l", cls: "muted", hideSm: true, cell: function (f) { return esc(f.targets.slice(0, 4).join(", ") + (f.targets.length > 4 ? " …" : "")); } }
     ];
 
-    return head +
+    // Nya bud som ännu inte har någon erbjudandehandling hos FI
+    var fresh = needBids() ? newBids() : [];
+    var freshCols = [
+      { key: "date", label: "Datum", align: "l", cls: "muted", hideSm: true, cell: function (b) { return b.date; } },
+      { key: "name", label: "Bolag", align: "l", cls: "name", cell: function (b) {
+        return nameCell("#/aktie/" + b.isins[0], cleanTarget(b.name) || "Okänt bolag", b.date + (b.bidder ? " · " + esc(b.bidder) : ""));
+      } },
+      { key: "bidder", label: "Budgivare", align: "l", cls: "muted", hideSm: true, cell: function (b) { return b.bidder ? esc(b.bidder) : "–"; } },
+      { key: "price", label: "Pris per aktie", cell: bidPriceText },
+      { key: "premium", label: "Premie", cell: function (b) { return b.premium == null ? "–" : '<span class="pos">' + nf1.format(b.premium) + " %</span>"; } },
+      { key: "rec", label: "Styrelsen", align: "l", hideSm: true, cell: function (b) {
+        return b.rec === "ja" ? "Rekommenderar budet" : b.rec === "nej" ? '<span class="neg">Avråder</span>' : "–";
+      } },
+      { key: "src", label: "", cell: function (b) { return '<a href="' + esc(b.url) + '" target="_blank" rel="noopener">Pressmeddelande ↗</a>'; } }
+    ];
+    var freshHtml = fresh.length ? '<section class="block section-gap"><div class="block-head"><h2>Nya bud</h2><span class="note">' +
+      (fresh.length === 1 ? "1 bud" : int(fresh.length) + " bud") + " utan erbjudandehandling än</span></div>" +
+      '<p class="desc">Bud som har lämnats men där Finansinspektionen ännu inte har godkänt erbjudandehandlingen, vilket brukar ta två till fyra veckor. ' +
+      "Uppgifterna kommer ur pressmeddelandena på MFN. Premien är mot stängningskursen dagen före budet.</p>" +
+      table("bids-new", freshCols, fresh, { static: true }) + "</section>" : "";
+
+    return head + freshHtml +
       '<div class="highlights">' +
       highlight("Uppköpserbjudanden", int(offers.length) + " bud", null, years.length ? "sedan " + years[0] : "", "Godkända erbjudandehandlingar hos FI") +
       highlight("Mittenvärde för budpremien", medPrem != null ? nf1.format(medPrem) + " %" : "–", null, "", "Mot stängningskursen dagen före budet, " + prem.length + " bud") +

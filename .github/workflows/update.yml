@@ -127,6 +127,13 @@ jobs:
           ALARM_STEP: Bygg bolagsfakta för amerikanska aktier
         run: bash scripts/company-alarm.sh "$RUNNER_TEMP/bolag-us-health.json"
 
+      # Nya uppköpserbjudanden samma dag som de lämnas, ur pressmeddelandena på MFN (FI:s erbjudandehandling kommer
+      # veckor senare). Läser de senaste dagarnas pressmeddelanden, så det räcker att köra tre gånger om dagen.
+      - name: Hämta nya bud från MFN
+        continue-on-error: true
+        timeout-minutes: 5
+        run: python3 scripts/build-bids.py
+
       # Spararnas nettoflöden per fondtyp (Fondbolagens förening, månadsvis) och uppskattade flöden per fond (ur FI-datan)
       - name: Bygg fondsparandet
         shell: pwsh
