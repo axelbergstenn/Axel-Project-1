@@ -62,6 +62,38 @@ $MarketSeries = [ordered]@{
   "SEMB5YCACOMB" = "Bostadsobligation 5 år"
 }
 
+# Riksbankens senaste räntebeslut, om det börjar gälla först om några dagar ("Styrräntan höjs till 2 procent",
+# tillämpas från den 11 november). Serierna ovan är räntan som gäller i dag, så utan detta syns ett beslut först
+# när det börjat gälla. Ur Riksbankens pressmeddelanden (RSS och själva pressmeddelandet).
+function Get-PolicyDecision {
+  $wc = New-Object System.Net.WebClient
+  $wc.Encoding = $Utf8
+  $wc.Headers.Add("User-Agent", "Fondinsyn/1.0 (https://www.fondinsyn.se)")
+  $rss = $wc.DownloadString("https://www.riksbank.se/sv/rss/pressmeddelanden")
+  $months = @("januari", "februari", "mars", "april", "maj", "juni", "juli", "augusti", "september", "oktober", "november", "december")
+  foreach ($m in [regex]::Matches($rss, '(?s)<item[^>]*>(.*?)</item>')) {
+    $it = $m.Groups[1].Value
+    $title = [System.Net.WebUtility]::HtmlDecode(([regex]::Match($it, '(?s)<title>(.*?)</title>')).Groups[1].Value).Trim()
+    $tm = [regex]::Match($title, '^Styrräntan (?:höjs|sänks) till (\d+(?:,\d+)?) procent')
+    if (-not $tm.Success) {
+      if ($title -match '^Styrräntan lämnas oförändrad') { return $null }   # senaste beslutet ändrade inget
+      continue
+    }
+    $pub = [datetime]::Parse(([regex]::Match($it, '<pubDate>(.*?)</pubDate>')).Groups[1].Value, $Inv)
+    if ($pub -lt (Get-Date).AddDays(-30)) { return $null }
+    $link = ([regex]::Match($it, '<link>(.*?)</link>')).Groups[1].Value.Trim()
+    $page = [System.Net.WebUtility]::HtmlDecode(($wc.DownloadString($link) -replace '<[^>]+>', ' ')) -replace '\s+', ' '
+    $fm = [regex]::Match($page, 'tillämpas från (?:och med )?(?:den )?(\d{1,2}) (' + ($months -join '|') + ') (\d{4})')
+    if (-not $fm.Success) { return $null }
+    $from = New-Object DateTime ([int]$fm.Groups[3].Value), ([array]::IndexOf($months, $fm.Groups[2].Value) + 1), ([int]$fm.Groups[1].Value)
+    if ($from.Date -le (Get-Date).Date) { return $null }   # gäller redan, och syns då i räntan ovan
+    Write-Host "  räntebeslut: styrräntan blir $($tm.Groups[1].Value) % från $($from.ToString('yyyy-MM-dd'))"
+    return '{"rate":' + (N (Num $tm.Groups[1].Value)) + ',"from":' + (J $from.ToString("yyyy-MM-dd")) + ',"date":' + (J $pub.ToString("yyyy-MM-dd")) +
+      ',"title":' + (J $title) + ',"url":' + (J $link) + '}'
+  }
+  return $null
+}
+
 function Build-Market {
   $from = (Get-Date).AddYears(-20).AddDays(-14).ToString("yyyy-MM-dd")   # 20 år, för diagrammets längsta period
   $to = (Get-Date).ToString("yyyy-MM-dd")
@@ -87,7 +119,10 @@ function Build-Market {
     Start-Sleep -Seconds 3
   }
   if (-not $parts.Count) { throw "Inga serier från Riksbanken" }
-  Write-Utf8 (Join-Path $OutDir "rates-market.json") ('{"built":' + (J (Get-Date -Format "yyyy-MM-dd")) + ',"source":"Sveriges Riksbank","series":{' + ($parts -join ",") + "}}")
+  $next = $null
+  try { $next = Get-PolicyDecision } catch { Write-Host "  varning: Riksbankens pressmeddelanden gick inte att läsa ($($_.Exception.Message))" }
+  Write-Utf8 (Join-Path $OutDir "rates-market.json") ('{"built":' + (J (Get-Date -Format "yyyy-MM-dd")) + ',"source":"Sveriges Riksbank",' +
+    $(if ($next) { '"next":' + $next + "," } else { "" }) + '"series":{' + ($parts -join ",") + "}}")
   Write-Host "  marknadsräntor: $($parts.Count) serier"
 }
 

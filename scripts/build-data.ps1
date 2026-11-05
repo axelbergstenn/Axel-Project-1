@@ -437,7 +437,7 @@ function Get-OfferList([int]$fromYear) {
   $list = @()
   for ($y = $fromYear; $y -le (Get-Date).Year; $y++) {
     $html = (Invoke-WebRequest -Uri "$FiBase/sv/vara-register/prospektregistret/?dokumenttyp=erbjudandehandling&year=$y" -UseBasicParsing).Content
-    foreach ($m in [regex]::Matches($html, '(?s)<td class="date">(\d{4}-\d{2}-\d{2})</td>\s*<td>(.*?)</td>\s*<td>(.*?)</td>\s*<td><a href="details\?id=([\d-]+)"')) {
+    foreach ($m in [regex]::Matches($html, '(?s)<td class="date">(\d{4}-\d{2}-\d{2})</td>\s*<td>(.*?)</td>\s*<td>(.*?)</td>\s*<td><a href="[^"]*details\?id=([\d-]+)"')) {
       $list += [pscustomobject]@{
         Id = $m.Groups[4].Value; Date = $m.Groups[1].Value
         Bidder = [System.Net.WebUtility]::HtmlDecode($m.Groups[2].Value).Trim()

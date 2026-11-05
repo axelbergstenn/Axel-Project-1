@@ -1941,6 +1941,8 @@ if ($mkt) {
     "[" + (J $id) + "," + (J $ser.label) + "," + ([double]$lp[1]).ToString("0.###", $Inv) + "," + (J ([string]$lp[0])) + "," + $(if ($null -eq $chg) { "null" } else { $chg.ToString("0.###", $Inv) }) + ",[" + $spark + "]]"
   }
   $front.Add('"rates":[' + (@($rs) -join ",") + "]")
+  # Riksbankens beslut som börjar gälla om några dagar (se Get-PolicyDecision i build-rates.ps1)
+  if ($mkt.next -and [string]$mkt.next.from -gt (Get-Date -Format "yyyy-MM-dd")) { $front.Add('"next":' + ($mkt.next | ConvertTo-Json -Compress)) }
 }
 if ($ratesLight) { $front.Add('"bonds":[' + [math]::Round([double]$ratesLight.totals[1]).ToString($Inv) + "," + [math]::Round([double]$ratesLight.totals[2]).ToString($Inv) + "]") }
 if ($insider) {

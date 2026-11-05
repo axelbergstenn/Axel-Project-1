@@ -782,6 +782,15 @@
   // Bolagsnamn utan "AB" och "(publ)" i korta listor
   function shortCo(n) { return prettyName(n).replace(/\s*\(publ\)\s*$/i, "").replace(/\s+AB$/, ""); }
   function ratePp(v) { return v == null ? "" : Math.abs(v) < 0.005 ? "oförändrad" : signed(nf2.format(v), v) + " p.e."; }
+  // Riksbankens beslut som inte börjat gälla än ({rate, from, date, url}), annars null
+  function policyNext(n, now) {
+    return n && n.from > new Date().toISOString().slice(0, 10) && (now == null || Math.abs(n.rate - now) >= 0.005) ? n : null;
+  }
+  // "höjs till 2,00 % den 11 november"
+  function policyNextText(n, now, short) {
+    var d = dateText(n.from).replace(/ \d{4}$/, "");
+    return (now == null ? "blir " : n.rate > now ? "höjs till " : "sänks till ") + ratePct(n.rate) + " den " + (short ? d.replace(/(\d+ \w{3})\w*/, "$1") : d);
+  }
 
   function loadFront() {
     getJSON("data/front.json").then(function (f) { state.front = f; }, function () { state.front = false; }).then(function () {
@@ -801,7 +810,9 @@
     var parts = ['<span class="tk-live">Uppdaterad ' + esc(shortStamp(f.built)) + "</span>"];
     (f.rates || []).forEach(function (r) {
       if (r[0] === "SEGVB2YC") return;
-      parts.push(item("#/rantor", RATE_SHORT[r[0]] || esc(r[1]), ratePct(r[2]), r[4] != null ? [ratePp(r[4]) + " på 1 år", ""] : null, r[1] + ", " + dateText(r[3])));
+      var nx = r[0] === "SECBREPOEFF" ? policyNext(f.next, r[2]) : null;
+      parts.push(item("#/rantor", RATE_SHORT[r[0]] || esc(r[1]), ratePct(r[2]), nx ? [policyNextText(nx, r[2], true), nx.rate > r[2] ? "pos" : "neg"] : r[4] != null ? [ratePp(r[4]) + " på 1 år", ""] : null,
+        r[1] + ", " + dateText(r[3]) + (nx ? ". Riksbanken beslutade den " + dateText(nx.date) + " att räntan " + policyNextText(nx, r[2]) : "")));
     });
     parts.push('<span class="tk-sep" aria-hidden="true"></span>');
     parts.push(item("#/rapport", "Fonderna " + esc(f.ql), bigSek(f.net, true), null, "Svenska fonders nettoköp av svenska aktier"));
@@ -869,7 +880,8 @@
       var policy = byId.SECBREPOEFF, ten = byId.SEGVB10YC;
       out.push(mod("Räntor", "#/rantor", "Räntor och obligationer", "",
         (policy ? '<div class="mod-big"><b>' + ratePct(policy[2]) + '</b></div><p class="desc">Riksbankens styrränta' +
-          (policy[4] != null ? ", " + ratePp(policy[4]) + " på ett år" : "") + "</p>" : "") +
+          (policy[4] != null ? ", " + ratePp(policy[4]) + " på ett år" : "") + "." +
+          (policyNext(f.next, policy[2]) ? " <b>Den " + policyNextText(f.next, policy[2]) + ".</b>" : "") + "</p>" : "") +
         (ten ? '<p class="desc">Statsobligation 10 år, senaste året</p>' + sparkline(ten[5]) : "") +
         '<div class="mod-rates">' + f.rates.filter(function (r) { return r !== policy; }).map(function (r) {
           return "<span>" + (RATE_SHORT[r[0]] || esc(r[1])) + "</span><b>" + ratePct(r[2]) + "</b>";
@@ -5265,7 +5277,9 @@
     var figs = [];
     if (hasMarket && m) {
       var pr = last("SECBREPOEFF"), g10 = last("SEGVB10YC"), mb5 = last("SEMB5YCACOMB");
-      if (pr) figs.push(fig(termLink("styrranta", "Styrränta"), ratePct(pr.v), "Riksbanken, " + dateText(pr.d)));
+      var prNext = pr ? policyNext(m.next, pr.v) : null;
+      if (pr) figs.push(fig(termLink("styrranta", "Styrränta"), ratePct(pr.v), prNext ? '<a href="' + esc(prNext.url) + '" target="_blank" rel="noopener">' +
+        capFirst(policyNextText(prNext, pr.v)) + "</a>, beslutat " + dateText(prNext.date).replace(/ \d{4}$/, "") : "Riksbanken, " + dateText(pr.d)));
       if (g10) figs.push(fig("Statsobligation 10 år", ratePct(g10.v), ppChange(yearAgo("SEGVB10YC")) + " på ett år"));
       if (mb5) figs.push(fig(termLink("bostadsobligation", "Bostadsobligation 5 år"), ratePct(mb5.v), ppChange(yearAgo("SEMB5YCACOMB")) + " på ett år"));
     }
