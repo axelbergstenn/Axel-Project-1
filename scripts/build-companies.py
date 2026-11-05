@@ -2485,10 +2485,12 @@ def kpi_doc(reps, group, cur):
         kind, flow = spec[key][2], spec[key][7]
         # Ett belopp som avviker mycket från bolagets andra kvartal är troligen ett affärsområde eller flera kvartal
         if kind in ("amt", "n") and len(s) >= 3 and key not in ("kf", "netlet", "inflow", "ocf", "mgmt"):
-            for p in list(s):
-                others = sorted(v[0] for q, v in s.items() if q != p)
+            # jämförs med alla kvartal som de var från början, så att det som tas bort inte påverkar resten
+            orig = {p: v[0] for p, v in s.items()}
+            for p, x in orig.items():
+                others = sorted(v for q, v in orig.items() if q != p)
                 med = others[len(others) // 2]
-                if med > 0 and not med / 2.5 <= s[p][0] <= med * 2.5:
+                if med > 0 and not med / 2.5 <= x <= med * 2.5:
                     del s[p]
             if latest not in s:
                 continue
@@ -3555,7 +3557,12 @@ def main():
         group = kpi_group(m["mm"].get("industry"))
         if group:
             kcur = doc["q"]["cur"] if doc.get("q") else (m["report"] or {}).get("cur") or "SEK"
-            kpi = kpi_doc(m["reps"], group, kcur)
+            try:
+                kpi = kpi_doc(m["reps"], group, kcur)
+            except Exception as e:
+                # ett fel i nyckeltalen ska aldrig stoppa resten av bolagsfakta
+                print("  %s: nyckeltalen gick inte att bygga (%r)" % (isin, e))
+                kpi = None
             if kpi:
                 doc["kpi"] = kpi
         cal = calendar_facts(m["mm"].get("cal") or [], share_ticker(m["mm"].get("tickers") or [], stocks.get(isin)))
