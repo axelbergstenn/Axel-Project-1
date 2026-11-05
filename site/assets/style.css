@@ -929,6 +929,16 @@ a.btn { color: var(--fg); }
 .ml-dot { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--bg); border: 2px solid var(--brand); pointer-events: auto; }
 .ml-dot.now { background: var(--brand); width: 10px; height: 10px; margin: -5px 0 0 -5px; }
 .ml-axis { display: flex; justify-content: space-between; margin-top: 6px; font-size: 10.5px; color: var(--fg-muted); }
+/* Vad räknar börsen med? Reglagen för avkastningskrav och tillväxt */
+.dcf-card .know-tiles.in-card { margin-top: 4px; }
+.dcf-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 28px; margin-bottom: 14px; }
+.dcf-ctl { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; color: var(--fg-soft); }
+.dcf-ctl span { display: flex; justify-content: space-between; gap: 10px; }
+.dcf-ctl b { color: var(--fg); font-weight: 650; font-variant-numeric: tabular-nums; }
+.dcf-ctl input[type="range"] { width: 100%; min-height: 44px; margin: 0; accent-color: var(--brand); cursor: pointer; }
+.dcf-say { margin: 10px 0 0; font-size: 14px; line-height: 1.55; color: var(--fg-soft); }
+.dcf-say .pos { color: var(--pos); } .dcf-say .neg { color: var(--neg); }
+@media (max-width: 760px) { .dcf-controls { grid-template-columns: minmax(0, 1fr); } }
 /* Branschens nyckeltal: ett mått per ruta med värde, förändring, de senaste kvartalen och en förklaring */
 .kp-tiles { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
 .kp-tile { display: flex; flex-direction: column; }

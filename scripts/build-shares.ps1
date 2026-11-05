@@ -39,11 +39,14 @@ function Get-Json($url) {
 $known = @{}
 # Nasdaqs orderbok-id och kortnamn per ISIN, för länken "Dagens kurs hos Nasdaq" på aktiesidan
 $nasdaqIds = @{}
+# Senaste kursen per ISIN (för börsvärdet och värderingen på aktiesidan): [kurs, datum, valuta]
+$prices = @{}
 if (Test-Path $OutFile) {
   try {
     $old = [System.IO.File]::ReadAllText((Resolve-Path $OutFile).Path, $Utf8) | ConvertFrom-Json
     foreach ($prop in $old.shares.PSObject.Properties) { $known[$prop.Name] = @([double]$prop.Value[0], [string]$prop.Value[1]) }
     if ($old.book) { foreach ($prop in $old.book.PSObject.Properties) { $nasdaqIds[$prop.Name] = @([string]$prop.Value[0], [string]$prop.Value[1]) } }
+    if ($old.px) { foreach ($prop in $old.px.PSObject.Properties) { $prices[$prop.Name] = @([double]$prop.Value[0], [string]$prop.Value[1], [string]$prop.Value[2]) } }
   } catch { Write-Host "  Kunde inte läsa $OutFile, börjar om" }
 }
 
@@ -63,6 +66,10 @@ foreach ($cat in @("MAIN_MARKET", "FIRST_NORTH")) {
       if ($r.isin -and $wanted.Contains([string]$r.isin)) {
         $book[[string]$r.isin] = [string]$r.orderbookId
         $nasdaqIds[[string]$r.isin] = @([string]$r.orderbookId, [string]$r.symbol)
+        $p = 0.0
+        if ([double]::TryParse(([string]$r.lastSalePrice -replace '[,\s]', ''), [System.Globalization.NumberStyles]::Float, $Inv, [ref]$p) -and $p -gt 0) {
+          $prices[[string]$r.isin] = @($p, (Get-Date -Format "yyyy-MM-dd"), [string]$r.currency)
+        }
       }
     }
   } catch { Write-Host "  Kunde inte hämta listan $cat`: $($_.Exception.Message)" }
@@ -90,6 +97,7 @@ Write-Host ("  Hämtade antal aktier för {0} aktier ({1} misslyckades), {2} i f
 
 $parts = foreach ($k in ($known.Keys | Sort-Object)) { '"' + $k + '":[' + ([math]::Round($known[$k][0])).ToString($Inv) + ',"' + $known[$k][1] + '"]' }
 $bookParts = foreach ($k in ($nasdaqIds.Keys | Sort-Object)) { '"' + $k + '":["' + $nasdaqIds[$k][0] + '","' + ($nasdaqIds[$k][1] -replace '"', '') + '"]' }
-$json = '{"built":"' + $today + '","src":"Nasdaq","shares":{' + (@($parts) -join ",") + '},"book":{' + (@($bookParts) -join ",") + '}}'
+$pxParts = foreach ($k in ($prices.Keys | Sort-Object)) { '"' + $k + '":[' + $prices[$k][0].ToString("0.####", $Inv) + ',"' + $prices[$k][1] + '","' + ($prices[$k][2] -replace '"', '') + '"]' }
+$json = '{"built":"' + $today + '","src":"Nasdaq","shares":{' + (@($parts) -join ",") + '},"book":{' + (@($bookParts) -join ",") + '},"px":{' + (@($pxParts) -join ",") + '}}'
 [System.IO.File]::WriteAllText((Join-Path (Resolve-Path $OutDir).Path "shares.json"), $json, $Utf8)
 Write-Host "Skrev $OutFile"

@@ -262,8 +262,22 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - id: deployment
+      # GitHub Pages fastnar ibland på "updating_pages" och avbryts efter tio minuter. Då görs ett nytt försök med
+      # samma byggda sajt, så att besökarna inte blir utan det nya bygget.
+      - id: first
+        continue-on-error: true
         uses: actions/deploy-pages@v5
+        with:
+          timeout: 600000
+
+      - id: retry
+        if: steps.first.outcome == 'failure'
+        uses: actions/deploy-pages@v5
+        with:
+          timeout: 900000
+
+      - id: deployment
+        run: echo "page_url=${{ steps.first.outputs.page_url || steps.retry.outputs.page_url }}" >> "$GITHUB_OUTPUT"
 
       # IndexNow: Bing (och andra sökmotorer som använder IndexNow) får veta att sidorna har uppdaterats och läser om
       # dem, så att träfflistan visar aktuell titel, beskrivning och logga. En gång om dagen, med sidorna i sitemap.

@@ -62,6 +62,7 @@ INTERIM_VERSION = 5  # samma sak för kvartalsrapporterna
 NAV_VERSION = 1      # substansvärdet i investment- och fastighetsbolagens rapporter (läses om utan att resten läses om)
 NAV_INDUSTRIES = {"Investeringar", "Förvaltning"}  # MFN:s branscher för investmentbolag och fastighetsbolag
 KPI_VERSION = 1     # branschens nyckeltal (läses om utan att resten läses om)
+KPI_GROUP_VERSION = {"tele": 2}  # en bransch vars nyckeltal läses om (nya mått), utan att alla andra läses om
 UA = "Fondinsyn/1.0 (https://www.fondinsyn.se)"
 TODAY = dt.date.today()
 
@@ -1255,7 +1256,7 @@ def read_statement(pdf_bytes):
 # ---------- Pressmeddelandet: belopp, vd, "om bolaget" ----------
 
 TEXT_UNITS = [
-    (r"miljarder kronor|mdkr|mdr kr|miljarder sek|sek miljarder|sek ?bn|sek billion|billion sek|mdsek|bnsek", 1e9, "SEK"),
+    (r"miljarder kronor|mdkr|mdr kr|miljarder sek|sek miljarder|sek ?bn|sek billion|billion sek|mdsek|bnsek|gsek", 1e9, "SEK"),
     (r"miljoner kronor|mkr|msek|mnkr|mn kr|miljoner sek|sek ?m\b|sek ?million|sek ?mn|sekm|mln sek|sek mln", 1e6, "SEK"),
     (r"tusen kronor|tkr|tsek|ksek|kkr|sek ?thousand|sek ?k\b|tusen sek", 1e3, "SEK"),
     (r"miljarder euro|eur ?bn|eur billion", 1e9, "EUR"),
@@ -2033,6 +2034,10 @@ KPI_GROUPS = {
 NONFIN = {"mine", "forest", "retail", "tele", "pharma", "games", "tech", "ind"}
 
 
+def kpi_version(group):
+    return KPI_GROUP_VERSION.get(group, KPI_VERSION)
+
+
 def kpi_group(industry):
     return next((g for g, s in KPI_GROUPS.items() if industry in s), None)
 
@@ -2078,6 +2083,9 @@ KPIS = [
     ("active", {"games"}, "n", r"(?:antal )?aktiva (?:kunder|spelare|användare)", r"aktiva (?:kunder|spelare|användare)", 100, 5e8, True),
     ("deposits", {"games"}, "amt", r"kundinsättningar", r"kundinsättningar(?:na)?", 1e6, 1e12, True),
     # mjukvara
+    # telekom: tjänsteintäkterna (abonnemang, utan telefoner) och det fria kassaflödet
+    ("svc", {"tele"}, "amt", r"tjänsteintäkter(?: från slutkund(?:er)?)?", r"tjänsteintäkter(?:na)?(?: från slutkund(?:er)?)?", 1e8, 1e12, True),
+    ("fcf", {"tele"}, "amt", r"fritt kassaflöde(?: till eget kapital)?", r"(?:det )?fria kassaflödet(?: till eget kapital)?|fritt kassaflöde(?: till eget kapital)?", -1e11, 1e12, True),
     ("arr", {"tech"}, "amt", r"(?:arr|årligt återkommande intäkter)", r"(?:arr|årligt? återkommande intäkter(?:na)?)", 1e6, 1e12, False),
     # läkemedel och bioteknik: kassan och hur mycket verksamheten förbrukar
     ("cash", {"pharma"}, "amt", r"likvida medel(?: vid periodens slut)?", r"likvida medel", 1e5, 1e12, False),
@@ -2392,7 +2400,7 @@ def read_kpis(r, url, group):
     pdfs = list(dict.fromkeys([p for p in (r.get("pdf"),) if p] + re.findall(r'<a[^>]+href="(https://[^"]+\.pdf)"', page, re.I)))
     pdf_bytes = cached_fetch(pdfs[0], "application/pdf,*/*") if pdfs and pdfium else None
     k = kpi_figures(body, pdf_text(pdf_bytes), pdf_bytes, group)
-    r["kv"] = KPI_VERSION
+    r["kv"] = kpi_version(group)
     if k:
         r["kpi"] = k
     else:
@@ -3384,7 +3392,7 @@ def main():
             if not group or len(reps) <= depth or out_of_time() or kpis >= args.max_kpi or failures >= 10:
                 continue
             url, r = reps[depth]
-            if r.get("kv") == KPI_VERSION or days_since(r["date"]) > 750:
+            if r.get("kv") == kpi_version(group) or days_since(r["date"]) > 750:
                 continue
             try:
                 read_kpis(r, url, group)
@@ -3393,7 +3401,7 @@ def main():
                 if network_error(e):
                     failures += 1
                     continue
-                r["kv"] = KPI_VERSION
+                r["kv"] = kpi_version(group)
             kpis += 1
     with_kpi = sum(1 for s in slugs if any(r.get("kpi") for r in (mfn.get(s, {}).get("reports") or {}).values()))
     print("  Branschens nyckeltal: %d rapporter lästa, %d bolag med nyckeltal" % (kpis, with_kpi))
@@ -3491,8 +3499,12 @@ def main():
                         "slug": s.get("mfn")}
 
     by_company = {}
+    classes = {}  # bolagets alla aktieslag (Handelsbanken A och B), för börsvärdet på aktiesidan
     for isin, m in merged.items():
         by_company.setdefault(m["lei"] or m["slug"] or isin, m)
+        # preferensaktier och D-aktier har en fast utdelning och räknas inte in i stamaktiernas börsvärde
+        if m["lei"] and not re.search(r"(\bser\.?\s*|[\s-])d$|\bpref\b|preferens", (stocks.get(isin) or "").strip(), re.I):
+            classes.setdefault(m["lei"], []).append(isin)
     def rank(getter):
         vals = sorted(((getter(m), k) for k, m in by_company.items() if getter(m) is not None), reverse=True)
         return {k: [n + 1, len(vals)] for n, (_, k) in enumerate(vals)}
@@ -3570,6 +3582,8 @@ def main():
             doc["cal"] = cal
         if m["slug"]:
             doc["mfn"] = m["slug"]
+        if m["lei"] and len(classes.get(m["lei"], [])) > 1:
+            doc["classes"] = sorted(classes[m["lei"]])
         rk = {k: v[key] for k, v in (("rev", rev_rank), ("emp", emp_rank), ("age", age_rank)) if key in v}
         if rk:
             doc["rank"] = rk

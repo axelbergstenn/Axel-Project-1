@@ -36,7 +36,7 @@ OLD_NEWS = re.compile(r"erbjudandehandling|tilläggshandling|acceptfrist|acceptp
                       r"accepterats|anslutning|villkor(?:en)? (?:för|i) erbjudandet|uppfyllt|avstår|höjer|höjt|uppdatering|kallelse|stämma", re.I)
 TARGET_SAYS = re.compile(r"uttalande från .{0,60}styrelse|styrelsen (?:för .{0,60})?(?:i .{0,60})?(?:rekommenderar|avråder)|"
                          r"oberoende budkommitté|budkommittén", re.I)
-TO_HOLDERS = re.compile(r"(?:till|för) (?:aktieägarna|samtliga aktier|aktierna) i (?P<t>[^,:;]+?)(?:\s*\(publ\))?(?:\s+[–-]\s|[,:;]|$)", re.I)
+TO_HOLDERS = re.compile(r"(?:till|för) (?:aktieägarna|samtliga aktier|aktierna) i (?P<t>[^,:;]+?)(?:\s*\(publ\))?(?:\s+[–-]\s|\s+(?:att|och|samt|om)\s|[,:;]|$)", re.I)
 
 
 def fetch(url, tries=3):
@@ -105,10 +105,12 @@ def bidder_of(title):
 
 def main():
     out_path = os.path.join("site", "data", "bids.json")
-    old = {}
+    old, events = {}, {}
     if os.path.exists(out_path):
         try:
-            old = {b["url"]: b for b in json.load(open(out_path, encoding="utf-8")).get("bids", [])}
+            saved = json.load(open(out_path, encoding="utf-8"))
+            old = {b["url"]: b for b in saved.get("bids", [])}
+            events = {e["url"]: e for e in saved.get("events", [])}
         except ValueError:
             pass
     # aktierna på sajten: MFN-bolag -> ISIN (ur bolagsfakta) och namn -> ISIN (ur senaste kvartalet)
@@ -160,12 +162,82 @@ def main():
         found += 1
         print("  nytt bud %s: %s från %s, %s %s (premie %s)" % (date, rec["name"], rec.get("bidder"), rec.get("price"), rec.get("cur", ""), rec.get("premium")))
         time.sleep(1)
+    # Hur det går för buden: utfall, fullföljande, tillbakadragna bud och förlängd acceptfrist, för bolag som fått ett
+    # bud det senaste året (ur FI:s erbjudandehandlingar eller ur buden ovan)
     since = (TODAY - dt.timedelta(days=365)).isoformat()
+    targets = {}
+    for b in old.values():
+        if b["date"] >= since:
+            for i in b["isins"]:
+                targets[i] = b["date"]
+    try:
+        for o in json.load(open(os.path.join("site", "data", "offers.json"), encoding="utf-8")).get("offers", []):
+            if o.get("date", "") >= since:
+                for i in o.get("isins") or []:
+                    targets[i] = min(targets.get(i, o["date"]), o["date"])
+    except (OSError, ValueError):
+        pass
+    target_names = {i: norm(names[i]) for i in targets if i in names and len(norm(names[i])) >= 5}
+    new_events = 0
+    for date, url, slug, title in items:
+        if url in events or not re.search(r"erbjudande|budet|\bbud\b|uppköp", title, re.I):
+            continue
+        kind = event_kind(title)
+        if not kind:
+            continue
+        nt = " " + norm(title) + " "
+        isins = [i for i, n in target_names.items() if " " + n + " " in nt]
+        if not isins and slug in slug_isin:
+            isins = [i for i in slug_isin[slug] if i in targets]
+        isins = [i for i in isins if date >= targets[i]]
+        if not isins:
+            continue
+        ev = {"date": date, "isins": isins, "kind": kind, "title": title, "url": url}
+        if kind in ("result", "done"):
+            try:
+                ev.update(read_result(url))
+            except Exception as e:
+                print("  %s: utfallet gick inte att läsa (%s)" % (url, e))
+        events[url] = ev
+        new_events += 1
+        print("  %s %s: %s" % (date, kind, title[:110]))
+        time.sleep(1)
     bids = sorted((b for b in old.values() if b["date"] >= since), key=lambda b: b["date"], reverse=True)
-    text = json.dumps({"built": TODAY.isoformat(), "bids": bids}, ensure_ascii=False, separators=(",", ":"))
-    if found or not os.path.exists(out_path):
+    evs = sorted((e for e in events.values() if e["date"] >= since), key=lambda e: e["date"], reverse=True)
+    text = json.dumps({"built": TODAY.isoformat(), "bids": bids, "events": evs}, ensure_ascii=False, separators=(",", ":"))
+    if found or new_events or not os.path.exists(out_path):
         open(out_path, "w", encoding="utf-8", newline="\n").write(text)
-    print("  Bud från MFN: %d nya, %d det senaste året" % (found, len(bids)))
+    print("  Bud från MFN: %d nya, %d det senaste året; %d nya händelser i buden" % (found, len(bids), new_events))
+
+
+def event_kind(title):
+    """Vad ett pressmeddelande om ett pågående bud säger: genomfört, tillbakadraget, utfall eller förlängd acceptfrist."""
+    t = title.lower()
+    if re.search(r"återkalla|drar tillbaka|dras tillbaka|fullföljs inte|kommer inte att fullföljas|avbryt|förfaller|lämnas utan verkan", t):
+        return "withdrawn"
+    if re.search(r"fullföljer|fullföljs|ovillkorat|förklarar erbjudandet ovillkorat|genomför(?:t|s)? erbjudandet|slutligt utfall", t):
+        return "done"
+    if re.search(r"utfall|accepterats|anslutning|äger nu|kontrollerar nu", t):
+        return "result"
+    if re.search(r"förläng\w* acceptfrist|förläng\w* acceptperiod", t):
+        return "extended"
+    return None
+
+
+def read_result(url):
+    """Hur stor del av aktierna budgivaren äger eller har fått ja för: "motsvarande cirka 92,4 procent av aktierna"."""
+    page = fetch(url)
+    m = re.search(r'<div class="content s-[a-z]+">(.*?)</article>', page, re.S)
+    body = plain(m.group(1) if m else "")[:6000]
+    out = {}
+    # Det största talet: ett slutligt utfall räknar upp den första acceptfristen, förlängningen och sammanlagt
+    # ("90,84 procent", "7,20 procent", "sammantaget 97,99 procent")
+    found = [number(x) for x in re.findall(r"(?:motsvarande|totalt|sammanlagt|uppgår till|representerar)[^.]{0,40}?(\d{1,3}(?:,\d{1,2})?) (?:procent|%) av "
+                                          r"(?:samtliga|det totala antalet|alla|de utestående|aktierna|kapitalet|rösterna)", body, re.I)]
+    found = [x for x in found if x is not None and 0 < x <= 100]
+    if found:
+        out["pct"] = max(found)
+    return out
 
 
 if __name__ == "__main__":

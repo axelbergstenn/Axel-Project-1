@@ -618,7 +618,8 @@
       '<select class="select-sm" id="repQ" aria-label="Kvartal">' + opts + "</select>" +
       '<div class="seg" role="group" aria-label="Marknad i rapporten">' + pick("se", "Sverige") + pick("world", "Globalt") + "</div></div></div>" +
       '<div class="rc-body"><div class="rc-main">' + body + repGoLinks(pq, pm) +
-      (pq === state.index.quarters[0].id ? '<p class="rc-next">' + quarterLabel(nextQuarter(pq)) + " läggs in samma morgon som Finansinspektionen publicerar det.</p>" : "") +
+      (pq === state.index.quarters[0].id ? '<p class="rc-next">Fonderna rapporterar sina innehav en gång per kvartal, och Finansinspektionen publicerar dem en tid efter kvartalets slut. ' +
+        quarterLabel(nextQuarter(pq)) + " läggs in samma morgon som det publiceras.</p>" : "") +
       "</div>" + movers + "</div></section>";
   }
   // Kvartalets fem största köp och sälj som staplar i samma skala, så att storlekarna går att jämföra
@@ -1579,6 +1580,116 @@
         (c && c.url !== n.url ? ' · <a href="' + esc(c.url) + '" target="_blank" rel="noopener">Rapporten för ' + dateText(c.end) + " ↗</a>" : "") + "</p></div>";
   }
 
+  // ---------- Vad räknar börsen med? Värdering ur det fria kassaflödet ----------
+  // Dagens börsvärde (Nasdaqs senaste kurs × antalet aktier i alla aktieslag) mot bolagets fria kassaflöde ur
+  // årsredovisningarna (kassaflödet från den löpande verksamheten minus investeringar, snittet av de tre senaste åren).
+  // Omvänd DCF: vilken årlig tillväxt i kassaflödet de närmaste tio åren gör att nuvärdet blir lika stort som
+  // börsvärdet? Efter tio år antas 2 % per år för alltid. Läsaren kan själv ändra avkastningskravet och tillväxten.
+  var DCF_YEARS = 10, DCF_TERMINAL = 0.02;
+  function dcfValue(fcf, g, r) {
+    var v = 0, f = fcf;
+    for (var t = 1; t <= DCF_YEARS; t++) { f *= 1 + g; v += f / Math.pow(1 + r, t); }
+    return v + f * (1 + DCF_TERMINAL) / (r - DCF_TERMINAL) / Math.pow(1 + r, DCF_YEARS);
+  }
+  // tillväxten som ger nuvärdet target (halvering mellan −30 % och +60 % per år)
+  function dcfImplied(fcf, target, r) {
+    var lo = -0.3, hi = 0.6;
+    if (dcfValue(fcf, lo, r) > target || dcfValue(fcf, hi, r) < target) return null;
+    for (var i = 0; i < 60; i++) { var mid = (lo + hi) / 2; if (dcfValue(fcf, mid, r) < target) lo = mid; else hi = mid; }
+    return (lo + hi) / 2;
+  }
+  function cagr(a, b, years) { return a > 0 && b > 0 && years > 0 ? Math.pow(b / a, 1 / years) - 1 : null; }
+  function valuationCard(c, isin, h, short, cur) {
+    if (!h || !needShares() || !state.prices) return "";
+    var isins = c.classes && c.classes.indexOf(isin) >= 0 ? c.classes : [isin];
+    var mcap = 0, shares = 0, px = state.prices[isin];
+    for (var i = 0; i < isins.length; i++) {
+      var n = state.shares[isins[i]], p = state.prices[isins[i]];
+      if (!n || !p || p[2] !== cur) return "";  // kurs i en annan valuta än rapporten: räknas inte
+      mcap += n[0] * p[0]; shares += n[0];
+    }
+    if (!px || !(mcap > 0)) return "";
+    var n = h.fy.length, fcfs = [];
+    for (var k = Math.max(0, n - 3); k < n; k++) { var f = histFcf(h, k); if (f != null) fcfs.push(f); }
+    if (fcfs.length < 2) return "";
+    var fcf0 = fcfs.reduce(function (a, b) { return a + b; }, 0) / fcfs.length, net = hv(h, "netOwn", n - 1) != null ? hv(h, "netOwn", n - 1) : hv(h, "net", n - 1);
+    var yieldF = fcf0 / mcap, pe = net > 0 ? mcap / net : null;
+    // historisk tillväxt: det fria kassaflödet (snitt av två år i början och slutet, för att jämna ut) och försäljningen
+    var first = [histFcf(h, 0), histFcf(h, 1)].filter(function (x) { return x != null; }), last2 = [histFcf(h, n - 2), histFcf(h, n - 1)].filter(function (x) { return x != null; });
+    var avg = function (l) { return l.reduce(function (a, b) { return a + b; }, 0) / l.length; };
+    var gF = n >= 4 && first.length === 2 && last2.length === 2 ? cagr(avg(first), avg(last2), n - 2) : null;
+    // Kassaflödet hoppar mycket hos cykliska och investeringstunga bolag (SSAB, Boliden). Då jämförs i stället med
+    // försäljningen, som säger mer om hur bolaget har vuxit.
+    var allPos = h.fy.every(function (y, j) { var x = histFcf(h, j); return x == null || x > 0; });
+    if (gF != null && (!allPos || Math.abs(gF) > 0.3)) gF = null;
+    var gR = n >= 3 ? cagr(hv(h, "rev", 0), hv(h, "rev", n - 1), n - 1) : null;
+    if (gR != null && Math.abs(gR) > 0.5) gR = null;
+    var years = h.fy[0] + "–" + h.fy[n - 1];
+    var pctTxt = function (v) { return fixMinus(nf1.format(v * 100).replace(/,0$/, "")) + " %"; };
+    var tiles = '<div class="know-tiles in-card">' +
+      '<div class="know-tile"><div class="kt-big">' + money(mcap, cur) + '</div><div class="kt-label">börsvärde</div><div class="kt-sub">Kursen ' + perShare(px[0], cur) + " den " + dateText(px[1]) + (isins.length > 1 ? ", alla aktieslag" : "") + "</div></div>" +
+      (pe ? '<div class="know-tile"><div class="kt-big">' + nf1.format(pe) + '</div><div class="kt-label">P/E-tal</div><div class="kt-sub">Börsvärdet delat med vinsten ' + h.fy[n - 1] + ": så många års vinst kostar bolaget</div></div>" : "") +
+      '<div class="know-tile"><div class="kt-big' + (fcf0 < 0 ? " neg" : "") + '">' + pctTxt(yieldF) + '</div><div class="kt-label">kassaflödesavkastning</div><div class="kt-sub">Fritt kassaflöde (snitt ' + fcfs.length + " år, " + money(fcf0, cur) + ") i procent av börsvärdet</div></div></div>";
+    if (fcf0 <= 0) {
+      return '<div class="know-card dcf-card"><h3>Vad räknar börsen med?</h3><p class="know-lead">Det fria kassaflödet har varit negativt de senaste åren, så börsvärdet går inte att räkna om till en förväntad tillväxt. ' +
+        "Ägarna betalar för något som ska ge pengar längre fram.</p>" + tiles + "</div>";
+    }
+    var r0 = 0.08, implied = dcfImplied(fcf0, mcap, r0);
+    // jämförelsen: kassaflödets tillväxt om den är stabil, annars försäljningens
+    var hist = gF != null ? [gF, "det fria kassaflödet"] : gR != null ? [gR, "försäljningen"] : null, verdict = "";
+    if (implied != null && hist) {
+      var was = hist[1] + " har vuxit " + years + " (" + pctTxt(hist[0]) + " per år)";
+      verdict = Math.abs(implied - hist[0]) <= 0.02 ? " Det är ungefär lika mycket som " + was + "."
+        : implied > hist[0] ? " Det är mer än " + was + ": börsen tror att det blir bättre framöver."
+        : " Det är mindre än " + was + ": börsen tror att tillväxten mattas av, eller räknar med en högre risk.";
+    }
+    var lead = implied == null ? "Börsvärdet är så " + (dcfValue(fcf0, -0.3, r0) > mcap ? "lågt" : "högt") + " jämfört med kassaflödet att det inte går att räkna ut en rimlig förväntad tillväxt."
+      : implied >= 0 ? "För att dagens börsvärde ska vara rimligt behöver det fria kassaflödet växa med <b>" + pctTxt(implied) + " per år</b> de kommande tio åren, med ett avkastningskrav på 8 %." + verdict
+      : "Dagens börsvärde är rimligt även om det fria kassaflödet <b>minskar med " + pctTxt(-implied) + " per år</b> de kommande tio åren, med ett avkastningskrav på 8 %. Börsen räknar alltså med sämre tider, eller med en högre risk." +
+        (hist ? " " + capFirst(hist[1]) + " har vuxit " + pctTxt(hist[0]) + " per år " + years + "." : "");
+    // Stora investeringar (Boliden) gör det fria kassaflödet litet just nu: säg det, annars ser förväntningen orimlig ut
+    var oc = 0, cx = 0;
+    for (k = Math.max(0, n - 3); k < n; k++) { oc += hv(h, "ocf", k) || 0; cx += hv(h, "capex", k) || 0; }
+    if (implied != null && implied > 0.12 && oc > 0 && cx / oc > 0.6) {
+      lead += " Men " + nf0.format(cx / oc * 100) + " % av det verksamheten drog in har gått till investeringar de senaste åren. Minskar de växer det fria kassaflödet utan att försäljningen behöver göra det.";
+    }
+    // reglaget börjar på bolagets historiska tillväxt, annars på det börsen räknar med
+    var start = hist ? hist[0] : implied != null ? implied : 0.03;
+    var g0 = Math.max(-0.05, Math.min(0.2, Math.round(start * 100) / 100));
+    var data = ' data-fcf="' + fcf0 + '" data-mcap="' + mcap + '" data-shares="' + shares + '" data-px="' + px[0] + '" data-cur="' + esc(cur) + '"';
+    return '<div class="know-card dcf-card"' + data + '><h3>Vad räknar börsen med?</h3><p class="know-lead">' + lead + "</p>" + tiles +
+      '<h4 class="kq-sub">Värdera själv</h4>' +
+      '<div class="dcf-controls">' +
+      '<label class="dcf-ctl"><span>Avkastningskrav <b class="dcf-r-out">8 %</b></span><input type="range" class="dcf-r" data-dcf min="6" max="12" step="0.5" value="8" aria-label="Avkastningskrav i procent"></label>' +
+      '<label class="dcf-ctl"><span>Tillväxt i kassaflödet per år <b class="dcf-g-out">' + pctTxt(g0) + '</b></span><input type="range" class="dcf-g" data-dcf min="-5" max="20" step="1" value="' + Math.round(g0 * 100) + '" aria-label="Tillväxt per år i procent"></label>' +
+      "</div>" + '<div class="dcf-result" aria-live="polite">' + dcfResultHtml(fcf0, mcap, shares, px[0], cur, g0, r0) + "</div>" +
+      '<p class="know-explain"><b>Så räknas det.</b> Det fria kassaflödet (' + money(fcf0, cur) + " per år i snitt) antas växa med din tillväxt i tio år och därefter med 2 % per år. " +
+      "Varje års kassaflöde räknas om till dagens värde med avkastningskravet, alltså den avkastning man vill ha för att äga aktien. Summan delas med antalet aktier. " +
+      (gR != null ? "Försäljningen har vuxit " + pctTxt(gR) + " per år " + yearSpan(h.fy[0], h.fy[n - 1]) + ". " : "") +
+      "Kassaflödet tas ur årsredovisningarna, kursen från Nasdaq. Det är ett räkneexempel med förenklade antaganden, inte ett råd att köpa eller sälja.</p></div>";
+  }
+  function dcfResultHtml(fcf, mcap, shares, px, cur, g, r) {
+    var value = dcfValue(fcf, g, r) / shares, diff = value / px - 1, max = Math.max(value, px);
+    var implied = dcfImplied(fcf, mcap, r);
+    return '<ul class="know-rows nav-bars">' + [["Aktiekursen i dag", px, true], ["Värde med dina antaganden", value, false]].map(function (x) {
+      return '<li class="kr-row' + (x[2] ? " other" : "") + '"><div class="kr-top"><span class="kr-name">' + x[0] + '</span><span class="kr-val">' + perShare(x[1], cur) + "</span></div>" +
+        '<div class="kr-bar"><span style="width:' + (Math.max(0, x[1]) / max * 100).toFixed(1) + '%"></span></div></li>';
+    }).join("") + "</ul>" +
+      '<p class="dcf-say">' + (Math.abs(diff) < 0.05 ? "Med dina antaganden är aktien värd ungefär vad den kostar."
+        : "Med dina antaganden är aktien värd <b class=\"" + cls(diff) + "\">" + nf0.format(Math.abs(diff) * 100) + " % " + (diff > 0 ? "mer" : "mindre") + "</b> än kursen.") +
+      (implied != null ? " Med avkastningskravet " + nf1.format(r * 100).replace(/,0$/, "") + " % räknar börsen med " + fixMinus(nf1.format(implied * 100).replace(/,0$/, "")) + " % tillväxt per år." : "") + "</p>";
+  }
+  document.addEventListener("input", function (e) {
+    var t = e.target;
+    if (!t.hasAttribute || !t.hasAttribute("data-dcf")) return;
+    var card = t.closest(".dcf-card");
+    if (!card) return;
+    var r = +card.querySelector(".dcf-r").value / 100, g = +card.querySelector(".dcf-g").value / 100;
+    card.querySelector(".dcf-r-out").textContent = nf1.format(r * 100).replace(/,0$/, "") + " %";
+    card.querySelector(".dcf-g-out").textContent = fixMinus(nf0.format(g * 100)) + " %";
+    card.querySelector(".dcf-result").innerHTML = dcfResultHtml(+card.dataset.fcf, +card.dataset.mcap, +card.dataset.shares, +card.dataset.px, card.dataset.cur, g, r);
+  });
+
   // ---------- Branschens nyckeltal ur bolagets rapporter (kpi i data/bolag/<ISIN>.json) ----------
   // Det som betyder mest i just den branschen: räntenetto och kreditförluster för banker, uthyrningsgrad och snittränta
   // för fastighetsbolag, produktion och metallpriser för gruvbolag, kassan för läkemedelsbolag och så vidare.
@@ -1612,6 +1723,8 @@
     lfl: ["Jämförbara butiker", "pct", "Förändringen av försäljningen i butiker som funnits i minst ett år, så att nyöppnade butiker inte räknas in."],
     active: ["Aktiva kunder", "n", "Kunder som spelade under kvartalet."],
     deposits: ["Kundinsättningar", "amt", "Pengar som spelarna satte in på sina spelkonton under kvartalet."],
+    svc: ["Tjänsteintäkter", "amt", "Intäkterna från abonnemang och tjänster, utan försäljning av telefoner och annan utrustning. Operatörens viktigaste mått på om affären växer."],
+    fcf: ["Fritt kassaflöde", "amt", "Pengar som blev kvar efter investeringar i näten, räntor och skatt. Det är de pengarna som kan gå till utdelning och till att betala av lån."],
     arr: ["Årligt återkommande intäkter", "amt", "Vad de löpande abonnemangen är värda på ett år (ARR). Visar hur stor den återkommande affären är."],
     cash: ["Likvida medel", "amt", "Pengar på bank och liknande vid kvartalets slut."],
     ocf: ["Kassaflöde från verksamheten", "amt", "Pengar som verksamheten drog in, eller förbrukade, under kvartalet."],
@@ -1622,7 +1735,7 @@
   };
   var KPI_TITLE = {
     bank: "Bankens nyckeltal", ins: "Försäkringsrörelsen", prop: "Fastigheterna och lånen", mine: "Produktion och leveranser",
-    forest: "Produktion och leveranser", retail: "Butikerna och marginalerna", tele: "Lönsamhet och skulder",
+    forest: "Produktion och leveranser", retail: "Butikerna och marginalerna", tele: "Tjänsteintäkter och kassaflöde",
     pharma: "Kassan: hur länge räcker pengarna?", games: "Spelarna och marginalerna", tech: "Den återkommande affären", ind: "Lönsamhet och skulder"
   };
   function kpiFmt(v, kind, cur) {
@@ -1711,6 +1824,11 @@
     } else if (k.g === "retail") {
       if (v("gm") != null) out.push("Av varje 100 kronor i försäljning blev " + nf0.format(v("gm")) + " kronor kvar efter kostnaden för varorna (bruttomarginal " + f("gm") + ").");
       if (v("stores") != null) out.push(esc(short) + " hade " + f("stores") + " butiker vid kvartalets slut.");
+    }
+    if (k.g === "tele") {
+      var sch = by.svc ? kpiChange(by.svc.s, "amt", cur) : null;
+      if (v("svc") != null) out.push("Tjänsteintäkterna, det kunderna betalar för abonnemang och tjänster, var " + f("svc") + " under kvartalet" + (sch && sch[1] ? " (" + sch[0] + ")" : "") + ".");
+      if (v("fcf") != null) out.push(v("fcf") >= 0 ? "Efter investeringar i näten blev " + f("fcf") + " kvar i fritt kassaflöde." : "Det fria kassaflödet var negativt: " + f("fcf") + ".");
     }
     // Spel, mjukvara och telekom: marginalen och hur den har ändrats
     var mg = !out.length && (by.ebitdam || by.gm);
@@ -2039,6 +2157,9 @@
       html += profitCard(h, short, finance, cur);
       var cc = finance ? [] : [cashCard(h, short, cur, r.custFin), coverCard(h, short, cur)].filter(Boolean);
       if (cc.length) html += '<div class="know-grid' + (cc.length === 1 ? " one" : "") + '">' + cc.join("") + "</div>";
+      // Värderingen: inte för banker, försäkrings-, investment- och fastighetsbolag (deras kassaflöden säger lite om värdet),
+      // inte för bolag med finansieringsverksamhet (Volvo) och bara för svenska aktier (kursen från Nasdaq Stockholm)
+      if (!finance && !us && !c.nav && !r.custFin && f.industry !== "Förvaltning" && f.industry !== "Investeringar") html += valuationCard(c, isin, h, short, cur);
     }
 
     // Hur bolaget är finansierat: eget kapital mot lån och andra skulder (banker har alltid lite eget kapital, så inte för dem)
@@ -3296,7 +3417,7 @@
   // Finansinspektionens erbjudandehandling för samma bolag finns i offers.json.
   function needBids() {
     return need("bids", function () {
-      return getJSON("data/bids.json").then(function (d) { state.bids = d.bids || []; }, function () { state.bids = []; });
+      return getJSON("data/bids.json").then(function (d) { state.bids = d.bids || []; state.bidEvents = d.events || []; }, function () { state.bids = []; state.bidEvents = []; });
     });
   }
   function newBids(isin) {
@@ -3319,7 +3440,26 @@
   //   done     aktien försvann ur alla fonder efter budet: bolaget köptes ut och avnoterades
   //   failed   fonderna äger aktien flera kvartal efter budet: bolaget är kvar på börsen
   //   pending  budet kom under eller efter senaste kvartalsrapporten: utfallet syns i nästa rapport
+  // Senaste händelsen i ett bud ur pressmeddelandena (scripts/build-bids.py): fullföljt, tillbakadraget, utfall
+  // eller förlängd acceptfrist, för något av bolagets aktieslag och tidigast samma dag som budet
+  function bidEvent(isins, since) {
+    return (state.bidEvents || []).filter(function (e) {
+      return e.date >= since && e.isins.some(function (i) { return isins.indexOf(i) >= 0; });
+    })[0] || null;
+  }
+  function eventStatus(e) {
+    // andelen som i pressmeddelandet, med upp till två decimaler ("97,99 %")
+    var pct = e.pct != null ? e.pct.toLocaleString("sv-SE", { maximumFractionDigits: 2 }) + " % av aktierna" : "";
+    if (e.kind === "done") return { key: "done", label: "Genomfört", note: "fullföljs" + (pct ? ", " + pct : "") + ", " + dateText(e.date), url: e.url, ev: e };
+    if (e.kind === "withdrawn") return { key: "failed", label: "Inte genomfört", note: "budet drogs tillbaka " + dateText(e.date), url: e.url, ev: e };
+    if (e.kind === "result") return { key: "pending", label: "Pågår", note: (pct ? "accepterat av " + pct : "utfall offentliggjort") + ", " + dateText(e.date), url: e.url, ev: e };
+    return { key: "pending", label: "Pågår", note: "acceptfristen förlängd " + dateText(e.date), url: e.url, ev: e };
+  }
+
   function offerStatus(o) {
+    // Pressmeddelandena går före: de visar utfallet samma dag, fondernas innehav först nästa kvartal
+    var ev = o.isins && o.isins.length ? bidEvent(o.isins, o.date) : null;
+    if (ev) return eventStatus(ev);
     var h = state.history;
     if (!h || !o.isins || !o.isins.length) return null;
     var last = -1;
@@ -3340,6 +3480,14 @@
   }
 
   function outcomeText(s) {
+    if (s.url) {
+      var link = ' <a href="' + esc(s.url) + '" target="_blank" rel="noopener">Läs pressmeddelandet ↗</a>';
+      var e = s.ev;
+      return (s.key === "done" ? "Enligt pressmeddelandet den " + dateText(e.date) + " fullföljs budet" + (e.pct != null ? ": budgivaren har fått " + e.pct.toLocaleString("sv-SE", { maximumFractionDigits: 2 }) + " % av aktierna" : "") +
+          ". Budgivaren tar alltså över bolaget, som sedan brukar lämna börsen."
+        : s.key === "failed" ? "Enligt pressmeddelandet den " + dateText(e.date) + " drogs budet tillbaka. Bolaget är kvar på börsen."
+        : "Budet pågår: " + s.note + ".") + link;
+    }
     return s.key === "done" ? "Aktien försvann ur alla svenska fonder efter budet, vilket betyder att bolaget köptes ut och lämnade börsen. Anslutningsgraden och datum för avnoteringen står i pressmeddelandena."
       : s.key === "failed" ? "Fonderna äger fortfarande aktien flera kvartal efter budet. Budet ledde alltså inte till att bolaget lämnade börsen: det kan ha dragits tillbaka, fått för få ja eller bara gett budgivaren en del av aktierna."
       : "Budet kom under eller efter fondernas senaste kvartalsrapport. Utfallet syns här när nästa rapport kommer, och står redan nu i pressmeddelandena.";
@@ -3421,7 +3569,9 @@
       { key: "price", label: "Pris per aktie", cell: bidPriceText },
       { key: "premium", label: "Premie", cell: function (b) { return b.premium == null ? "–" : '<span class="pos">' + nf1.format(b.premium) + " %</span>"; } },
       { key: "rec", label: "Styrelsen", align: "l", hideSm: true, cell: function (b) {
-        return b.rec === "ja" ? "Rekommenderar budet" : b.rec === "nej" ? '<span class="neg">Avråder</span>' : "–";
+        var ev = bidEvent(b.isins, b.date), s = ev ? eventStatus(ev) : null;
+        return (b.rec === "ja" ? "Rekommenderar budet" : b.rec === "nej" ? '<span class="neg">Avråder</span>' : "–") +
+          (s ? '<span class="sub">' + outcomeLabel(s) + " " + s.note + "</span>" : "");
       } },
       { key: "src", label: "", cell: function (b) { return '<a href="' + esc(b.url) + '" target="_blank" rel="noopener">Pressmeddelande ↗</a>'; } }
     ];
@@ -3646,7 +3796,7 @@
   // Ägarandelen är fondernas antal aktier delat med antalet aktier i aktieslaget, samma antal aktier för båda kvartalen.
 
   function needShares() {
-    return need("shares", function () { return getJSON("data/shares.json").then(function (d) { state.shares = d.shares || {}; state.sharesBuilt = d.built; state.nasdaqIds = d.book || {}; }); });
+    return need("shares", function () { return getJSON("data/shares.json").then(function (d) { state.shares = d.shares || {}; state.sharesBuilt = d.built; state.nasdaqIds = d.book || {}; state.prices = d.px || {}; }); });
   }
   // Länk till aktiens sida hos Nasdaq, där dagens kurs finns (vi visar själva bara kursen vid kvartalsslutet)
   function nasdaqUrl(isin) {
