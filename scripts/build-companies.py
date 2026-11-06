@@ -1533,6 +1533,34 @@ def mfn_page(slug, lang="sv"):
     return out
 
 
+REPORT_TITLE = re.compile(r"delårsrapport|kvartalsrapport|bokslutskommuniké|halvårsrapport|niomånadersrapport|sexmånadersrapport|"
+                          r"tremånadersrapport|kvartalsredogörelse|interim report|quarterly report|year-end report|half-year report|"
+                          r"full[- ]year report|earnings release|\bq[1-4]\b.*(rapport|report|results)|(rapport|report|results).*\bq[1-4]\b", re.I)
+
+
+def report_due(cal):
+    """Den senaste dagen då kalendern säger att en rapport skulle komma (och som har passerat)."""
+    past = [d for d, t in cal if re.match(r"(kvartalsrapport|bokslutskommuniké|delårsrapport|halvårsrapport)", t, re.I)
+            and d <= TODAY.isoformat()]
+    return max(past) if past else None
+
+
+def mfn_untagged_reports(slug):
+    """Bolagets rapporter bland alla pressmeddelanden (svenska och engelska), för bolag som inte märker dem som rapporter."""
+    out, dates = [], set()
+    for lang in ("sv", "en"):
+        t = mfn_get("/all/a/%s?%s" % (slug, urllib.parse.urlencode({"filter": '(and(or(.properties.lang="%s")))' % lang, "limit": 40})))
+        for blk in re.split(r'<div class="short-item compressible\s*"', t)[1:]:
+            d = re.search(r'compressed-date">([^<]+)', blk)
+            a = re.search(r'title-link item-link" href="([^"]+)" title="([^"]*)"', blk)
+            if d and a:
+                title = html.unescape(a.group(2))
+                if REPORT_TITLE.search(title) and not NOT_INTERIM.search(title) and d.group(1).strip() not in dates:
+                    dates.add(d.group(1).strip())
+                    out.append({"date": d.group(1).strip(), "url": MFN + a.group(1), "title": title, "pdfs": attachments(blk)})
+    return out
+
+
 def mfn_fresh_slugs(since):
     """Nya kvartalsrapporter på MFN sedan ett datum, per bolag: {slug: {publiceringsdatum}} (en sida med de senaste
     rapporterna från alla nordiska bolag). Datum i stället för adress, eftersom samma rapport finns på två språk."""
@@ -3441,6 +3469,12 @@ def main():
         if checked < today and any(checked <= d <= today for d, t in m.get("cal", [])
                                    if re.match(r"(kvartalsrapport|bokslutskommuniké|delårsrapport|halvårsrapport)", t, re.I)):
             return 0  # kalendern säger att en rapport har kommit
+        # kalendern säger att en rapport har kommit, men den senaste inlästa är äldre: hämtas om (högst varannan dag)
+        due_date = report_due(m.get("cal") or [])
+        newest = max((r["date"] for r in (m.get("reports") or {}).values()), default="")
+        if due_date and newest < (dt.date.fromisoformat(due_date) - dt.timedelta(days=5)).isoformat() and days_since(checked) >= 2 \
+                and days_since(due_date) <= 120:
+            return 0
         # annars en gång i veckan, så att kalendern (nästa rapport, utdelning) hålls aktuell
         return 2 if days_since(checked) > 7 else None
 
@@ -3480,10 +3514,17 @@ def main():
             break
         try:
             pg = mfn_page(slug)
-            if sum(1 for i in pg["items"] if not NOT_INTERIM.search(i["title"])) < 2:
-                # bolag som bara skriver på engelska
+            # också de engelska rapporterna: många bolag har bytt språk (Bambuser, Crunchfish och Acroud skrev på
+            # svenska förut, så de gamla svenska rapporterna dolde de nya engelska). Den svenska går före samma dag.
+            dates = {i["date"] for i in pg["items"]}
+            pg["items"] += [i for i in mfn_page(slug, "en")["items"] if i["date"] not in dates]
+            # Säger kalendern att en rapport har kommit, men den finns inte bland de rapporter som MFN märkt som
+            # rapporter (Arcoma), letas den upp bland bolagets alla pressmeddelanden
+            due_date = report_due(mfn.get(slug, {}).get("cal") or pg["cal"])
+            newest = max((i["date"] for i in pg["items"] if not NOT_INTERIM.search(i["title"])), default="")
+            if due_date and newest < (dt.date.fromisoformat(due_date) - dt.timedelta(days=5)).isoformat():
                 dates = {i["date"] for i in pg["items"]}
-                pg["items"] += [i for i in mfn_page(slug, "en")["items"] if i["date"] not in dates]
+                pg["items"] += [i for i in mfn_untagged_reports(slug) if i["date"] not in dates]
         except Exception as e:
             print("  %s: kunde inte hämta bolagssidan på MFN (%s)" % (slug, e))
             failures += 1
