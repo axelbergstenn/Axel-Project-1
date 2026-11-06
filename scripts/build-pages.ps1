@@ -754,6 +754,8 @@ function KnowMoney($v, $cur) {
 }
 # "2026-09" och 3 månader: "jul–sep 2026"
 function KnowPeriod($p, $m) {
+  # en rapport vars period inte gick att avgöra (siffrorna gick inte att läsa): "kvartalet"
+  if (-not $p -or [string]$p -notmatch '^\d{4}-\d\d') { return "kvartalet" }
   $mo = [int]$p.Substring(5, 2)
   if (-not $m) { $m = 3 }
   $start = ((($mo - [int]$m) % 12) + 12) % 12
