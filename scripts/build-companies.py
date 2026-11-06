@@ -58,7 +58,7 @@ except ImportError:
 
 # Höjs när tolkningen av rapporterna ändras, så att alla rapporter läses om
 PARSER_VERSION = 7
-INTERIM_VERSION = 6  # samma sak för kvartalsrapporterna
+INTERIM_VERSION = 7  # samma sak för kvartalsrapporterna
 NAV_VERSION = 1      # substansvärdet i investment- och fastighetsbolagens rapporter (läses om utan att resten läses om)
 NAV_INDUSTRIES = {"Investeringar", "Förvaltning"}  # MFN:s branscher för investmentbolag och fastighetsbolag
 KPI_VERSION = 1     # branschens nyckeltal (läses om utan att resten läses om)
@@ -995,7 +995,7 @@ UNIT_HDR = [
     (re.compile(r"\b(mdkr|sek ?bn|sek ?billion|mdsek|sek miljarder|miljarder kronor|mdr kr|mdr sek)\b", re.I), 1e9, "SEK"),
     (re.compile(r"\b(meur|eur ?m|eurm|eur ?million|mn ?eur|eur ?mn|m ?eur)\b", re.I), 1e6, "EUR"),
     (re.compile(r"\b(teur|keur|eur ?thousands?|eur ?000|eur ?k)\b", re.I), 1e3, "EUR"),
-    (re.compile(r"\b(musd|usd ?m|usdm|usd ?million|usd ?mn)\b", re.I), 1e6, "USD"),
+    (re.compile(r"\b(musd|usd ?m|usdm|usd ?million|usd ?mn)\b|millions of u\.?s\.? dollars|us\$ ?(?:in )?millions|\$ ?millions|\(\$ millions\)", re.I), 1e6, "USD"),
     (re.compile(r"\b(tusd|kusd|usd ?thousands?)\b", re.I), 1e3, "USD"),
     (re.compile(r"\b(mnok|nok ?m|nok ?million)\b", re.I), 1e6, "NOK"),
     (re.compile(r"\b(tnok|knok|nok ?thousands?)\b", re.I), 1e3, "NOK"),
@@ -1036,11 +1036,11 @@ def classify_header(t):
         qnum = None
     elif m:
         months = (MONTH_NO[m.group(2)] - MONTH_NO[m.group(1)]) % 12 + 1
-    elif re.search(r"\b(q|kv|kv\.|kvartal)\s?[1-4]\b|\b[1-4]\s?(kv|q)\b|kvartal(et)?\b|quarter|\b3 ?(mån|months)|tre ?mån|\b20\d\d:[1-4]\b", tl):
+    elif re.search(r"\b(q|kv|kv\.|kvartal)\s?[1-4]\b|\b[1-4]\s?(kv|q)\b|kvartal(et)?\b|quarter|\b3 ?(mån|months)|tre ?mån|three[- ]months?|\b20\d\d:[1-4]\b", tl):
         months = 3
-    elif re.search(r"\b6 ?(mån|months)|sex ?mån|halvår|six months|half[- ]year|\bh[12]\b", tl):
+    elif re.search(r"\b6 ?(mån|months)|sex ?mån|halvår|six[- ]months?|half[- ]year|\bh[12]\b", tl):
         months = 6
-    elif re.search(r"\b9 ?(mån|months)|nio ?mån|nine months", tl):
+    elif re.search(r"\b9 ?(mån|months)|nio ?mån|nine[- ]months?", tl):
         months = 9
     elif re.search(r"helår|full[- ]year|\b12 (mån|months)|rullande|rolling|ltm|r12|räkenskapsår", tl):
         months = 12
@@ -1048,6 +1048,8 @@ def classify_header(t):
 
 
 def clean_row_label(lab):
+    # punktrader mellan etiketten och talen ("Revenue ......................... 5" hos Millicom)
+    lab = re.sub(r"\s*\.{3,}.*$", "", lab)
     lab = re.sub(r"\s*[\*¹²³⁴⁵]+$|\s*\(?(not|note)\s*\d+\)?", "", lab, flags=re.I)
     lab = re.sub(r"\s+\d{1,2}(\)|(,\s?\d{1,2})*)$", "", lab)
     lab = re.sub(r"\s*,?\s*\(?(mkr|msek|sek ?m|tkr|ksek|tsek)\)?$", "", lab, flags=re.I)
@@ -1328,6 +1330,12 @@ def text_amounts(text):
                 unit = next(((sc, cur) for u, sc, cur in TEXT_UNITS if re.fullmatch(u, w, re.I)), None)
                 if unit:
                     break
+        if unit is None:
+            # engelska pressmeddelanden: "$600 million", "$2.28 billion", "US$ 1.2 bn", "EUR 45 million"
+            mm = re.match(r"\s*(million|billion|bn|mn)\b", after, re.I)
+            sym = re.search(r"(US\$|\$|USD|€|EUR|SEK)\s*$", before)
+            if mm and sym:
+                unit = (1e9 if mm.group(1).lower() in ("billion", "bn") else 1e6, {"€": "EUR", "EUR": "EUR", "SEK": "SEK"}.get(sym.group(1), "USD"))
         if unit is None and last and re.match(r"\s*\)", after) and re.search(r"\(\s*$", before):
             unit = last
         if unit is None:
@@ -1492,6 +1500,15 @@ def mfn_company(isin, name=None):
     return {"slug": hits[0]["slug"], "tickers": tickers(hits[0])} if len(hits) == 1 else None
 
 
+def attachments(html_text_):
+    """Pressmeddelandets bilagor: PDF:er, också när länken saknar filändelse (Millicoms rapporter ligger hos
+    GlobeNewswire som ".../Resource/Download/<id>"). Bilder och film räknas inte."""
+    urls = re.findall(r'class="attachment-icon"[^>]*href="(https://[^"]+)"', html_text_) + \
+        re.findall(r'<a[^>]+href="(https://[^"]+\.pdf)"', html_text_, re.I) + \
+        re.findall(r'<a[^>]+href="(https://[^"]+/Resource/Download/[0-9a-f-]+)"', html_text_, re.I)
+    return list(dict.fromkeys(u for u in urls if not re.search(r"\.(jpe?g|png|gif|webp|svg|mp4|mov|zip|xlsx?|docx?|pptx?)(\?|$)", u, re.I)))
+
+
 def mfn_page(slug, lang="sv"):
     """Bolagets sida på MFN: beskrivning, kalender och de senaste rapporterna."""
     t = mfn_get("/all/a/%s?%s" % (slug, urllib.parse.urlencode({"filter": MFN_REPORTS % lang, "limit": 20})))
@@ -1511,7 +1528,7 @@ def mfn_page(slug, lang="sv"):
         d = re.search(r'compressed-date">([^<]+)', blk)
         a = re.search(r'title-link item-link" href="([^"]+)" title="([^"]*)"', blk)
         if d and a:
-            pdfs = [u for u in re.findall(r'class="attachment-icon" title="[^"]*" href="([^"]+)"', blk) if u.lower().split("?")[0].endswith(".pdf")]
+            pdfs = attachments(blk)
             out["items"].append({"date": d.group(1).strip(), "url": MFN + a.group(1), "title": html.unescape(a.group(2)), "pdfs": pdfs})
     return out
 
@@ -1745,7 +1762,7 @@ def refresh_nav(r, url):
     m = re.search(r'<div class="content s-[a-z]+">(.*?)</article>', page, re.S)
     body = html_text(m.group(1) if m else "")
     # rapportens PDF:er står som länkar på pressmeddelandet; den med resultaträkningen först
-    pdfs = list(dict.fromkeys([p for p in (r.get("pdf"),) if p] + re.findall(r'<a[^>]+href="(https://[^"]+\.pdf)"', page, re.I)))[:3]
+    pdfs = list(dict.fromkeys([p for p in (r.get("pdf"),) if p] + attachments(page)))[:3]
     full = pdf_text(cached_fetch(pdfs[0], "application/pdf,*/*")) if pdfs and pdfium else None
     read_nav({"url": url, "date": r["date"], "title": r["title"], "pdfs": pdfs}, body, full, r, pdfs[0] if pdfs else None)
 
@@ -2477,7 +2494,7 @@ def read_kpis(r, url, group):
     page = mfn_get(url, keep=True)
     m = re.search(r'<div class="content s-[a-z]+">(.*?)</article>', page, re.S)
     body = html_text(m.group(1) if m else "")
-    pdfs = list(dict.fromkeys([p for p in (r.get("pdf"),) if p] + re.findall(r'<a[^>]+href="(https://[^"]+\.pdf)"', page, re.I)))
+    pdfs = list(dict.fromkeys([p for p in (r.get("pdf"),) if p] + attachments(page)))
     pdf_bytes = cached_fetch(pdfs[0], "application/pdf,*/*") if pdfs and pdfium else None
     k = kpi_figures(body, pdf_text(pdf_bytes), pdf_bytes, group)
     r["kv"] = kpi_version(group)
@@ -3533,8 +3550,10 @@ def main():
             url, r = reps[depth]
             if r.get("q") or r.get("v") == INTERIM_VERSION or days_since(r["date"]) > 400:
                 continue
-            item = {"url": url, "date": r["date"], "title": r["title"], "pdfs": [r["pdf"]] if r.get("pdf") else []}
             try:
+                # rapportens bilagor från pressmeddelandet, om ingen PDF gick att läsa förra gången
+                pdfs = [r["pdf"]] if r.get("pdf") else attachments(mfn_get(url, keep=True))[:3]
+                item = {"url": url, "date": r["date"], "title": r["title"], "pdfs": pdfs}
                 nr = read_interim(item, annual.get(slug))
             except Exception as e:
                 print("  %s: fel vid omläsning (%s)" % (url, e))
