@@ -3237,11 +3237,12 @@ def main():
     # Utländska bolag som handlas i Stockholm (Millicom: luxemburgskt ISIN, depåbevis "TIGO SDB" i Stockholm, rapporterna
     # på MFN). Fondernas globala aktier från länder där bolag brukar vara noterade i Stockholm söks upp på MFN med ISIN
     # (en gång i kvartalet per aktie), och bara de som har en svensk handelsplats tas med. Amerikanska har SEC.
-    foreign = {}
+    foreign, held = {}, {}
     try:
         for row in json.load(open(os.path.join(args.out, latest + "-world.json"), encoding="utf-8"))["stocks"]:
             if row[0][:2] in FOREIGN_COUNTRIES:
                 foreign[row[0]] = row[1]
+                held[row[0]] = row[3] or 0 if len(row) > 3 else 0
     except (OSError, ValueError, KeyError):
         pass
     if args.only:
@@ -3262,7 +3263,8 @@ def main():
 
     searched = 0
     if foreign:
-        for isin, name in sorted(foreign.items()):
+        # de bolag fonderna äger mest av först (Millicom före små kanadensiska gruvbolag)
+        for isin, name in sorted(foreign.items(), key=lambda x: -(held.get(x[0]) or 0)):
             if args.only and isin not in args.only.split(","):
                 continue
             s0 = st.get(isin, {})
