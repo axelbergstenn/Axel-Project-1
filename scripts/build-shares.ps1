@@ -56,6 +56,13 @@ $latest = [string]$index.quarters[0].id
 $qd = [System.IO.File]::ReadAllText((Resolve-Path (Join-Path $OutDir "$latest.json")).Path, $Utf8) | ConvertFrom-Json
 $wanted = New-Object System.Collections.Generic.HashSet[string]
 foreach ($s in $qd.stocks) { [void]$wanted.Add([string]$s[0]) }
+# Utländska bolag som handlas i Stockholm (Millicom med luxemburgskt ISIN): bland fondernas globala aktier, men inte de
+# amerikanska (de har bolagsfakta från SEC). Bara de som finns i Nasdaq Stockholms listor tas med nedan.
+$worldFile = Join-Path $OutDir "$latest-world.json"
+if (Test-Path $worldFile) {
+  $wd = [System.IO.File]::ReadAllText((Resolve-Path $worldFile).Path, $Utf8) | ConvertFrom-Json
+  foreach ($s in $wd.stocks) { $i = [string]$s[0]; if ($i -notmatch '^(SE|US)') { [void]$wanted.Add($i) } }
+}
 
 # Nasdaqs listor ger ISIN och orderbok-id för alla aktier på Stockholmsbörsen och First North
 $book = @{}

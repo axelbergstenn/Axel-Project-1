@@ -58,7 +58,7 @@ except ImportError:
 
 # Höjs när tolkningen av rapporterna ändras, så att alla rapporter läses om
 PARSER_VERSION = 7
-INTERIM_VERSION = 5  # samma sak för kvartalsrapporterna
+INTERIM_VERSION = 6  # samma sak för kvartalsrapporterna
 NAV_VERSION = 1      # substansvärdet i investment- och fastighetsbolagens rapporter (läses om utan att resten läses om)
 NAV_INDUSTRIES = {"Investeringar", "Förvaltning"}  # MFN:s branscher för investmentbolag och fastighetsbolag
 KPI_VERSION = 1     # branschens nyckeltal (läses om utan att resten läses om)
@@ -1018,6 +1018,10 @@ def classify_header(t):
         # tvåsiffrigt år efter kvartal eller månader: "Q3 26", "jan-sep 26"
         years = [2000 + int(y) for y in re.findall(r"(?:\bq[1-4]|kv\.? ?[1-4]|[a-zé]{3})\.?\s(\d\d)(?![\d-])", tl) if 15 <= int(y) <= 40]
     months = None
+    ym = re.fullmatch(r"\s*(1[5-9]|[23]\d)(0[1-9]|1[0-2])\s*", tl)
+    if ym:
+        # Essity: "2609" är 2026 till och med september (januari–september)
+        return ("per", int(ym.group(2)), 2000 + int(ym.group(1)), None)
     q = re.search(r"\b(?:q|kv\.?|kvartal)\s?([1-4])\b|\b([1-4])\s?(?:kv|q)\b|\b20\d\d:([1-4])\b", tl)
     qnum = int(next(g for g in q.groups() if g)) if q else None
     d = re.findall(r"(?<!\d)(20)?(\d\d)-(\d\d)-\d\d(?!\d)", tl)
@@ -1153,6 +1157,8 @@ def pick_columns(rows, lines):
         nums = [c for c in cells if NUM_CELL.match(c[2].strip()) and any(abs((c[0] + c[1]) / 2 - x) <= 14 for x in centers)
                 and not re.fullmatch(r"(19|20)\d\d", c[2].strip())]  # årtal är rubriker, inte värden
         labels_only = cells and all(c[1] <= (label_right or min(centers) - 20) + 4 for c in cells)
+        if any(re.fullmatch(r"20\d\d:[1-4]", c[2].strip()) for c in cells):
+            break  # rubrikraden ("MSEK 2026:3 2025:3 % 2609 2509 %"): talen där är perioder, inte värden
         if len(nums) >= 2:
             top = i
         elif labels_only and not re.search(r"koncern|rapport|sammandrag|räkning|finansiell|statement|consolidated", " ".join(c[2] for c in cells), re.I):
@@ -1573,6 +1579,17 @@ def read_interim(item, annual_rev):
         res["about"] = about
     interim_numbers(item, body, annual_rev, res)
     full = pdf_text(res.pop("_pdf", None))
+    if "q" not in res:
+        if full is None and pdfium:
+            for url in item["pdfs"][:1]:
+                try:
+                    full = pdf_text(cached_fetch(url, "application/pdf,*/*"))
+                except Exception as e:
+                    if network_error(e):
+                        raise
+        tq = text_quarter(item, body, full)
+        if tq:
+            res["q"] = tq
     res.update(report_text_fields(page, body_html, body, res.get("q"), full))
     read_nav(item, body, full, res)
     return res
@@ -1632,6 +1649,64 @@ def read_nav(item, body, full, res, full_url=None):
         res["nav"] = nav
     else:
         res.pop("nav", None)
+
+
+TQ_WORDS = [
+    ("rev", r"(?:koncernens )?(?:nettoomsättning(?:en)?|omsättning(?:en)?|intäkter(?:na)?|försäljning(?:en)?|net sales|revenues?|total revenues?)"),
+    ("ebit", r"(?:koncernens )?(?:rörelseresultat(?:et)?|operating (?:profit|income)|ebit(?![a-z]))"),
+    ("net", r"(?:periodens resultat|kvartalets resultat|resultat(?:et)? efter skatt|nettoresultat(?:et)?|net (?:profit|income)|profit for the period)"),
+]
+
+
+def number_in(text, v):
+    """Står beloppet v (i kronor) i texten, i miljoner, tusental eller miljarder ("36 060", "36,1")?"""
+    for sc in (1e6, 1e3, 1e9):
+        x = abs(v / sc)
+        if abs(x - round(x)) < 0.05 and x >= 10:
+            # heltal med tusentalsavgränsare: "36 060", "36060", "36.060"
+            grouped = re.sub(r"(?<=\d)(?=(\d{3})+$)", "[ .,]?", "%d" % round(x))
+            if re.search(r"(?<![\d,.])%s(?!\d|[,.]\d)" % grouped, text):
+                return True
+        if x < 1000 and re.search(r"(?<![\d,.])%s(?!\d)" % ("%.1f" % x).replace(".", "[,.]"), text):
+            return True  # med en decimal: "36,1" (miljarder)
+    return False
+
+
+def text_quarter(item, body, full):
+    """Kvartalets omsättning, rörelseresultat och resultat ur pressmeddelandets text ("Nettoomsättningen ökade med 4 %
+    till 36 060 (34 638) MSEK"), när PDF:ens resultaträkning inte går att läsa. Bara text om kvartalet (inte
+    "januari–september"), med jämförelsetal, och bara om samma belopp och jämförelsetal också står i rapportens PDF."""
+    if not full:
+        return None
+    full = re.sub("[   ]", " ", full)
+    pm, pdf = kpi_text(body), kpi_text(full)
+    q, cur = {}, None
+    for key, word in TQ_WORDS:
+        hits = [h for h in kpi_in_text(pm, word, "amt", True) if h[2] is not None][:1]
+        # Pressmeddelandets punktlista kan gälla året hittills utan att säga det (Catena: "Periodens resultat 1 790 Mkr"
+        # för januari–september). Därför måste samma belopp och jämförelsetal stå i rapportens text om kvartalet.
+        in_pdf = [h for h in kpi_in_text(pdf, word, "amt", True) if h[2] is not None][:3]
+        for x, half, y, c in hits:
+            if cur and c != cur:
+                continue
+            same = lambda a, b, h: abs(a - b) <= max(half, h) * 1.01 + 1e-6
+            if any(same(x, x2, h2) and same(y, y2, h2) for x2, h2, y2, _ in in_pdf) and number_in(full, x):
+                q[key] = [round(x), round(y)]
+                cur = c
+    if not q:
+        return None
+    if "rev" in q and (q["rev"][0] <= 0 or q["rev"][1] <= 0):
+        return None
+    end = period_end(item["date"], None, item["title"])
+    if not end:
+        return None
+    # Jämförs med förra kvartalet ("tredje kvartalet 2026 (andra kvartalet 2026)", Handelsbanken), inte med samma
+    # kvartal året innan: då visas inget jämförelsetal, eftersom sajten säger "ett år tidigare"
+    names = {3: "första", 6: "andra", 9: "tredje", 12: "fjärde"}
+    cm = re.search(r"\(\s*(första|andra|tredje|fjärde) kvartalet (\d{4})\s*\)", body[:1500], re.I)
+    if cm and (cm.group(1).lower() != names.get(end.month) or int(cm.group(2)) == end.year):
+        q = {k: [v[0], None] for k, v in q.items()}
+    return dict(q, p=end.isoformat()[:7], m=3, cur=cur or "SEK", via="pm")
 
 
 def pdf_text(pdf_bytes):
@@ -2032,6 +2107,11 @@ KPI_GROUPS = {
             "Shipping & Offshore", "Bemanning & Rekrytering", "Allmänna tjänster", "Kommunikation", "Media", "Resor & Fritid", "Vård & Omsorg"},
 }
 NONFIN = {"mine", "forest", "retail", "tele", "pharma", "games", "tech", "ind"}
+
+
+# Länder där bolag som handlas i Stockholm ofta har sitt ISIN (Millicom LU, Nordea FI, Autoliv har US och SEC)
+FOREIGN_COUNTRIES = {"LU", "FI", "DK", "NO", "IS", "CH", "GB", "JE", "GG", "IM", "BM", "CA", "MT", "NL", "IE", "CY", "DE", "AT", "BE", "EE", "LT",
+                     "LV", "FO", "KY", "VG", "IL", "AU", "FR", "ES", "IT", "PL"}
 
 
 def kpi_version(group):
@@ -2928,6 +3008,22 @@ def by_rows(tables, rev_q, ebit_q, q, at):
 def sane_quarter(q, annual):
     """Sista kontrollen av ett kvartal mot årsredovisningen (valuta, omsättning). Ett stort bolags kvartal som inte går
     ihop med helåret visas inte alls, och en jämförelsekolumn som egentligen är helåret tas bort."""
+    if q.get("via") == "pm":
+        # Siffror ur pressmeddelandets text kan gälla året hittills fast det inte står (Catena): de måste se ut som
+        # ett kvartal jämfört med helåret, och utan årsredovisning att jämföra med visas de inte
+        if not annual or annual[0] != q["cur"]:
+            return None
+        q = dict(q)
+        a_rev, a_net = annual[1], annual[2] if len(annual) > 2 else None
+        if q.get("rev") and not (a_rev and a_rev > 0 and 0.5 <= q["rev"][0] * 4 / a_rev <= 2):
+            q.pop("rev")
+        if q.get("net") and not (a_net and abs(q["net"][0]) <= 0.6 * abs(a_net)):
+            q.pop("net")
+        # rörelseresultatet mot årets försäljning, eller (banker, som inte har någon försäljning) mot årets resultat
+        if q.get("ebit") and not ((a_rev and abs(q["ebit"][0]) <= 0.6 * a_rev) or (not a_rev and a_net and abs(q["ebit"][0]) <= 0.9 * abs(a_net))):
+            q.pop("ebit")
+        if not q.get("rev") and not q.get("net") and not q.get("ebit"):
+            return None
     if not annual or annual[0] != q["cur"] or not annual[1] or annual[1] <= 0:
         return q
     a, rev = annual[1], q.get("rev") or [None, None]
@@ -3081,6 +3177,8 @@ def main():
     ap.add_argument("--reinterim", action="store_true", help="läs om sparade kvartalsrapporter ur --raw-cache (efter att INTERIM_VERSION höjts)")
     ap.add_argument("--retext", action="store_true", help="läs bara om pressmeddelandenas text ur --raw-cache (snabbt, utan PDF:erna)")
     ap.add_argument("--max-nav", type=int, default=80, help="högst så många rapporter per körning läses om för substansvärdet")
+    ap.add_argument("--max-foreign", type=int, default=120, help="högst så många utländska aktier söks upp på MFN per körning")
+    ap.add_argument("--max-reread", type=int, default=150, help="högst så många rapporter utan kvartalssiffror läses om per körning")
     ap.add_argument("--max-kpi", type=int, default=150, help="högst så många rapporter per körning läses för branschens nyckeltal")
     ap.add_argument("--health", default=None, help="fil där hälsokollen sparas (problem blir ett ärende på GitHub)")
     args = ap.parse_args()
@@ -3119,9 +3217,19 @@ def main():
     latest = index["quarters"][0]["id"]
     qd = json.load(open(os.path.join(args.out, latest + ".json"), encoding="utf-8"))
     stocks = {s[0]: s[1] for s in qd["stocks"] if s[0].startswith("SE")}
+    # Utländska bolag som handlas i Stockholm (Millicom: luxemburgskt ISIN, depåbevis "TIGO SDB" i Stockholm, rapporterna
+    # på MFN). Fondernas globala aktier från länder där bolag brukar vara noterade i Stockholm söks upp på MFN med ISIN
+    # (en gång i kvartalet per aktie), och bara de som har en svensk handelsplats tas med. Amerikanska har SEC.
+    foreign = {}
+    try:
+        for row in json.load(open(os.path.join(args.out, latest + "-world.json"), encoding="utf-8"))["stocks"]:
+            if row[0][:2] in FOREIGN_COUNTRIES:
+                foreign[row[0]] = row[1]
+    except (OSError, ValueError, KeyError):
+        pass
     if args.only:
         stocks = {i: stocks.get(i, i) for i in args.only.split(",")}
-    print("  %d svenska aktier" % len(stocks))
+    print("  %d aktier som handlas i Stockholm" % len(stocks))
     # Kursen vid de senaste kvartalssluten (fondernas rapporter till FI), för substansrabatten: {ISIN: {datum: (kvartal, kurs)}}
     prices = {}
     for qi in index["quarters"][:4]:
@@ -3134,6 +3242,38 @@ def main():
         for row in (qd if qi["id"] == latest else json.load(open(path, encoding="utf-8")))["stocks"]:
             if row[0] in stocks and row[3]:
                 prices.setdefault(row[0], {})[qend.isoformat()] = (qi["id"], row[3])
+
+    searched = 0
+    if foreign:
+        for isin, name in sorted(foreign.items()):
+            if args.only and isin not in args.only.split(","):
+                continue
+            s0 = st.get(isin, {})
+            if s0.get("mfn") or days_since(s0.get("sthlmChecked")) <= 90:
+                continue
+            if out_of_time() or searched >= args.max_foreign:
+                break
+            searched += 1
+            try:
+                found = None
+                for c in json.loads(mfn_get("/search/companies?limit=5&query=" + isin, keep=True) or "[]"):
+                    swe = [t for t in c.get("tickers", []) if t.split(":")[0] in ("XSTO", "FNSE", "XNGM", "XSAT", "NSME")]
+                    if isin in c.get("isins", []) and swe:
+                        found = {"slug": c["slug"], "tickers": [t.split(":", 1)[1] for t in swe]}
+                if found:
+                    st.setdefault(isin, {}).update({"mfn": found["slug"], "mfnChecked": TODAY.isoformat(), "mfnByName": True})
+                    mfn.setdefault(found["slug"], {})["tickers"] = found["tickers"]
+            except Exception as e:
+                print("  %s: kunde inte söka på MFN (%s)" % (isin, e))
+                if network_error(e):
+                    break
+                continue
+            st.setdefault(isin, {})["sthlmChecked"] = TODAY.isoformat()
+            time.sleep(0.5)
+        print("  Utländska aktier: %d sökta på MFN, %d handlas i Stockholm" % (searched, sum(1 for i in foreign if st.get(i, {}).get("mfn"))))
+    for isin, name in foreign.items():
+        if st.get(isin, {}).get("mfn") and (not args.only or isin in args.only.split(",")):
+            stocks[isin] = name
 
     # 1. LEI-kod per ISIN (GLEIF tar många ISIN i samma anrop)
     need = [i for i in stocks if not st.get(i, {}).get("lei") and days_since(st.get(i, {}).get("leiChecked")) > 30]
@@ -3381,6 +3521,35 @@ def main():
                     break
                 r["navv"] = NAV_VERSION
             navs += 1
+    # Rapporter som inte gav några kvartalssiffror läses om när tolkningen har förbättrats (INTERIM_VERSION höjts):
+    # först den senaste rapporten för alla bolag, så att aktiesidan visar den senaste rapporten och inte en äldre
+    reread = 0
+    for depth in range(4):
+        for slug in slugs:
+            m = mfn.get(slug) or {}
+            reps = sorted((m.get("reports") or {}).items(), key=lambda x: x[1]["date"], reverse=True)
+            if len(reps) <= depth or out_of_time() or reread >= args.max_reread or failures >= 10:
+                continue
+            url, r = reps[depth]
+            if r.get("q") or r.get("v") == INTERIM_VERSION or days_since(r["date"]) > 400:
+                continue
+            item = {"url": url, "date": r["date"], "title": r["title"], "pdfs": [r["pdf"]] if r.get("pdf") else []}
+            try:
+                nr = read_interim(item, annual.get(slug))
+            except Exception as e:
+                print("  %s: fel vid omläsning (%s)" % (url, e))
+                if network_error(e):
+                    failures += 1
+                    continue
+                nr = dict(r)
+            for k in ("kpi", "kv", "tp", "nav", "navv"):
+                if k in r and k not in nr:
+                    nr[k] = r[k]
+            nr["v"] = INTERIM_VERSION
+            m["reports"][url] = nr
+            reread += 1
+    print("  Omlästa rapporter utan kvartalssiffror: %d" % reread)
+
     # Branschens nyckeltal i bolagens sparade rapporter: först den senaste rapporten för alla bolag, sedan den
     # näst senaste, osv. Nya rapporter (och alla när KPI_VERSION höjts) läses på det här sättet.
     kpis = 0
@@ -3530,14 +3699,23 @@ def main():
             doc["about"] = {"text": first_sentences(m["mm"]["desc"], 600), "src": "mfn", "url": MFN + "/all/a/" + m["slug"]}
         # Senaste kvartalet (bara om rapporten är från det senaste halvåret) och kvartalen innan
         annual_rev = None
-        if m["report"] and (m["report"].get("fin") or {}).get("rev", [None])[0]:
-            annual_rev = (m["report"]["cur"], m["report"]["fin"]["rev"][0])
+        if m["report"] and ((m["report"].get("fin") or {}).get("rev", [None])[0] or (m["report"].get("fin") or {}).get("net", [None])[0]):
+            fin = m["report"]["fin"]
+            annual_rev = (m["report"]["cur"], (fin.get("rev") or [None])[0], (fin.get("net") or [None])[0])
         checked = {u: sane_quarter(fixed_quarter(r), annual_rev) for u, r in m["reps"] if r.get("q")}
-        latest = next(((u, r) for u, r in m["recent"] if checked.get(u)), None)
+        # Alltid den senaste rapporten. Gick dess siffror inte att bekräfta visas den ändå (rubrik, händelser, vd:ns ord,
+        # utsikter och länken), utan siffror, och aldrig en äldre rapport i stället.
+        latest = m["recent"][0] if m["recent"] else None
         if latest:
             u, r = latest
-            q = dict(checked[u], title=r["title"], date=r["date"], url=u)
-            if r.get("quote") and latest == m["recent"][0]:
+            if checked.get(u):
+                q = dict(checked[u], title=r["title"], date=r["date"], url=u)
+            else:
+                p = report_period(r)
+                q = {"p": p, "m": 3, "cur": (m["report"] or {}).get("cur") or "SEK", "title": r["title"], "date": r["date"], "url": u, "noNumbers": True}
+                if not p:
+                    q.pop("p")
+            if r.get("quote"):
                 q["quote"] = r["quote"]
             for k in ("events", "outlook", "orders", "bank", "headline", "themes", "tone", "cash", "organic"):
                 if r.get(k):
@@ -3550,11 +3728,11 @@ def main():
             if len(reacts) >= 2:
                 doc["reacts"] = reacts
             # Affärsområdena senaste kvartalet (samma valuta och samma rapport som siffrorna ovan)
-            if r.get("seg") and r["seg"]["p"] == r["q"]["p"] and sane_segments(r["seg"]):
+            if r.get("seg") and r.get("q") and checked.get(u) and r["seg"]["p"] == r["q"]["p"] and sane_segments(r["seg"]):
                 doc["qseg"] = dict(sane_segments(r["seg"]), p=q["p"])
             pts = {}
             for x in (checked.get(u) for u, _ in m["reps"]):
-                if x and x["m"] == 3 and x["cur"] == q["cur"] and x["p"] not in pts:
+                if x and x["m"] == 3 and x["cur"] == q["cur"] and x.get("p") and x["p"] not in pts:
                     pts[x["p"]] = [x.get(k, [None])[0] for k in ("rev", "ebit", "net")]
             for xq in (checked.get(u) for u, _ in m["reps"]):
                 if xq and xq["m"] == 3 and xq["cur"] == q["cur"]:
@@ -3624,7 +3802,7 @@ def main():
     if not args.only:
         for name in os.listdir(out_dir):
             # bara svenska aktier; de amerikanska byggs av scripts/build-us-companies.py
-            if name.startswith("SE") and name.endswith(".json") and name[:-5] not in written:
+            if not name.startswith(("US", "_")) and name.endswith(".json") and name[:-5] not in written:
                 os.remove(os.path.join(out_dir, name))
     # Vilka aktier som har en fil, så att sajten inte frågar efter filer som inte finns
     have = sorted(n[:-5] for n in os.listdir(out_dir) if n.endswith(".json") and not n.startswith("_"))

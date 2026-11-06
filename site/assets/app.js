@@ -1921,7 +1921,7 @@
 
   function companySection(isin, name, sector) {
     // Svenska bolag (scripts/build-companies.py) och amerikanska (scripts/build-us-companies.py, ur SEC)
-    if (!/^(SE|US)/.test(isin) || !needCompanyIndex() || !state.companyIndex[isin]) return "";
+    if (!needCompanyIndex() || !state.companyIndex[isin]) return "";
     if (!needCompany(isin)) return failed("bolag-" + isin) ? "" : '<section class="block section-gap">' + loadingBlock("Laddar fakta om bolaget…") + "</section>";
     var c = state.companies[isin], r = c.report || null, f = c.facts || {}, q = c.q || null;
     var us = c.src === "sec";
@@ -1963,7 +1963,7 @@
 
     // Senaste kvartalsrapporten
     if (q) {
-      var qcur = q.cur, per = periodText(q.p, q.m), qrev = finance || !q.rev ? null : q.rev;
+      var qcur = q.cur, per = q.p ? periodText(q.p, q.m) : "", qrev = finance || !q.rev ? null : q.rev;
       var g = qrev ? change(qrev[0], qrev[1]) : null;
       var lead = [];
       if (qrev && qrev[0] > 0) {
@@ -2038,8 +2038,10 @@
       if (q.cash && q.cash[0] != null) sc.push({ q: "Drog verksamheten in pengar?", a: q.cash[0] > 0 ? "Ja, " + money(q.cash[0], qcur) : "Nej, " + money(q.cash[0], qcur), tone: q.cash[0] > 0 ? "pos" : "neg" });
       if (q.react != null) sc.push({ q: "Gillade börsen rapporten?", a: (q.react > 0 ? "Ja, aktien steg " : q.react < 0 ? "Nej, aktien föll " : "Aktien stod still ") + fixMinus(nf1.format(Math.abs(q.react))) + " %", tone: cls(q.react) });
       var thHtml = themesHtml(q.themes, q.tone);
-      html += '<div class="know-card know-q"><div class="kq-head"><h3>Senaste rapporten <span class="kq-per">' + per + '</span></h3><span class="kq-date">Publicerad ' + dateText(q.date) + "</span></div>" +
+      html += '<div class="know-card know-q"><div class="kq-head"><h3>Senaste rapporten' + (per ? ' <span class="kq-per">' + per + "</span>" : "") + '</h3><span class="kq-date">Publicerad ' + dateText(q.date) + "</span></div>" +
         (headlineText(q.headline) ? '<p class="kq-headline">”' + esc(headlineText(q.headline)) + "”</p>" : "") +
+        // rapporten kom, men dess siffror gick inte att läsa ut på ett säkert sätt: hellre inga siffror än fel siffror
+        (q.noNumbers ? '<p class="know-lead muted">Siffrorna i den här rapporten gick inte att läsa ut automatiskt på ett säkert sätt, så de visas inte här. De står i rapporten, som det finns en länk till nedan.</p>' : "") +
         quickTake(c, q, finance, short) +
         scoreCard(sc) +
         (lead.length ? '<p class="know-lead">' + lead.join(" ") + "</p>" : "") +
