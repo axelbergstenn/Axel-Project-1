@@ -757,7 +757,7 @@
     var streakRows = function (list) { return list.map(function (r) { r.name = r.s.name; r.isin = r.s.isin; return r; }); };
 
 
-    return '<h1 class="visually-hidden">Fondinsyn: vad svenska fonder köper och säljer</h1>' + aboutCard() + reportCard() + quickLinks(ds) + watchBlock() + signalModules() +
+    return '<h1 class="visually-hidden">Fondinsyn: vad svenska fonder köper och säljer</h1>' + aboutCard() + reportCard() + quickLinks(ds) + watchBlock() + signalModules() + reportWeek() +
       '<div class="grid-2 section-gap">' +
       block("Störst nettoköp", "Förändring i antal aktier × kurs vid kvartalsslut. " + termLink("nettokop", "Hur räknas det?"), table("ov-buy", flowCols, buys, st) + '<a class="more" href="#/aktier">Alla aktier</a>') +
       block("Störst nettosälj", "&nbsp;", table("ov-sell", flowCols, sells, st)) +
@@ -889,6 +889,67 @@
         }).join("") + "</div>"));
     }
     return out.length ? '<div class="modules section-gap">' + out.join("") + "</div>" : "";
+  }
+
+  // ---------- Rapportveckan på startsidan (data/bolag/_week.json, scripts/build-companies.py) ----------
+
+  function needWeek() {
+    return need("week", function () {
+      return getJSON("data/bolag/_week.json").then(function (d) { state.week = d; }, function () { state.week = false; });
+    });
+  }
+  function reportWeek() {
+    if (!needWeek() || !state.week) return "";
+    var se = quarterData().se;
+    if (!se) return "";
+    // det aktieslag som fonderna äger mest av, och bolagets värde i fonderna (för urvalet)
+    var pick = function (isins) {
+      var best = null;
+      isins.forEach(function (i) { var s = se.byIsin[i]; if (s && (!best || (s.val2 || 0) > (best.val2 || 0))) best = s; });
+      return best;
+    };
+    var top = function (rows, n) {
+      return rows.map(function (r) { return { r: r, s: pick(r[0]) }; }).filter(function (x) { return x.s; })
+        .sort(function (a, b) { return (b.s.val2 || 0) - (a.s.val2 || 0); }).slice(0, n);
+    };
+    var today = new Date().toISOString().slice(0, 10);
+    var recent = top(state.week.recent || [], 8).sort(function (a, b) { return a.r[1] < b.r[1] ? 1 : a.r[1] > b.r[1] ? -1 : 0; });
+    var done = {};
+    recent.forEach(function (x) { done[x.s.isin] = x.r[1]; });
+    var next = top((state.week.next || []).filter(function (r) { return r[1] >= today; }), 8)
+      .filter(function (x) { return !(done[x.s.isin] && done[x.s.isin] >= x.r[1]); })
+      .sort(function (a, b) { return a.r[1] < b.r[1] ? -1 : a.r[1] > b.r[1] ? 1 : 0; });
+    if (!recent.length && !next.length) return "";
+    var day = function (d) { return d === today ? "i dag" : shortStamp(d); };
+    var nameCell = function (s, sub) {
+      return '<span class="mod-n"><a href="#/aktie/' + s.isin + '">' + esc(shortCo(s.name)) + '</a><span class="mod-s">' + sub + "</span></span>";
+    };
+    var recentHtml = recent.map(function (x) {
+      var r = x.r, rev = r[4], ebit = r[5], v = "", what = "";
+      if (!r[7] && rev && rev[0] > 0 && rev[1] > 0) {
+        var g = rev[0] / rev[1] - 1;
+        v = '<span class="mod-v ' + cls(g) + '">' + pct(g) + "</span>";
+        what = "försäljningen";
+      } else if (!r[7] && ebit && ebit[0] != null && ebit[1] != null) {
+        v = '<span class="mod-v ' + cls(ebit[0] - ebit[1]) + '">' + (ebit[0] >= ebit[1] ? "Bättre" : "Sämre") + "</span>";
+        what = "rörelseresultatet";
+      } else if (r[8] != null) {
+        v = '<span class="mod-v ' + cls(r[8]) + '">' + pct(r[8] / 100, 1) + "</span>";
+        what = "aktien på rapportdagen";
+      }
+      var per = r[2] ? periodText(r[2], 3) : "";
+      return "<li>" + nameCell(x.s, day(r[1]) + (per ? " · " + per : "") + (what ? " · " + what : "")) + (v || '<span class="mod-v muted">–</span>') + "</li>";
+    }).join("");
+    var nextHtml = next.map(function (x) {
+      var r = x.r;
+      return "<li>" + nameCell(x.s, esc(String(r[2]).replace(/\s+\d{4}(-Q\d)?$/, "").toLowerCase())) + '<span class="mod-v rw-date">' + day(r[1]) + "</span></li>";
+    }).join("");
+    return '<section class="block section-gap rw"><div class="block-head"><h2>Rapporter</h2></div>' +
+      '<p class="desc">Kvartalsrapporter från de bolag som fonderna äger mest av, med siffrorna ur bolagens egna rapporter. Förändringen jämförs med samma kvartal året innan.</p>' +
+      '<div class="rw-grid">' +
+      '<div><h3 class="rw-h">Senaste tio dagarna</h3>' + (recentHtml ? '<ul class="mod-list">' + recentHtml + "</ul>" : '<p class="desc">Inga rapporter de senaste tio dagarna.</p>') + "</div>" +
+      '<div><h3 class="rw-h">Kommande två veckor</h3>' + (nextHtml ? '<ul class="mod-list">' + nextHtml + "</ul>" : '<p class="desc">Inga rapporter de kommande två veckorna.</p>') + "</div>" +
+      "</div></section>";
   }
 
   function highlight(label, name, href, value, note) {
@@ -2038,7 +2099,10 @@
       if (q.cash && q.cash[0] != null) sc.push({ q: "Drog verksamheten in pengar?", a: q.cash[0] > 0 ? "Ja, " + money(q.cash[0], qcur) : "Nej, " + money(q.cash[0], qcur), tone: q.cash[0] > 0 ? "pos" : "neg" });
       if (q.react != null) sc.push({ q: "Gillade börsen rapporten?", a: (q.react > 0 ? "Ja, aktien steg " : q.react < 0 ? "Nej, aktien föll " : "Aktien stod still ") + fixMinus(nf1.format(Math.abs(q.react))) + " %", tone: cls(q.react) });
       var thHtml = themesHtml(q.themes, q.tone);
-      html += '<div class="know-card know-q"><div class="kq-head"><h3>Senaste rapporten' + (per ? ' <span class="kq-per">' + per + "</span>" : "") + '</h3><span class="kq-date">Publicerad ' + dateText(q.date) + "</span></div>" +
+      html += '<div class="know-card know-q"><div class="kq-head"><h3>Senaste rapporten' + (per ? ' <span class="kq-per">' + per + "</span>" : "") + '</h3><span class="kq-date">Publicerad ' + dateText(q.date) +
+        // när bolagets sida på MFN senast lästes: en nyare rapport hade synts här
+        (c.checked && c.checked >= q.date ? '<span class="kq-checked" title="Fondinsyn läser bolagens pressmeddelanden på MFN flera gånger i veckan och samma dag som kalendern säger att en rapport kommer"> · senast kontrollerad ' + shortStamp(c.checked) + "</span>" : "") +
+        "</span></div>" +
         (headlineText(q.headline) ? '<p class="kq-headline">”' + esc(headlineText(q.headline)) + "”</p>" : "") +
         // rapporten kom, men dess siffror gick inte att läsa ut på ett säkert sätt: hellre inga siffror än fel siffror
         (q.noNumbers ? '<p class="know-lead muted">Siffrorna i den här rapporten gick inte att läsa ut automatiskt på ett säkert sätt, så de visas inte här. De står i rapporten, som det finns en länk till nedan.</p>' : "") +

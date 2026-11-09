@@ -839,6 +839,12 @@ a.btn { color: var(--fg); }
 .kq-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin-bottom: 6px; }
 .kq-head h3 { margin: 0; }
 .kq-date { font-size: 12.5px; color: var(--fg-muted); }
+.kq-checked { white-space: nowrap; }
+/* Rapportveckan på startsidan */
+.rw-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 32px; }
+.rw-h { font-size: 13.5px; font-weight: 650; color: var(--fg-muted); margin: 4px 0 2px; }
+.rw .mod-v.rw-date { font-weight: 600; color: var(--fg-muted); }
+@media (max-width: 640px) { .rw-grid { grid-template-columns: minmax(0, 1fr); gap: 14px; } }
 .know-tiles.in-card { margin-top: 0; }
 .know-tiles.in-card .know-tile { box-shadow: none; background: var(--bg-subtle); border-color: transparent; }
 .kq-link { margin: 14px 0 0; font-size: 13.5px; overflow-wrap: anywhere; }

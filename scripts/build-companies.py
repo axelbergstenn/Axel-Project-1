@@ -949,6 +949,8 @@ def split_row(cells, dec):
     label, vals = [], []
     for x0, x1, s in cells:
         st = s.strip()
+        # valutatecken före talet ("$2,693", "($5)", Autoliv)
+        st = re.sub(r"^(\(?)\s*(?:US\$|\$|€)\s?(?=\d)", r"\1", st)
         if not vals and not NUM_CELL.match(st) and st.lower() not in DASH:
             # siffror som hamnat i samma cell som etiketten ("Intäkter 29 218"): dela vid talet
             m = re.match(r"^(.*?[A-Za-zÅÄÖåäöé\)\.:])\s+(\(?[-−–]?\d[\d ,.]*\)?)$", st)
@@ -977,7 +979,7 @@ def split_row(cells, dec):
 
 Q_ROWS = {
     "rev": re.compile(r"^(summa |totala? |total )?(nettoomsättning(en)?|net ?sales|revenues?|net revenues?|intäkter|rörelsens intäkter|totala intäkter|"
-                      r"rörelseintäkter|omsättning|försäljningsintäkter|sales)( och övriga rörelseintäkter| m ?m| totalt| total)?$", re.I),
+                      r"rörelseintäkter|omsättning|försäljningsintäkter|sales|hyresintäkter|rental (income|revenue))( och övriga rörelseintäkter| m ?m| totalt| total)?$", re.I),
     "ebit": re.compile(r"^(rörelseresultat(et)?|operating (profit|income|result|earnings)|ebit|rörelseresultat \(ebit\)|ebit \(rörelseresultat\)|"
                        r"resultat före finansiella poster( och (inkomst)?skatt(er)?)?( \(ebit\))?|rörelseresultat,? \(?ebit\)?|operating profit/loss|"
                        r"rörelseresultat/ebit|resultat före räntor och skatt(er)?( \(ebit\))?)$", re.I),
@@ -995,7 +997,7 @@ UNIT_HDR = [
     (re.compile(r"\b(mdkr|sek ?bn|sek ?billion|mdsek|sek miljarder|miljarder kronor|mdr kr|mdr sek)\b", re.I), 1e9, "SEK"),
     (re.compile(r"\b(meur|eur ?m|eurm|eur ?million|mn ?eur|eur ?mn|m ?eur)\b", re.I), 1e6, "EUR"),
     (re.compile(r"\b(teur|keur|eur ?thousands?|eur ?000|eur ?k)\b", re.I), 1e3, "EUR"),
-    (re.compile(r"\b(musd|usd ?m|usdm|usd ?million|usd ?mn)\b|millions of u\.?s\.? dollars|us\$ ?(?:in )?millions|\$ ?millions|\(\$ millions\)", re.I), 1e6, "USD"),
+    (re.compile(r"\b(musd|usd ?m|usdm|usd ?million|usd ?mn)\b|millions of u\.?s\.? dollars|dollars in millions|in millions of (?:u\.?s\.? )?dollars|us\$ ?(?:in )?millions|\$ ?millions|\(\$ millions\)", re.I), 1e6, "USD"),
     (re.compile(r"\b(tusd|kusd|usd ?thousands?)\b", re.I), 1e3, "USD"),
     (re.compile(r"\b(mnok|nok ?m|nok ?million)\b", re.I), 1e6, "NOK"),
     (re.compile(r"\b(tnok|knok|nok ?thousands?)\b", re.I), 1e3, "NOK"),
@@ -1009,6 +1011,7 @@ MONTH_RANGE = re.compile(r"\b(jan|feb|mar|apr|maj|may|jun|jul|aug|sep|okt|oct|no
 def classify_header(t):
     """Kolumnrubrik -> (typ, antal månader, år, kvartal) där typ är "pct", "note" eller "per" (en period)."""
     tl = t.lower()
+    tl = re.sub(r"(?<!\d)(20\d) (\d)(?!\d)", r"\1\2", tl)  # "202 6" (Cloetta: siffrorna glest satta)
     if re.search(r"%|förändr|change|\bδ|diff\b|utveckling", tl):
         return ("pct", None, None, None)
     if re.fullmatch(r"\s*(not|note|noter|notes)\s*", tl):
@@ -1064,9 +1067,13 @@ def statement_rows(lines, dec):
         if len(vals) < 2 or not any(v[1] is not None for v in vals):
             continue
         for k, rx in Q_ROWS.items():
-            if k not in rows and rx.match(lab):
+            if rx.match(lab) and (k not in rows or (k == "rev" and RENT_ROW.match(rows[k][0]) and not RENT_ROW.match(lab))):
+                # hyresintäkterna bara när det inte finns någon summa för alla intäkter (Arlandastad, Altra)
                 rows[k] = (lab, vals, idx)
     return rows
+
+
+RENT_ROW = re.compile(r"^(summa |totala? |total )?(hyresintäkter|rental (income|revenue))", re.I)
 
 
 def header_columns(lines, top, xs, table_left, label_right):
@@ -1082,7 +1089,8 @@ def header_columns(lines, top, xs, table_left, label_right):
         return min(abs((x0 + x1) / 2 - x) for x in xs) <= (x1 - x0) / 2 + 45
 
     taken = []
-    for y, cells in reversed(lines[max(0, top - 6):top]):
+    above = list(reversed(lines[max(0, top - 6):top]))
+    for n, (y, cells) in enumerate(above):
         # inte en annan tabell bredvid (balansräkningen, totalresultatet)
         cells = [c for c in cells if table_left - 15 <= c[0] <= right]
         vcells, straddle = [], False
@@ -1108,6 +1116,11 @@ def header_columns(lines, top, xs, table_left, label_right):
             label = " ".join(s for _, _, s in cells)
             if cells and (re.search(r"koncern|rapport|sammandrag|räkning|finansiell|statement|consolidated|summary", label, re.I)
                           or (label.isupper() and len(label) > 14)):
+                # Tabellens rubrik mellan kolumnrubrikerna och talen ("2026 kv 3 ... / Resultaträkning, MSEK /
+                # Courtagenetto 308", Avanza): rubrikerna ovanför gäller, om de ser ut som perioder
+                nxt = " ".join(c[2] for c in above[n + 1][1]) if not taken and n + 1 < len(above) else ""
+                if re.search(r"\b(kv\.? ?[1-4]|q[1-4])\b|jan[-–]|apr[-–]|jul[-–]|okt[-–]|kvartal|quarter|helår", nxt, re.I):
+                    continue
                 break  # tabellens rubrik ("Koncernen i sammandrag"): ovanför den är det något annat
             continue  # en mellanrubrik i tabellen ("Rörelsens intäkter")
         if any(len(s) > 30 for _, _, s in vcells) or not all(near(x0, x1) for x0, x1, _ in vcells):
@@ -1115,12 +1128,24 @@ def header_columns(lines, top, xs, table_left, label_right):
         if straddle and len(vcells) == 1:
             break
         taken.append(vcells)
-    for cells in reversed(taken):
+    for cells in taken:  # närmast tabellen först
         mids = [((x0 + x1) / 2, (x1 - x0) / 2, s) for x0, x1, s in cells]
         for x in xs:
             best = min(mids, key=lambda m: abs(m[0] - x))
-            if abs(best[0] - x) <= best[1] + 45:
-                heads[x].append(best[2])
+            d = abs(best[0] - x)
+            # rubriken hör till den kolumn den står närmast, de kolumner den täcker ("Third quarter" över två
+            # kolumner, Autoliv) eller två kolumner den står mitt emellan, men inte en kolumn som en kortare rad
+            # bara har en rubrik bredvid ("2026" under "halvåret" hos MTG hamnade på kvartalskolumnen)
+            dmin = min(abs(best[0] - c) for c in xs)
+            # breda grupprubriker ("Andra kvartalet" över två kolumner, Cloetta) får stå längre bort, men inte
+            # "Helår 2025" över halvårskolumnen bredvid (Binero)
+            if d <= best[1] + 45 and (d <= 2.5 * dmin + 8 or d <= best[1] + 20 or d <= dmin + 1.2 * best[1] + 5):
+                # en rubrik längre upp ändrar inte periodlängden som en rubrik närmare talen redan har gett
+                # (Storytel: "Jan-sep" står över årets niomånaderskolumn men hamnar närmast "Q3 2025")
+                near_m = classify_header(" ".join(heads[x]))[1] if heads[x] else None
+                if near_m and classify_header(best[2])[1] not in (None, near_m):
+                    continue
+                heads[x].insert(0, best[2])
     return {x: " ".join(v) for x, v in heads.items()}
 
 
@@ -1235,7 +1260,11 @@ def read_statement(pdf_bytes):
             score = len(rows) + (2 if STATEMENT_HEAD.search(txt) else 0) + (2 if STATEMENT_HEAD.search(near) else 0) + (1 if "eps" in rows and "net" in rows else 0)
             if re.search(r"segment|översikt|overview|per kvartal|by quarter|quarterly", near, re.I):
                 score -= 4
-            if re.search(r"moderbolag|parent company", near, re.I):
+            # moderbolagets siffror ("Moderbolagets resultaträkning"), men inte en menyrad överst på sidan
+            # ("Koncernen Moderbolaget Finansiella rapporter", Smart Eye)
+            if re.search(r"moderbolagets|parent company", near, re.I) or any(
+                    len(cells) <= 2 and re.search(r"moderbolag", " ".join(c[2] for c in cells), re.I)
+                    for _, cells in lines[max(0, first - 8):first + 1]):
                 score -= 8
             if best is None or score > best[0]:
                 best = (score, rows, lines, near, txt)
@@ -1279,7 +1308,8 @@ TEXT_UNITS = [
     (r"kronor|sek", 1, "SEK"),
 ]
 TEXT_UNIT_RE = "|".join("(?:%s)" % u for u, _, _ in TEXT_UNITS)
-TEXT_NUM = re.compile(r"(?<![\w.,])[-−–]?\d{1,3}(?:[  .,]\d{3})*(?:[.,]\d+)?(?![\w])|(?<![\w.,])[-−–]?\d+(?:[.,]\d+)?(?![\w])")
+TEXT_NUM = re.compile(r"(?<![\w.,])[-−–]?\d{1,3}(?:[  .,]\d{3})*(?:[.,]\d+)?(?!(?!(?:m|mn|bn)\b)\w)|"
+                      r"(?<![\w.,])[-−–]?\d+(?:[.,]\d+)?(?!(?!(?:m|mn|bn)\b)\w)")
 
 
 def readings(s):
@@ -1323,8 +1353,15 @@ def text_amounts(text):
             last = None
             continue
         unit = None
+        # "SEK 1 179m", "$2.3bn" (Storytel): enheten direkt efter talet, valutan före
+        mm = re.match(r"(m|mn|bn)\b", after)
+        sym = re.search(r"(US\$|\$|USD|€|EUR|SEK)\s*$", before)
+        if mm:
+            if not sym:
+                continue  # "100m" utan valuta kan vara meter
+            unit = (1e9 if mm.group(1) == "bn" else 1e6, {"€": "EUR", "EUR": "EUR", "SEK": "SEK"}.get(sym.group(1), "USD"))
         # enheten kan stå efter jämförelsetalet: "59,5 (56,2) miljarder"
-        for mm in (re.match(r"\s*(?:\(\s*[-−–]?[\d  .,]+\s*\)\s*)?(%s)" % TEXT_UNIT_RE, after, re.I), re.search(r"(%s)\s*$" % TEXT_UNIT_RE, before, re.I)):
+        for mm in () if unit else (re.match(r"\s*(?:\(\s*[-−–]?[\d  .,]+\s*\)\s*)?(%s)" % TEXT_UNIT_RE, after, re.I), re.search(r"(%s)\s*$" % TEXT_UNIT_RE, before, re.I)):
             if mm:
                 w = mm.group(1).lower()
                 unit = next(((sc, cur) for u, sc, cur in TEXT_UNITS if re.fullmatch(u, w, re.I)), None)
@@ -1336,6 +1373,9 @@ def text_amounts(text):
             sym = re.search(r"(US\$|\$|USD|€|EUR|SEK)\s*$", before)
             if mm and sym:
                 unit = (1e9 if mm.group(1).lower() in ("billion", "bn") else 1e6, {"€": "EUR", "EUR": "EUR", "SEK": "SEK"}.get(sym.group(1), "USD"))
+        if unit and sym and sym.group(1) != "SEK" and unit[1] == "SEK":
+            # "$2 693 miljoner" (Autoliv): valutatecknet före talet gäller, inte "miljoner" (som annars betyder kronor)
+            unit = (unit[0], "EUR" if sym.group(1) in ("€", "EUR") else "USD")
         if unit is None and last and re.match(r"\s*\)", after) and re.search(r"\(\s*$", before):
             unit = last
         if unit is None:
@@ -3537,6 +3577,7 @@ def main():
         if pages % 25 == 0:
             save_state()
         m = mfn.setdefault(slug, {})
+        prev_checked = m.get("checked")
         m.update({"checked": today, "cal": pg["cal"], "desc": pg.get("desc"), "industry": pg.get("Industri"), "list": pg.get("Lista")})
         reps = m.setdefault("reports", {})
         chosen, dates = [], set()
@@ -3544,10 +3585,14 @@ def main():
             if it["date"] not in dates:  # en rapport per dag (den svenska om båda finns)
                 dates.add(it["date"])
                 chosen.append(it)
-        for it in chosen[:args.interim_depth]:
+        for n, it in enumerate(chosen[:args.interim_depth]):
             if reps.get(it["url"], {}).get("v") == INTERIM_VERSION:
                 continue
-            if out_of_time() or interims >= args.max_interim:
+            # Den senaste rapporten läses alltid (inom tiden); taket gäller bara de äldre, så att nya rapporter
+            # inte får vänta på att äldre rapporter för andra bolag läses
+            if out_of_time() or (n > 0 and interims >= args.max_interim):
+                if n == 0:
+                    m["checked"] = prev_checked  # den senaste hann inte läsas: bolaget tas igen nästa körning
                 break
             try:
                 r = read_interim(it, annual.get(slug))
@@ -3744,6 +3789,7 @@ def main():
     age_rank = rank(lambda m: -m["facts"]["founded"] if m["facts"].get("founded") else None)
 
     written = set()
+    week = {}  # rapportveckan på startsidan: senaste och kommande rapporter per bolag (alla aktieslag)
     for isin, m in merged.items():
         key = m["lei"] or m["slug"] or isin
         doc = {"built": TODAY.isoformat()}
@@ -3822,6 +3868,16 @@ def main():
             doc["cal"] = cal
         if m["slug"]:
             doc["mfn"] = m["slug"]
+            # när bolagets sida på MFN senast lästes, så att det syns hur färska uppgifterna är
+            if m["mm"].get("checked"):
+                doc["checked"] = m["mm"]["checked"]
+            w = week.setdefault(m["slug"], {"isins": []})
+            w["isins"].append(isin)
+            q = doc.get("q")
+            if q and q.get("date") and 0 <= (TODAY - dt.date.fromisoformat(q["date"])).days <= 10:
+                w["q"] = [q["date"], q.get("p"), q.get("cur")] + [q.get(k) for k in ("rev", "ebit", "net")] + [1 if q.get("noNumbers") else 0, q.get("react")]
+            if cal.get("next") and 0 <= (dt.date.fromisoformat(cal["next"][0]) - TODAY).days <= 14:
+                w["next"] = cal["next"]
         if m["lei"] and len(classes.get(m["lei"], [])) > 1:
             doc["classes"] = sorted(classes[m["lei"]])
         rk = {k: v[key] for k, v in (("rev", rev_rank), ("emp", emp_rank), ("age", age_rank)) if key in v}
@@ -3869,6 +3925,14 @@ def main():
     # Vilka aktier som har en fil, så att sajten inte frågar efter filer som inte finns
     have = sorted(n[:-5] for n in os.listdir(out_dir) if n.endswith(".json") and not n.startswith("_"))
     json.dump({"built": TODAY.isoformat(), "isins": have}, open(os.path.join(out_dir, "_index.json"), "w", encoding="utf-8"), separators=(",", ":"))
+    # Rapportveckan: rapporter de senaste tio dagarna och de kommande två veckorna, för bolag som fonderna äger
+    # recent: [aktier, datum, period, valuta, omsättning, rörelseresultat, resultat, utan siffror, kursreaktion]
+    # next: [aktier, datum, rapport]
+    if not args.only:
+        recent = sorted(([w["isins"]] + w["q"] for w in week.values() if w.get("q")), key=lambda x: x[1], reverse=True)
+        upcoming = sorted(([w["isins"]] + w["next"] for w in week.values() if w.get("next")), key=lambda x: x[1])
+        json.dump({"built": TODAY.isoformat(), "recent": recent, "next": upcoming},
+                  open(os.path.join(out_dir, "_week.json"), "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     save_state()
     with_seg = sum(1 for m in by_company.values() if m["report"] and m["report"].get("seg"))
     with_geo = sum(1 for m in by_company.values() if m["report"] and m["report"].get("geo"))

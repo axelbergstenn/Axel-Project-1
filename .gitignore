@@ -33,6 +33,7 @@ site/emittent/
 site/integritet/
 site/dubbelsignal/
 site/data/front.json
+site/data/bolag/_week.json
 site/sparande/
 site/signaler/
 site/data/reports-pdf.json
