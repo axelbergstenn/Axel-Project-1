@@ -58,7 +58,7 @@ except ImportError:
 
 # Höjs när tolkningen av rapporterna ändras, så att alla rapporter läses om
 PARSER_VERSION = 7
-INTERIM_VERSION = 7  # samma sak för kvartalsrapporterna
+INTERIM_VERSION = 8  # samma sak för kvartalsrapporterna
 NAV_VERSION = 1      # substansvärdet i investment- och fastighetsbolagens rapporter (läses om utan att resten läses om)
 NAV_INDUSTRIES = {"Investeringar", "Förvaltning"}  # MFN:s branscher för investmentbolag och fastighetsbolag
 KPI_VERSION = 1     # branschens nyckeltal (läses om utan att resten läses om)
