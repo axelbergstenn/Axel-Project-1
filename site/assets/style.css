@@ -28,6 +28,7 @@
   --navy-2: #134034;
   --navy-fg: #eaf2ee;
   --navy-muted: #a2bcb1;
+  --navy-accent: #5fd3a2;
   --logo-ink: #0f1a16;
   --logo-dot: #0e6b4e;
   --link: #0a5640;
@@ -1156,6 +1157,18 @@ a.btn { color: var(--fg); }
 .chart-examples ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px 24px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 .chart-examples li { font-size: 13.5px; line-height: 1.5; color: var(--fg-soft); }
 .chart-examples a { font-weight: 650; }
+/* Punktdiagrammets fyra hörn: de största affärerna i varje */
+.quad-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 24px; }
+.quad { min-width: 0; padding-left: 10px; border-left: 3px solid var(--bar-pos); }
+.quad.q-sell { border-left-color: var(--bar-neg); }
+.quad h4 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0 0 4px; font-size: 13px; font-weight: 650; color: var(--fg); }
+.quad h4 .muted { font-size: 11.5px; font-weight: 500; }
+.quad ol { list-style: none; margin: 0; padding: 0; }
+.quad li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: baseline; padding: 4px 0; border-top: 1px solid var(--border-muted); font-size: 13px; }
+.quad li a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--fg); }
+.q-x { font-size: 12px; color: var(--fg-muted); white-space: nowrap; }
+.q-f { font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) { .quad-grid { grid-template-columns: minmax(0, 1fr); } }
 /* "Närstående till" vid insideraffärer, med förklaring när man pekar */
 .close-of { color: var(--fg-muted); border-bottom: 1px dotted var(--border-strong); cursor: help; }
 .chart-note { font-size: 13px; color: var(--fg-muted); margin: 10px 2px 2px; line-height: 1.55; }
@@ -1654,6 +1667,8 @@ body, .table-wrap, .chart-card, .panel { transition-property: background-color, 
 
 html.pdf *, html.pdf *::before, html.pdf *::after { animation: none !important; transition: none !important; }
 @page { size: A4; margin: 14mm 13mm 16mm; }
+/* PDF:ens omslag går ut i kanterna */
+@page cover { margin: 0; }
 @media print {
   *, *::before, *::after { animation: none !important; transition: none !important; }
   :root { --canvas: #ffffff; }
@@ -1686,7 +1701,7 @@ html.pdf *, html.pdf *::before, html.pdf *::after { animation: none !important; 
 
   .rep-section { break-inside: auto; }
   /* Första sidan: rapportens topp och I korthet. Listorna börjar på sida två. */
-  .highlights + .rep-section, section:has(> .highlights) + .rep-section { break-before: page; }
+  /* Rubriken och ingressen står på omslaget, så listorna får plats direkt efter "I korthet" */
   .rep-head .desc .term { display: none; }
   .rep-head { break-after: avoid; margin-bottom: 10px; padding-top: 12px; }
   .rep-head h2 { font-size: 18px; }
@@ -1714,7 +1729,43 @@ html.pdf *, html.pdf *::before, html.pdf *::after { animation: none !important; 
   .md-formula { font-size: 10.5px !important; }
   .method .actions-row, .method .page-head .actions-row { display: none; }
   .bt-answer { border: 1px solid #e8edee; }
+
+  /* Omslaget: skogsgrönt, rubriken, nyckeltalen och innehållet */
+  .print-cover { page: cover; display: flex !important; flex-direction: column; box-sizing: border-box; height: 297mm; padding: 18mm 18mm 15mm; break-after: page;
+    background: var(--navy); color: var(--navy-fg); }
+  .pc-top { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--navy-muted); }
+  .pc-brand { display: flex; align-items: center; gap: 9px; font-family: var(--display); font-size: 21px; font-weight: 700; letter-spacing: -0.01em; color: var(--navy-fg); }
+  .pc-brand .brand-mark { width: 26px; height: 26px; fill: var(--navy-fg); }
+  .pc-brand .brand-mark .bm-a { fill: var(--navy-accent); }
+  .pc-main { margin-top: auto; }
+  .pc-kicker { margin: 0 0 12px; font-size: 12.5px; font-weight: 600; color: var(--navy-accent); }
+  .pc-title { margin: 0 0 16px; max-width: 21ch; font-family: var(--display); font-size: 42px; line-height: 1.06; font-weight: 700; letter-spacing: -0.025em; color: var(--navy-fg); }
+  .pc-lead { margin: 0; max-width: 62ch; font-size: 13.5px; line-height: 1.6; color: var(--navy-fg); }
+  .pc-lead b { color: #fff; }
+  .pc-figs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 26px 0 0; padding-top: 16px; border-top: 1px solid var(--navy-2); }
+  .pc-figs div { min-width: 0; padding-right: 14px; }
+  .pc-figs dt { font-size: 10.5px; color: var(--navy-muted); }
+  .pc-figs dd { margin: 4px 0 2px; font-family: var(--display); font-size: 21px; font-weight: 650; line-height: 1.15; letter-spacing: -0.01em; color: var(--navy-fg);
+    font-variant-numeric: proportional-nums lining-nums; overflow-wrap: anywhere; }
+  .pc-figs span { font-size: 10.5px; color: var(--navy-muted); }
+  .pc-toc { margin-top: auto; padding-top: 22px; border-top: 1px solid var(--navy-2); }
+  .pc-toc h2 { margin: 0 0 8px; font-size: 11px; font-weight: 600; color: var(--navy-muted); }
+  .pc-toc ol { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 28px; }
+  .pc-toc li { display: flex; gap: 10px; padding: 4px 0; font-size: 13px; font-weight: 600; color: var(--navy-fg); break-inside: avoid; }
+  .pc-toc li span { min-width: 18px; font-weight: 500; color: var(--navy-accent); font-variant-numeric: tabular-nums; }
+  .pc-foot { margin: 16px 0 0; font-size: 9.5px; line-height: 1.5; color: var(--navy-muted); }
+  /* Rubriken och ingressen står på omslaget */
+  .rep-hero .kicker, .rep-hero h1, .rep-hero .intro { display: none; }
+
+  .quad-grid { gap: 10px 18px; }
+  .quad li { font-size: 11px; padding: 3px 0; }
+  .quad h4 { font-size: 11.5px; }
+  .q-x { font-size: 10px; }
+  .rep-table { box-shadow: none; break-inside: avoid; }
+  .rep-table th, .rep-table td { padding: 6px 10px; font-size: 11px; }
+  .chart .c-ptlabel { font-size: 10px; }
 }
+.rep-table td .sub { display: block; font-size: 12px; font-weight: 400; color: var(--fg-muted); white-space: normal; }
 
 /* Klickbara kort och rader reagerar likadant när man pekar på dem */
 .module, .mgr, .story, .g-item, .ql { transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease), background-color 0.18s var(--ease); }

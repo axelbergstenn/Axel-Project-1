@@ -4379,15 +4379,29 @@
     // Några exempel i ord: stora innehav som ligger långt från mitten
     var clip = function (v, d) { return Math.min(Math.abs(v), Math.max(-d[0], d[1])); };
     var standout = function (p) { return Math.sqrt(p.size) * (clip(p.x, xd) / (xd[1] - xd[0]) + clip(p.y, yd) / (yd[1] - yd[0])); };
-    var examples = pts.slice().sort(function (a, b) { return standout(b) - standout(a); }).slice(0, 4).map(function (p) {
-      return '<li><a href="' + stockHref(p.s) + '">' + esc(p.s.name) + "</a>: kursen " + (p.x >= 0 ? "steg " : "föll ") + nf0.format(Math.abs(p.x)) + " % och fonderna " +
-        (p.flow >= 0 ? '<span class="pos">köpte</span>' : '<span class="neg">sålde</span>') + " för " + bigSek(Math.abs(p.flow) * 1e6) + ".</li>";
-    }).join("");
+    // Namn vid de aktier som sticker ut mest (fler i PDF:en, där man inte kan peka på prickarna)
+    var named = {};
+    pts.slice().sort(function (a, b) { return standout(b) - standout(a); }).slice(0, pdfMode ? 14 : 6).forEach(function (p) { named[p.s.isin] = true; });
+    // De fyra hörnen: de största affärerna i varje, så att diagrammet går att läsa utan att peka (och i PDF:en)
+    var corner = function (title, test, tone) {
+      var list = pts.filter(test).sort(function (a, b) { return Math.abs(b.flow) - Math.abs(a.flow); });
+      return '<div class="quad ' + tone + '"><h4>' + title + ' <span class="muted">' + int(list.length) + " aktier</span></h4><ol>" + list.slice(0, 4).map(function (p) {
+        return '<li><a href="' + stockHref(p.s) + '">' + esc(shortCo(p.s.name)) + '</a><span class="q-x">kursen ' + pct(p.x) + '</span><span class="q-f ' + cls(p.flow) + '">' +
+          bigSek(p.flow * 1e6, true) + "</span></li>";
+      }).join("") + "</ol></div>";
+    };
+    var corners = '<div class="quad-grid">' +
+      corner("Köpte, och kursen steg", function (p) { return p.flow > 0 && p.x > 0; }, "q-buy") +
+      corner("Köpte, fast kursen föll", function (p) { return p.flow > 0 && p.x <= 0; }, "q-buy") +
+      corner("Sålde, fast kursen steg", function (p) { return p.flow < 0 && p.x > 0; }, "q-sell") +
+      corner("Sålde, och kursen föll", function (p) { return p.flow < 0 && p.x <= 0; }, "q-sell") + "</div>";
     return {
       text: verdict + " Av aktierna som steg under kvartalet nettoköptes " + nf0.format(share(winners) * 100) + " %, av dem som föll " + nf0.format(share(losers) * 100) +
         " % (rangkorrelation " + rText(ct.r) + ", p-värde " + pText(ct.p) + ").",
       html: '<div class="chart-card"><p class="chart-howto">Varje prick är en aktie. <b>Högt upp</b> köpte fonderna, <b>långt ner</b> sålde de. ' +
-        "<b>Till höger</b> steg kursen under kvartalet, <b>till vänster</b> föll den. Stora prickar är aktier som fonderna äger mycket av. Peka på en prick för att se vilken aktie det är.</p>" +
+        "<b>Till höger</b> steg kursen under kvartalet, <b>till vänster</b> föll den. Stora prickar är aktier som fonderna äger mycket av. " +
+        (pdfMode ? "Namnen står vid de aktier som sticker ut mest, och under diagrammet finns de största affärerna i varje hörn.</p>"
+          : "Peka på en prick för att se vilken aktie det är.</p>") +
         chart(function (node) {
           FFCharts.xy(node, pts, {
             height: node.clientWidth < 500 ? 340 : 440, xDomain: xd, yDomain: yd,
@@ -4399,9 +4413,10 @@
               return "<b>" + esc(p.s.name) + "</b>" + tipRow("", "Kursen " + (p.x >= 0 ? "steg" : "föll"), nf0.format(Math.abs(p.x)) + " %") +
                 tipRow(p.cls, "Fonderna " + (p.flow >= 0 ? "köpte" : "sålde"), bigSek(Math.abs(p.flow) * 1e6)) + tipRow("", "Av vad de ägde", nf0.format(Math.abs(p.y)) + " %");
             },
+            label: function (p) { return named[p.s.isin] ? shortCo(p.s.name) : null; },
             onClick: function (p) { location.hash = stockHref(p.s); }
           });
-        }) + '<div class="chart-examples"><h3>Exempel ur diagrammet</h3><ul>' + examples + "</ul></div>" +
+        }) + '<div class="chart-examples"><h3>De största affärerna i varje hörn</h3>' + corners + "</div>" +
         '<p class="chart-note">Med är aktier där fonderna ägde minst 100 mkr kvartalet innan. Kursen är medianen av fondernas rapporterade kurser, utan utdelningar. Enstaka extremvärden ritas vid kanten.</p></div>' + chaseBox
     };
   }
@@ -5061,6 +5076,94 @@
     }).join("") + "</ol>";
   }
 
+  // Blankningen ett visst datum ur veckoserierna i data/shorts.json (offentliga positioner, minst 0,5 %)
+  function shortAtDate(sh, isin, date) {
+    var i = -1;
+    for (var k = 0; k < sh.weeks.length && sh.weeks[k] <= date; k++) i = k;
+    if (i < 0) return null;
+    var v = 0;
+    (sh.series[isin] || []).forEach(function (x) { if (x[0] <= i) v = x[1]; });
+    return v;
+  }
+  // Kvartalsrapportens avsnitt om blankning: hur blankningen ändrades mellan kvartalets första och sista dag
+  function repShorts(m, buys) {
+    var sh = state.shorts;
+    if (!sh || !sh.weeks || !sh.series || !sh.weeks.length || sh.weeks[0] > m.prev) return null;
+    var rows = Object.keys(sh.series).map(function (isin) {
+      var a = shortAtDate(sh, isin, m.prev), b = shortAtDate(sh, isin, m.curr);
+      return { isin: isin, name: (sh.names || {})[isin] || isin, a: a, b: b, d: b - a };
+    }).filter(function (r) { return r.a != null && r.b != null && (r.a > 0 || r.b > 0); });
+    if (rows.length < 5) return null;
+    var up = rows.filter(function (r) { return r.d >= 0.1; }).sort(function (x, y) { return y.d - x.d; }).slice(0, 6);
+    var down = rows.filter(function (r) { return r.d <= -0.1; }).sort(function (x, y) { return x.d - y.d; }).slice(0, 6);
+    var most = rows.slice().sort(function (x, y) { return y.b - x.b; });
+    var pp = function (v) { return signed(nf1.format(v), v) + " p.e."; };
+    var max = Math.max.apply(null, up.concat(down).map(function (r) { return Math.abs(r.d); }).concat([0.1]));
+    var list = function (items) {
+      return '<ol class="rank-list">' + items.map(function (r, n) {
+        var s = shortStock(r.isin);
+        return '<li><span class="rk-n">' + (n + 1) + '</span><span class="rk-main">' + (s ? '<a href="' + stockHref(s) + '">' + esc(s.name) + "</a>" : "<span>" + esc(prettyName(r.name)) + "</span>") +
+          '<span class="rk-sub">från ' + nf2.format(r.a) + " % till " + nf2.format(r.b) + " % av aktierna</span></span>" +
+          '<span class="rk-bar ' + cls(r.d) + '"><i style="width:' + Math.max(2, Math.abs(r.d) / max * 100).toFixed(1) + '%"></i></span><span class="rk-v ' + cls(r.d) + '">' + pp(r.d) + "</span></li>";
+      }).join("") + "</ol>";
+    };
+    var name = function (r) { var s = shortStock(r.isin); return esc(s ? s.name : prettyName(r.name)); };
+    // Fonderna köpte, samtidigt som blankarna satsade mer på att kursen skulle falla
+    var byIsin = {};
+    rows.forEach(function (r) { byIsin[r.isin] = r; });
+    var against = buys.slice(0, 25).filter(function (s) { var r = byIsin[s.isin]; return r && r.d >= 0.3; }).slice(0, 3);
+    var text = "Vid kvartalets slut var " + name(most[0]) + " mest blankad, med <b>" + nf2.format(most[0].b) + " %</b> av aktierna" +
+      (most[1] ? ", följt av " + name(most[1]) + " (" + nf2.format(most[1].b) + " %)" : "") + "." +
+      (against.length ? " Fonderna köpte " + sentenceList(against, function (s) { return esc(s.name) + " (blankningen " + pp(byIsin[s.isin].d) + ")"; }) +
+        ", samtidigt som blankarna satsade mer på att kursen skulle falla." : "") +
+      " Blankning är lånade aktier som sålts i hopp om att köpa tillbaka dem billigare. Siffrorna är de positioner som måste offentliggöras (minst 0,5 %).";
+    return { text: text, html: '<div class="grid-2"><div class="rep-col"><h3>Blankningen ökade mest</h3>' + (up.length ? list(up) : '<p class="desc">Ingen ökade.</p>') + "</div>" +
+      '<div class="rep-col"><h3>Blankningen minskade mest</h3>' + (down.length ? list(down) : '<p class="desc">Ingen minskade.</p>') + "</div></div>" };
+  }
+  // Uppköpen som FI godkände under kvartalet, med premien och hur mycket fonderna ägde i bolagen
+  function repOffers(m) {
+    var bids = state.offers.offers.filter(function (o) { return o.date > m.prev && o.date <= m.curr; });
+    if (!bids.length) return null;
+    var owned = function (o) { return o.held || 0; };
+    var withPrem = bids.filter(function (o) { return o.premium != null; });
+    var avg = withPrem.length ? withPrem.reduce(function (a, o) { return a + o.premium; }, 0) / withPrem.length : null;
+    var total = bids.reduce(function (a, o) { return a + owned(o); }, 0);
+    var text = "Finansinspektionen godkände " + bids.length + (bids.length === 1 ? " erbjudandehandling" : " erbjudandehandlingar") + " under kvartalet." +
+      (avg != null ? " Budpremien var i snitt <b>" + nf0.format(avg) + " %</b> över kursen före budet." : "") +
+      (total > 0 ? " Fonderna ägde aktier för sammanlagt " + bigSek(total) + " i bolagen som blev uppköpta." : "");
+    var rowsHtml = bids.sort(function (a, b) { return owned(b) - owned(a); }).slice(0, 10).map(function (o) {
+      var f = (o.holders || []).length;
+      return "<tr><td class=\"l name\"><a href=\"#/uppkop/" + encodeURIComponent(o.id) + "\">" + esc(o.name || o.target) + '</a><span class="sub">' + esc(o.bidder) + "</span></td>" +
+        '<td class="num">' + (o.premium != null ? '<span class="pos">+' + nf0.format(o.premium) + " %</span>" : "–") + "</td>" +
+        '<td class="num">' + (f ? int(f) : "–") + '</td><td class="num">' + (owned(o) ? bigSek(owned(o)) : "–") + "</td></tr>";
+    }).join("");
+    return { text: text, html: '<div class="table-wrap rep-table"><table><thead><tr><th class="l">Bolag och budgivare</th><th class="num">Premie</th><th class="num">Fonder</th>' +
+      '<th class="num">Fondernas innehav</th></tr></thead><tbody>' + rowsHtml + "</tbody></table></div>" };
+  }
+  // Fondsparandet under kvartalets tre månader (Fondbolagens förening, data/flows.json)
+  function repSavings(m) {
+    var D = state.flows;
+    if (!D || !D.months || !D.types || !D.types.TOTALT) return null;
+    var from = m.prev.slice(0, 7), to = m.curr.slice(0, 7);
+    var idx = [];
+    D.months.forEach(function (mo, i) { if (mo > from && mo <= to) idx.push(i); });
+    if (idx.length !== 3 || idx.some(function (i) { return !D.types.TOTALT[i]; })) return null;
+    var sum = function (name) {
+      var ser = D.types[name] || (D.focus || {})[name];
+      if (!ser) return null;
+      return idx.reduce(function (a, i) { return a + (ser[i] ? ser[i][0] : 0); }, 0);
+    };
+    var types = ["Aktiefonder", "Blandfonder", "Långa räntefonder", "Korta räntefonder", "Företagsobligationsfonder", "Generationsfonder", "Hedgefonder", "Övriga fonder"]
+      .map(function (t) { return { label: t, v: sum(t) }; }).filter(function (x) { return x.v != null; }).sort(function (a, b) { return b.v - a.v; });
+    var tot = sum("TOTALT"), idxF = sum("varav indexfonder");
+    var outT = types.filter(function (x) { return x.v < 0; });
+    var text = "Svenskarna satte " + (tot >= 0 ? "in" : "ut") + " netto <b>" + bigSek(Math.abs(tot) * 1e6) + "</b> i fonder under " + monthLabel(D.months[idx[0]]).replace(/ \d{4}$/, "") + "–" +
+      monthLabel(D.months[idx[2]]) + "." + (types[0] && types[0].v > 0 ? " Mest pengar gick till " + lcWord(types[0].label) + " (" + bigSek(types[0].v * 1e6, true) + ")" : "") +
+      (outT.length ? ", mest togs ut ur " + lcWord(outT[outT.length - 1].label) + " (" + bigSek(outT[outT.length - 1].v * 1e6, true) + ")" : "") + "." +
+      (idxF != null ? " Indexfonderna för aktier fick " + bigSek(idxF * 1e6, true) + "." : "") + " Källa: Fondbolagens förening.";
+    return { text: text, html: divBars(types) };
+  }
+
   function repSection(n, title, desc, inner) {
     return '<section class="rep-section section-gap"><div class="rep-head"><span class="rep-num">' + (n < 10 ? "0" : "") + n + "</span><div><h2>" + title + "</h2>" +
       (desc ? '<p class="desc">' + desc + "</p>" : "") + "</div></div>" + inner + "</section>";
@@ -5148,6 +5251,13 @@
     }
     var chase = hasHist ? chaseData(ds) : null;
     if (chase) out.push(repSection(++n, "Köpte fonderna vinnarna?", chase.text, chase.html));
+    // Blankningen och uppköpen under kvartalet (bara svenska aktier) och fondsparandet
+    var shortSec = !world && needShorts() ? repShorts(m, buys) : null;
+    if (shortSec) out.push(repSection(++n, "Blankning", shortSec.text, shortSec.html));
+    var offerSec = hasOffers ? repOffers(m) : null;
+    if (offerSec) out.push(repSection(++n, "Uppköp", offerSec.text, offerSec.html));
+    var saveSec = needFlows() ? repSavings(m) : null;
+    if (saveSec) out.push(repSection(++n, "Fondsparandet", saveSec.text, saveSec.html));
 
     // Kortare noteringar
     var notes = [];
@@ -5165,13 +5275,13 @@
     var cons = managersConsensus(ds).filter(function (c) { return c.buyers > c.sellers; }).sort(function (a, b) { return (b.buyers - b.sellers) - (a.buyers - a.sellers); });
     if (cons[0]) note("Kända förvaltare", "Bland de kända aktiva fonderna var flest överens om att köpa " + link(cons[0].s) +
       " (" + cons[0].buyers + " köpte, " + cons[0].sellers + " sålde).", "#/forvaltare", "Se alla förvaltare");
-    if (hasOffers) {
+    if (hasOffers && !offerSec) {
       var bids = state.offers.offers.filter(function (o) { return o.date > m.prev && o.date <= m.curr; });
       if (bids.length) note("Uppköp", bids.length + (bids.length === 1 ? " uppköpserbjudande" : " uppköpserbjudanden") + " godkändes av FI under kvartalet: " +
         sentenceList(bids.slice(0, 4), function (o) { return '<a href="#/uppkop/' + encodeURIComponent(o.id) + '">' + esc(o.name || o.bidder) + "</a>" + (o.premium != null ? " (premie " + nf1.format(o.premium) + " %)" : ""); }) +
         (bids.length > 4 ? " med flera" : "") + ".", "#/uppkop", "Alla uppköp");
     }
-    if (!world && needShorts()) {
+    if (!world && !shortSec && needShorts()) {
       var sh = state.shorts.agg.slice().sort(function (a, b) { return b.pct - a.pct; });
       var shortedBuys = buys.slice(0, 15).filter(function (s) { var a = state.shorts.byIsin[s.isin]; return a && a.pct >= 2; });
       if (sh[0]) note("Blankning", "Mest blankad just nu är " + esc(shortName(sh[0])) + " med <b>" + nf2.format(sh[0].pct) + " %</b> av aktierna." +
@@ -5191,7 +5301,21 @@
     var printHead = '<div class="print-only print-head"><b>Fondinsyn</b><span>Kvartalsrapport ' + quarterLabel(state.q) + " · " + Word + "</span><span>www.fondinsyn.se</span></div>";
     var printFoot = '<div class="print-only print-foot">Källa: fondbolagens innehavsrapporter till Finansinspektionen, sammanställda av Fondinsyn (www.fondinsyn.se) den ' +
       dateText(new Date().toISOString().slice(0, 10)) + ". Nettoköp är förändringen i antal aktier gånger kursen vid kvartalets slut. Inte investeringsrådgivning.</div>";
-    return '<article class="report">' + printHead + head +
+    // Omslaget i PDF:en: rubriken, de viktigaste siffrorna och vad rapporten innehåller
+    var titles = out.map(function (s) { var x = /<h2>(.*?)<\/h2>/.exec(s); return x ? x[1] : null; }).filter(Boolean);
+    var pcFig = function (label, value, note) { return "<div><dt>" + label + "</dt><dd>" + value + "</dd>" + (note ? "<span>" + note + "</span>" : "") + "</div>"; };
+    var cover = '<section class="print-only print-cover"><div class="pc-top"><span class="pc-brand"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">' +
+      '<path class="bm-a" d="M17.5 2.08A14 14 0 0 1 29.92 14.5H17.5Z"/><path d="M29.92 17.5A14 14 0 0 1 17.5 29.92V17.5Z"/><path d="M14.5 29.92A14 14 0 0 1 2.08 17.5H14.5Z"/>' +
+      '<path d="M2.08 14.5A14 14 0 0 1 14.5 2.08V14.5Z"/></svg>Fondinsyn</span><span>www.fondinsyn.se</span></div>' +
+      '<div class="pc-main"><p class="pc-kicker">Kvartalsrapport ' + quarterLabel(state.q) + " · " + Word + '</p><h1 class="pc-title">' + esc(headline) + "</h1>" +
+      '<p class="pc-lead">' + lead + "</p></div>" +
+      '<dl class="pc-figs">' + pcFig("Fondernas nettoköp", bigSek(net, true), word + " aktier") + pcFig("Fonder i jämförelsen", int(t.funds), int(t.held) + " " + word + " aktier") +
+      (buys[0] ? pcFig("Mest köpt", esc(shortCo(buys[0].name)), bigSek(buys[0].flow, true)) : "") +
+      (sells[0] ? pcFig("Mest sålt", esc(shortCo(sells[0].name)), bigSek(sells[0].flow, true)) : "") + "</dl>" +
+      '<div class="pc-toc"><h2>I rapporten</h2><ol>' + titles.map(function (x, i) { return "<li><span>" + (i < 9 ? "0" : "") + (i + 1) + "</span>" + x + "</li>"; }).join("") + "</ol></div>" +
+      '<p class="pc-foot">Fondernas innehav ' + dateText(m.curr) + " jämfört med " + dateText(m.prev) + ", ur fondbolagens rapporter till Finansinspektionen. Sammanställd av Fondinsyn " +
+      dateText(new Date().toISOString().slice(0, 10)) + ". Inte investeringsrådgivning.</p></section>";
+    return '<article class="report">' + cover + printHead + head +
       (facts.length ? '<section class="section-gap"><h2 class="visually-hidden">I korthet</h2><div class="highlights hl-' + facts.length + '">' + facts.join("") + "</div></section>" : "") +
       out.join("") +
       '<div class="rep-share section-gap">' + pdfBtn + '<button type="button" class="btn" id="repShare" data-url="' + esc(url) + '">Kopiera länk till rapporten</button></div>' +
