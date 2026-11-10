@@ -240,8 +240,9 @@ jobs:
           fi
 
       # Kvartalsrapporterna som PDF (Chrome skriver ut rapportsidorna). Misslyckas det länkar sajten till webbversionen.
+      # Körs vid varje publicering (tar ungefär en kvart minut): hela site/ byts ut varje gång, så utan det här steget
+      # försvann PDF:erna från sajten efter körningarna mitt på dagen.
       - name: Skriv ut kvartalsrapporterna som PDF
-        if: env.MIDDAY != 'true'
         continue-on-error: true
         run: bash scripts/build-pdf.sh site
 

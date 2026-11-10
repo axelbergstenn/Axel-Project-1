@@ -645,14 +645,14 @@
   function nextQuarter(q) { var y = +q.slice(0, 4), n = +q.slice(5); return n === 4 ? (y + 1) + "Q1" : y + "Q" + (n + 1); }
 
   // Genvägar till sajtens avdelningar, var och en med en aktuell siffra
-  function quickLinks(ds) {
+  function quickLinks(ds, rail) {
     var f = state.front || {}, t = ds.totals, net = t.buy + t.sell;
     var policy = (f.rates || []).filter(function (r) { return r[0] === "SECBREPOEFF"; })[0];
     var sav = f.savings;
     var tile = function (href, title, value, desc) {
       return '<a class="ql" href="' + href + '"><span class="ql-t">' + title + '</span><span class="ql-v">' + value + '</span><span class="ql-d">' + desc + "</span></a>";
     };
-    return '<nav class="quick section-gap" aria-label="Genvägar">' +
+    return '<nav class="quick' + (rail ? " rail" : " section-gap") + '" aria-label="Genvägar">' +
       tile("#/aktier", "Aktier", '<span class="' + cls(net) + '">' + bigSek(net, true) + "</span>", "fondernas nettoköp i " + int(t.held) + " " + marketWord() + " aktier") +
       tile("#/fonder", "Fonder", int(Object.keys(quarterData().fi).length), "fonder med innehav, avgifter och avkastning") +
       tile("#/insyn", "Insynshandel", f.insider ? bigSek(f.insider.buy30) : "Insyn", f.insider ? "insiders köp de senaste 30 dagarna" : "insiders köp och sälj i sina egna bolag") +
@@ -757,7 +757,7 @@
     var streakRows = function (list) { return list.map(function (r) { r.name = r.s.name; r.isin = r.s.isin; return r; }); };
 
 
-    return '<h1 class="visually-hidden">Fondinsyn: vad svenska fonder köper och säljer</h1>' + aboutCard() + reportCard() + quickLinks(ds) + watchBlock() + signalModules() + reportWeek() +
+    return '<h1 class="visually-hidden">Fondinsyn: vad svenska fonder köper och säljer</h1>' + reportCard() + quickLinks(ds, true) + aboutCard() + watchBlock() + signalModules() + reportWeek() +
       '<div class="grid-2 section-gap">' +
       block("Störst nettoköp", "Förändring i antal aktier × kurs vid kvartalsslut. " + termLink("nettokop", "Hur räknas det?"), table("ov-buy", flowCols, buys, st) + '<a class="more" href="#/aktier">Alla aktier</a>') +
       block("Störst nettosälj", "&nbsp;", table("ov-sell", flowCols, sells, st)) +
@@ -3647,12 +3647,13 @@
       "Uppgifterna kommer ur pressmeddelandena på MFN. Premien är mot stängningskursen dagen före budet.</p>" +
       table("bids-new", freshCols, fresh, { static: true }) + "</section>" : "";
 
-    return head + freshHtml +
+    return head +
       '<div class="highlights">' +
       highlight("Uppköpserbjudanden", int(offers.length) + " bud", null, years.length ? "sedan " + years[0] : "", "Godkända erbjudandehandlingar hos FI") +
       highlight("Mittenvärde för budpremien", medPrem != null ? nf1.format(medPrem) + " %" : "–", null, "", "Mot stängningskursen dagen före budet, " + prem.length + " bud") +
       highlight("Flest uppköpta innehav", top ? top.name : null, top ? fundHref(top) : null, top ? top.n + " bolag som fått bud" : "", top ? "ägda kvartalet före budet" : "") +
       "</div>" +
+      freshHtml +
       '<section class="block section-gap"><div class="block-head"><h2>Alla bud</h2><span class="note">' + int(withTarget.length) + " av " + int(offers.length) + " med identifierat målbolag</span></div>" +
       table("offers", cols, offers, { csv: true, sort: { col: "date", dir: -1 } }) + "</section>" +
       '<section class="block section-gap"><div class="block-head"><h2>Fonderna som oftast ägt uppköpta bolag</h2></div>' +
@@ -6133,6 +6134,10 @@
       counted[key] = 1;
       var m = /^([+−-]?)([\d\s  ]+(?:,\d+)?)(.*)$/.exec(txt);
       if (!m) return;
+      // mellanslaget före enheten hör till enheten ("726 fonder" blev "350fonder" medan siffran räknades upp)
+      var numPart = m[2].replace(/[\s  ]+$/, "");
+      m[3] = m[2].slice(numPart.length) + m[3];
+      m[2] = numPart;
       var dec = (m[2].split(",")[1] || "").length;
       var target = parseFloat(m[2].replace(/[\s  ]/g, "").replace(",", "."));
       if (!isFinite(target) || target === 0) return;

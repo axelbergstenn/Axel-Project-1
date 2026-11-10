@@ -48,9 +48,11 @@ CHROME=... PYTHON=py bash scripts/smoke-test.sh site                     # rökt
 Ägarens designregler finns i `CLAUDEwebdesign copy.md` (ligger bara lokalt). Viktigast:
 
 - **Grundstil:** skogsgrön och SEB-inspirerad.
-  - Grågrön bakgrund (`--canvas`) med vita ytor ovanpå.
+  - Grågrön bakgrund (`--canvas`) med vita ytor ovanpå. Kort har tunna kanter och inga skuggor.
   - Skogsgrönt (`--navy` #0c2e23, `--brand` #0e6b4e) är enda accentfärgen.
-  - Kvartalets rubrik är en skogsgrön panel överst på startsidan, med kvartalets största köp och sälj som staplar.
+  - Överst ligger en skogsgrön marknadsremsa. Varje sidas huvud (`.page-head`, flikar och nyckeltal direkt efter) är ett vitt band i full bredd, målat med `border-image` med utfall så att sidan inte blir bredare.
+  - Startsidan börjar med kvartalets rubrik som ett skogsgrönt band i full bredd (`.rep-card` och `.quick.rail`), med kvartalets största köp och sälj som staplar och Kvartal-symbolen svagt i bakgrunden.
+  - Avsnitt börjar med en tunn mörk linje (`--rule`) ovanför rubriken. Undvik grå rutor inuti vita kort: använd spalter med tunna linjer.
 - **Upp är blått (`--pos`) och ner rött (`--neg`), aldrig grönt för upp.**
 - **Typsnitt:** rubriker och stora tal i Schibsted Grotesk med proportionella siffror, text och tabeller i Inter Tight. Båda ligger på sajten själv i `site/assets/fonts`. TTF-filerna för delningsbilderna ligger i `scripts/fonts`.
 - **Färger:** använd tokens i `:root` och `:root[data-theme="dark"]` i `style.css`, inga hårdkodade färger. Mörkt läge ska alltid fungera.
