@@ -34,7 +34,11 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 $FormatVersion = 2
 $FiBase = "https://www.fi.se"
-$FiList = "https://www.fi.se/sv/vara-register/fondinnehav-per-kvartal/"
+# FI flyttade sidan i november 2026 (den låg förut direkt under /vara-register/). Flyttas den igen letas den
+# upp via registersidorna i Get-Releases.
+$FiList = "https://www.fi.se/sv/vara-register/fondinnehav/fondinnehav-per-kvartal/"
+# Prospektregistret (erbjudandehandlingar vid uppköp), flyttat samtidigt
+$FiProspekt = "$FiBase/sv/vara-register/fis-marknadsregister/prospekt/register"
 $Inv = [System.Globalization.CultureInfo]::InvariantCulture
 $IndexRe = '(?i)index|indx|\bomx|passiv|tracker|\betf\b|\bzero\b|\baccess\b|aktiespararna topp'
 $BondRe = '\d{1,2}/\d{1,2}/\d{2,4}|\bFloat\b|\bFRN\b|%|fond\b'
@@ -84,7 +88,24 @@ function Write-Utf8($path, $text) {
 # FI
 
 function Get-Releases {
-  $html = (Invoke-WebRequest -Uri $FiList -UseBasicParsing).Content
+  try {
+    $html = (Invoke-WebRequest -Uri $FiList -UseBasicParsing).Content
+  } catch {
+    $listErr = $_.Exception.Message
+    # Sidan har flyttats: leta upp länken till "fondinnehav-per-kvartal" på FI:s registersidor
+    $html = $null
+    foreach ($hub in @("$FiBase/sv/vara-register/fondinnehav/", "$FiBase/sv/vara-register/")) {
+      try { $hubHtml = (Invoke-WebRequest -Uri $hub -UseBasicParsing).Content } catch { continue }
+      $m = [regex]::Match($hubHtml, 'href="(/sv/[^"]*fondinnehav-per-kvartal/?)"')
+      if ($m.Success) {
+        $url = $FiBase + $m.Groups[1].Value
+        Write-Host "::warning::FI har flyttat sidan med fondinnehav till $url. Uppdatera FiList i build-data.ps1."
+        $html = (Invoke-WebRequest -Uri $url -UseBasicParsing).Content
+        break
+      }
+    }
+    if (-not $html) { throw "Sidan med fondinnehav per kvartal gick inte att hämta ($FiList): $listErr" }
+  }
   $seen = @{}
   $list = foreach ($m in [regex]::Matches($html, 'filnamn=(Fondinnehav_(\d{4})Q(\d)_[^"''<>]+?\.zip)')) {
     $file = [System.Net.WebUtility]::UrlDecode([System.Net.WebUtility]::HtmlDecode($m.Groups[1].Value))
@@ -436,7 +457,7 @@ function Build-History($releases, $file) {
 function Get-OfferList([int]$fromYear) {
   $list = @()
   for ($y = $fromYear; $y -le (Get-Date).Year; $y++) {
-    $html = (Invoke-WebRequest -Uri "$FiBase/sv/vara-register/prospektregistret/?dokumenttyp=erbjudandehandling&year=$y" -UseBasicParsing).Content
+    $html = (Invoke-WebRequest -Uri "$FiProspekt/?dokumenttyp=erbjudandehandling&year=$y" -UseBasicParsing).Content
     foreach ($m in [regex]::Matches($html, '(?s)<td class="date">(\d{4}-\d{2}-\d{2})</td>\s*<td>(.*?)</td>\s*<td>(.*?)</td>\s*<td><a href="[^"]*details\?id=([\d-]+)"')) {
       $list += [pscustomobject]@{
         Id = $m.Groups[4].Value; Date = $m.Groups[1].Value
@@ -455,7 +476,7 @@ function Get-OfferText($id) {
   $txt = Join-Path $CacheDir "offer-$id.txt"
   if (-not (Test-Path $txt)) {
     Write-Host "  Läser erbjudandehandling $id"
-    Invoke-WebRequest -Uri "$FiBase/sv/vara-register/prospektregistret/GetFile?id=$id" -OutFile $pdf -UseBasicParsing
+    Invoke-WebRequest -Uri "$FiProspekt/GetFile?id=$id" -OutFile $pdf -UseBasicParsing
     & pdftotext -f 1 -l 15 -enc UTF-8 $pdf $txt 2>$null
     Remove-Item $pdf -ErrorAction SilentlyContinue
     if (-not (Test-Path $txt)) { return $null }

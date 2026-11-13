@@ -3496,7 +3496,7 @@
   }
   function bidPriceText(b) { return b.price == null ? "–" : nf2.format(b.price).replace(/,00$/, "") + " " + (b.cur === "SEK" || !b.cur ? "kr" : b.cur); }
   function cleanTarget(t) { return t ? prettyName(String(t).replace(/\s*\(publ\)\s*/ig, " ").replace(/\s+/g, " ").trim()) : null; }
-  function offerUrl(o) { return "https://www.fi.se/sv/vara-register/prospektregistret/details?id=" + encodeURIComponent(o.id); }
+  function offerUrl(o) { return "https://www.fi.se/sv/vara-register/fis-marknadsregister/prospekt/register/details?id=" + encodeURIComponent(o.id); }
   function offersFor(isin) {
     return state.offers ? state.offers.offers.filter(function (o) { return o.isins && o.isins.indexOf(isin) >= 0; }) : [];
   }
@@ -5502,7 +5502,7 @@
       '<p class="desc">Fondinsyn räknar antalet besök med GoatCounter, som inte använder kakor och inte sparar några personuppgifter.</p>' +
       "<h2>Uppdatering</h2><p>Allt hämtas automatiskt varje morgon. Insynshandel och blankning ändras dagligen, fondsparandet varje månad och fondinnehaven en gång per kvartal. Finansinspektionen publicerar kvartalets innehav ungefär tolv veckor efter kvartalsslut, utan fast datum. FI publicerar ibland om äldre kvartal med rättelser, och de hämtas också automatiskt. Alla detaljer finns i <a href='#/metod'>metodrapporten</a>.</p>" +
       (m && m.src ? "<p>Källfiler för " + quarterLabel(state.q) + ": <code>" + esc(m.src[0]) + "</code> och <code>" + esc(m.src[1]) + "</code>.</p>" : "") +
-      '<h2>Källa</h2><p><a href="https://www.fi.se/sv/vara-register/fondinnehav-per-kvartal/" target="_blank" rel="noopener">Finansinspektionen – Fondinnehav per kvartal</a></p>' +
+      '<h2>Källa</h2><p><a href="https://www.fi.se/sv/vara-register/fondinnehav/fondinnehav-per-kvartal/" target="_blank" rel="noopener">Finansinspektionen – Fondinnehav per kvartal</a></p>' +
       "<p>Informationen på sidan är inte investeringsrådgivning.</p></div>";
   }
 

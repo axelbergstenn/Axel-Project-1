@@ -52,7 +52,7 @@ function Get-File($name) {
     "https://fi.se/BlankningsRegister/$name"
   )
   $headers = @{ "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
-    "Referer" = "https://www.fi.se/sv/vara-register/blankningsregistret/"; "X-Requested-With" = "XMLHttpRequest"; "Accept" = "*/*" }
+    "Referer" = "https://www.fi.se/sv/vara-register/fis-marknadsregister/blankning/register/"; "X-Requested-With" = "XMLHttpRequest"; "Accept" = "*/*" }
   foreach ($u in $urls) {
     for ($try = 1; $try -le 2; $try++) {
       try {

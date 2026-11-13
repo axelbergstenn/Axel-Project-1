@@ -1,6 +1,6 @@
 # Fondinsyn
 
-Insyn i svenska fonder: vilka aktier de köper och säljer, vad de kostar, hur lika de är och vilka bolag de ägde när uppköpsbud kom. Allt bygger på [Finansinspektionens öppna data](https://www.fi.se/sv/vara-register/fondinnehav-per-kvartal/).
+Insyn i svenska fonder: vilka aktier de köper och säljer, vad de kostar, hur lika de är och vilka bolag de ägde när uppköpsbud kom. Allt bygger på [Finansinspektionens öppna data](https://www.fi.se/sv/vara-register/fondinnehav/fondinnehav-per-kvartal/).
 
 **Sajten:** https://www.fondinsyn.se/
 
@@ -88,7 +88,7 @@ Körningarna kl. 11 och 17 är till för bolagens kvartalsrapporter samma dag. N
 
 ## Uppköp
 
-Erbjudandehandlingar hämtas från [FI:s prospektregister](https://www.fi.se/sv/vara-register/prospektregistret/). Målbolag, pris och premie läses ur de första sidorna med `pdftotext` (poppler-utils), som installeras i GitHub Actions och finns i Git för Windows. Varje dokument läses en gång; resultatet sparas i `site/data/offers.json`.
+Erbjudandehandlingar hämtas från [FI:s prospektregister](https://www.fi.se/sv/vara-register/fis-marknadsregister/prospekt/register/). Målbolag, pris och premie läses ur de första sidorna med `pdftotext` (poppler-utils), som installeras i GitHub Actions och finns i Git för Windows. Varje dokument läses en gång; resultatet sparas i `site/data/offers.json`.
 
 ## Nyhetsbrev
 

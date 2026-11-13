@@ -1512,13 +1512,13 @@ $fileHold = SaveCsv "data/csv/innehav-$Q.csv" @("FI-nummer", "Fond", "Fondbolag"
 
 $prevQL = QLabel ([string]$qMeta.prevId)
 $srcRows = NewList
-$srcRows.Add(@("Fondernas innehav", (A "https://www.fi.se/sv/vara-register/fondinnehav-per-kvartal/" "Finansinspektionen, fondinnehav per kvartal"), "Varje kvartal, ungefär tolv veckor efter kvartalsslut", "$QL (innehav $asOf)"))
+$srcRows.Add(@("Fondernas innehav", (A "https://www.fi.se/sv/vara-register/fondinnehav/fondinnehav-per-kvartal/" "Finansinspektionen, fondinnehav per kvartal"), "Varje kvartal, ungefär tolv veckor efter kvartalsslut", "$QL (innehav $asOf)"))
 $srcRows.Add(@("Avgifter och risk", "Samma kvartalsrapporter till FI", "Varje kvartal", $QL))
 $srcRows.Add(@("Räntepapper och fondandelar", "Samma kvartalsrapporter till FI", "Varje kvartal", $QL))
 $srcRows.Add(@("Marknadsräntor", (A "https://www.riksbank.se/sv/statistik/rantor-och-valutakurser/" "Riksbanken"), "Varje bankdag", "Hämtas varje morgon"))
-$srcRows.Add(@("Blankning", (A "https://www.fi.se/sv/vara-register/blankningsregistret/" "Finansinspektionen, blankningsregistret"), "Varje dag", "Hämtas varje morgon"))
+$srcRows.Add(@("Blankning", (A "https://www.fi.se/sv/vara-register/fis-marknadsregister/blankning/register/" "Finansinspektionen, blankningsregistret"), "Varje dag", "Hämtas varje morgon"))
 $srcRows.Add(@("Insynshandel", (A "https://marknadssok.fi.se/publiceringsklient" "Finansinspektionen, insynsregistret"), "Varje dag, arkiv sedan 2019", "Hämtas varje morgon"))
-$srcRows.Add(@("Uppköpserbjudanden", (A "https://www.fi.se/sv/vara-register/prospektregistret/" "Finansinspektionen, prospektregistret"), "Varje dag", "Hämtas varje morgon"))
+$srcRows.Add(@("Uppköpserbjudanden", (A "https://www.fi.se/sv/vara-register/fis-marknadsregister/prospekt/register/" "Finansinspektionen, prospektregistret"), "Varje dag", "Hämtas varje morgon"))
 $srcRows.Add(@("Avkastning", (A "https://www.pensionsmyndigheten.se/" "Pensionsmyndighetens fonddata"), "Varje vecka", "Fonder på premiepensionens fondtorg"))
 
 $dlRows = NewList
@@ -2020,7 +2020,7 @@ if ($WriteHome) {
       ',"keywords":["fonder","fondinnehav","aktier","fondbolag","avgifter","Finansinspektionen"]' +
       ',"temporalCoverage":' + (J ($first.Substring(0, 4) + "-" + $qEnd[$first.Substring(5)] + "/" + $qMeta.curr)) +
       ',"dateModified":' + (J $qMeta.built) +
-      ',"isBasedOn":"https://www.fi.se/sv/vara-register/fondinnehav-per-kvartal/"' +
+      ',"isBasedOn":"https://www.fi.se/sv/vara-register/fondinnehav/fondinnehav-per-kvartal/"' +
       ',"creator":{"@type":"Organization","name":"Fondinsyn","url":' + (J ($BaseUrl + "/")) + "}" +
       ',"distribution":[{"@type":"DataDownload","encodingFormat":"application/json","contentUrl":' + (J "$BaseUrl/data/$Q.json") + "}]}")
   )
