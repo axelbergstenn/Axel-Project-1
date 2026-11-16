@@ -242,6 +242,21 @@ jobs:
       # Kvartalsrapporterna som PDF (Chrome skriver ut rapportsidorna). Misslyckas det länkar sajten till webbversionen.
       # Körs vid varje publicering (tar ungefär en kvart minut): hela site/ byts ut varje gång, så utan det här steget
       # försvann PDF:erna från sajten efter körningarna mitt på dagen.
+      # Mindre skript till besökarna: app.js och charts.js minifieras (ungefär 40 % mindre att ladda ner och tolka på mobilen).
+      # Källkoden i repot är oförändrad. Går något fel behålls originalet, och röktestet nedan kör mot det som publiceras.
+      - name: Minifiera skripten
+        continue-on-error: true
+        run: |
+          for f in app charts; do
+            src="site/assets/$f.js"
+            if npx --yes esbuild@0.24.0 "$src" --minify --target=es2015 --outfile="$RUNNER_TEMP/$f.min.js" && node --check "$RUNNER_TEMP/$f.min.js"; then
+              echo "$f.js: $(wc -c < "$src") -> $(wc -c < "$RUNNER_TEMP/$f.min.js") byte"
+              cp "$RUNNER_TEMP/$f.min.js" "$src"
+            else
+              echo "::warning::$f.js gick inte att minifiera, originalet publiceras"
+            fi
+          done
+
       - name: Skriv ut kvartalsrapporterna som PDF
         continue-on-error: true
         run: bash scripts/build-pdf.sh site

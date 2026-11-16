@@ -562,8 +562,21 @@
       return sessionStorage.getItem("ff-hide-about") === "1";
     } catch (e) { return false; }
   }
+  // Första besöket visar hela rutan. Den som varit här en tidigare dag får en kort rad i stället (localStorage).
+  var returning = (function () {
+    try {
+      var today = new Date().toISOString().slice(0, 10), first = localStorage.getItem("ff-first-visit");
+      if (!first) { localStorage.setItem("ff-first-visit", today); return false; }
+      return first < today;
+    } catch (e) { return false; }
+  })();
   function aboutCard() {
     if (aboutHidden()) return "";
+    if (returning && !/[?&]pdf/.test(location.search)) {
+      var stamp = state.front && state.front.built ? shortStamp(state.front.built) : null;
+      return '<p class="about-line">Fondinsyn visar vad svenska fonder köper och säljer, ur Finansinspektionens och bolagens egna uppgifter.' +
+        (stamp ? ' <span class="muted">Uppdaterad ' + esc(stamp) + ".</span>" : "") + ' <a href="#/om">Så fungerar det</a></p>';
+    }
     var built = state.front && state.front.built ? shortStamp(state.front.built) : null;
     var item = function (what, when, src) { return "<div><dt>" + what + "</dt><dd>" + when + "</dd><span>" + src + "</span></div>"; };
     return '<section class="about-card" aria-label="Om Fondinsyn">' +
@@ -4782,6 +4795,56 @@
     return { text: text, html: '<div class="grid-2"><div class="rep-col"><h3>Blankningen ökade mest</h3>' + (up.length ? list(up) : '<p class="desc">Ingen ökade.</p>') + "</div>" +
       '<div class="rep-col"><h3>Blankningen minskade mest</h3>' + (down.length ? list(down) : '<p class="desc">Ingen minskade.</p>') + "</div></div>" };
   }
+  // Insynshandeln under kvartalet ur arkivet (site/data/insyn-arkiv/<månad>.json, en fil per publiceringsmånad).
+  // Affärerna räknas på affärsdagen, så månaden efter kvartalet läses också (anmälan kommer några dagar senare).
+  function needInsiderQuarter(m) {
+    var key = "insynq-" + m.curr;
+    state.insiderQ = state.insiderQ || {};
+    if (state.insiderQ[key]) return state.insiderQ[key];
+    if (failed(key)) return null;
+    var months = [], d = new Date(m.prev.slice(0, 7) + "-01T00:00:00Z");
+    for (var k = 1; k <= 4; k++) { d.setUTCMonth(d.getUTCMonth() + 1); months.push(d.toISOString().slice(0, 7)); }
+    need(key, function () {
+      return Promise.all(months.map(function (mo) { return getJSON("data/insyn-arkiv/" + mo + ".json").then(null, function () { return []; }); })).then(function (parts) {
+        var rows = [];
+        parts.forEach(function (p) { (p || []).forEach(function (r) { var x = insiderRow(r); if (x.tx > m.prev && x.tx <= m.curr) rows.push(x); }); });
+        state.insiderQ[key] = rows;
+      });
+    });
+    return null;
+  }
+  function repInsider(m, ds) {
+    var rows = needInsiderQuarter(m);
+    if (!rows || !rows.length) return null;
+    var by = {}, buy = 0, sell = 0;
+    rows.forEach(function (r) {
+      if (r.kind === "other" || !r.sek) return;
+      var b = by[r.isin] = by[r.isin] || { isin: r.isin, name: r.issuer, buy: 0, sell: 0, n: 0 };
+      if (r.kind === "buy") { b.buy += r.sek; buy += r.sek; } else { b.sell += r.sek; sell += r.sek; }
+      b.n++;
+    });
+    var list = Object.keys(by).map(function (k) { var b = by[k]; b.net = b.buy - b.sell; b.s = ds.byIsin[b.isin] || null; return b; });
+    var ups = list.filter(function (b) { return b.net > 0; }).sort(function (a, b) { return b.net - a.net; }).slice(0, 6);
+    var downs = list.filter(function (b) { return b.net < 0; }).sort(function (a, b) { return a.net - b.net; }).slice(0, 6);
+    if (ups.length + downs.length < 4) return null;
+    var both = list.filter(function (b) { return b.net > 0 && b.s && b.s.flow > 0; }).sort(function (a, b) { return b.net - a.net; });
+    var max = Math.max.apply(null, ups.concat(downs).map(function (b) { return Math.abs(b.net); }));
+    var nm = function (b) { return b.s ? esc(b.s.name) : esc(prettyName(b.name)); };
+    var listHtml = function (items) {
+      return '<ol class="rank-list">' + items.map(function (b, n) {
+        var fund = b.s ? "fonderna " + bigSek(b.s.flow, true) : "fonderna äger inte aktien";
+        return '<li><span class="rk-n">' + (n + 1) + '</span><span class="rk-main">' + (b.s ? '<a href="' + stockHref(b.s) + '">' + nm(b) + "</a>" : "<span>" + nm(b) + "</span>") +
+          '<span class="rk-sub">' + b.n + (b.n === 1 ? " affär" : " affärer") + " · " + fund + '</span></span><span class="rk-bar ' + cls(b.net) + '"><i style="width:' +
+          Math.max(2, Math.abs(b.net) / max * 100).toFixed(1) + '%"></i></span><span class="rk-v ' + cls(b.net) + '">' + bigSek(b.net, true) + "</span></li>";
+      }).join("") + "</ol>";
+    };
+    var text = "Insiders, alltså vd:ar, styrelseledamöter och andra i ledningen, köpte aktier i sina egna bolag för <b>" + bigSek(buy) + "</b> och sålde för " + bigSek(sell) +
+      " under kvartalet." + (both.length ? " I " + both.length + (both.length === 1 ? " bolag" : " bolag") + " köpte både insiders och fonderna, mest i " +
+        sentenceList(both.slice(0, 3), function (b) { return nm(b); }) + "." : "") +
+      " Från Finansinspektionens insynsregister, räknat på affärsdagen. Tilldelningar och lösen av optioner räknas inte.";
+    return { text: text, html: '<div class="grid-2"><div class="rep-col"><h3>Insiders köpte mest</h3>' + (ups.length ? listHtml(ups) : '<p class="desc">Inga nettoköp.</p>') + "</div>" +
+      '<div class="rep-col"><h3>Insiders sålde mest</h3>' + (downs.length ? listHtml(downs) : '<p class="desc">Inga nettosälj.</p>') + "</div></div>" };
+  }
   // Uppköpen som FI godkände under kvartalet, med premien och hur mycket fonderna ägde i bolagen
   function repOffers(m) {
     var bids = state.offers.offers.filter(function (o) { return o.date > m.prev && o.date <= m.curr; });
@@ -4915,6 +4978,8 @@
     // Blankningen och uppköpen under kvartalet (bara svenska aktier) och fondsparandet
     var shortSec = !world && needShorts() ? repShorts(m, buys) : null;
     if (shortSec) out.push(repSection(++n, "Blankning", shortSec.text, shortSec.html));
+    var insSec = !world ? repInsider(m, ds) : null;
+    if (insSec) out.push(repSection(++n, "Insynshandel", insSec.text, insSec.html));
     var offerSec = hasOffers ? repOffers(m) : null;
     if (offerSec) out.push(repSection(++n, "Uppköp", offerSec.text, offerSec.html));
     var saveSec = needFlows() ? repSavings(m) : null;
@@ -4991,6 +5056,7 @@
       (sectors[sectors.length - 1].v < 0 ? ", " + esc(lcWord(sectors[sectors.length - 1].s)) + " såldes mest (" + bigSek(sectors[sectors.length - 1].v * 1e6, true) + ")" : "") + ".");
     if (news[0]) points.push("<b>Nya favoriter:</b> " + news[0].nNew + " fonder köpte in sig i " + esc(news[0].name) + " för första gången.");
     if (shortSec) points.push("<b>Blankning:</b> " + first(shortSec.text));
+    if (insSec) points.push("<b>Insynshandel:</b> " + first(insSec.text, 2));
     if (offerSec) points.push("<b>Uppköp:</b> " + first(offerSec.text, 2));
     if (saveSec) points.push("<b>Sparandet:</b> " + first(saveSec.text));
     var summary = '<section class="print-only print-summary"><p class="ps-kicker">Sammanfattning</p><h2>Det viktigaste i korthet</h2><ol>' +
@@ -5727,7 +5793,55 @@
     tabIndicator();
     navIndicator();
     countUp();
+    jumpNav(r.page);
     if (search.open) runSearch();
+  }
+
+  // Aktiesidan är lång: en rad med genvägar till avsnitten under nyckeltalen, som följer med när man scrollar
+  // och markerar avsnittet man är i. Bara avsnitt som finns på sidan tas med.
+  var jumpObserver = null;
+  function jumpNav(page) {
+    if (jumpObserver) { jumpObserver.disconnect(); jumpObserver = null; }
+    if (page !== "aktie" || pdfMode) return;
+    var head = function (sel, re) {
+      var el = Array.prototype.filter.call(app.querySelectorAll(sel), function (h) { return re.test(h.textContent); })[0];
+      return el ? (el.closest(".know-card, .block, section") || el) : null;
+    };
+    var items = [
+      ["Bolaget", head(".block-head h2", /^Lär känna/)],
+      ["Rapporten", app.querySelector(".know-q")],
+      ["Utdelning", head(".know-card h3", /^Utdelningen/)],
+      ["Värdering", app.querySelector(".dcf-card")],
+      ["Historik", head(".block-head h2", /^Historik/)],
+      ["Blankning", head(".block-head h2", /^Blankning/)],
+      ["Insyn", head(".block-head h2", /^Insynshandel/)],
+      ["Fonderna", head(".block-head h2", /^Fondernas affärer/)]
+    ].filter(function (x) { return x[1]; });
+    var old = app.querySelector(".jump");
+    if (items.length < 3) { if (old) old.remove(); return; }
+    var html = items.map(function (x, i) {
+      x[1].id = x[1].id || "del-" + x[0].toLowerCase();
+      return '<a href="#' + x[1].id + '" data-jump="' + x[1].id + '">' + x[0] + "</a>";
+    }).join("");
+    if (old) old.innerHTML = html;
+    else {
+      var after = app.querySelector(".figures");
+      if (!after) return;
+      after.insertAdjacentHTML("afterend", '<nav class="jump" aria-label="Avsnitt på sidan">' + html + "</nav>");
+    }
+    var nav = app.querySelector(".jump");
+    if (!("IntersectionObserver" in window)) return;
+    jumpObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        Array.prototype.forEach.call(nav.querySelectorAll("a"), function (a) {
+          var on = a.getAttribute("data-jump") === en.target.id;
+          a.classList.toggle("on", on);
+          if (on && nav.scrollWidth > nav.clientWidth) nav.scrollTo({ left: a.offsetLeft - 16, behavior: reduceMotion ? "auto" : "smooth" });
+        });
+      });
+    }, { rootMargin: "-140px 0px -60% 0px" });
+    items.forEach(function (x) { jumpObserver.observe(x[1]); });
   }
 
   // ---------- Rörelse ----------
@@ -5994,6 +6108,13 @@
   }, true);
 
   document.addEventListener("click", function (e) {
+    var jl = e.target.closest("[data-jump]");
+    if (jl) {
+      e.preventDefault();
+      var tgt = document.getElementById(jl.getAttribute("data-jump"));
+      if (tgt) tgt.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+      return;
+    }
     if (e.target.closest && e.target.closest("#themeBtn, [data-theme-toggle]")) { setTheme(isDark() ? "light" : "dark"); return; }
     // Hela raden i en tabell går att klicka på och öppnar raden första länk
     var row = e.target.closest && e.target.closest(".table-wrap tbody tr");

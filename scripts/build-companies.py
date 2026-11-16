@@ -3266,6 +3266,7 @@ def main():
     ap.add_argument("--max-reread", type=int, default=150, help="högst så många rapporter utan kvartalssiffror läses om per körning")
     ap.add_argument("--max-kpi", type=int, default=150, help="högst så många rapporter per körning läses för branschens nyckeltal")
     ap.add_argument("--health", default=None, help="fil där hälsokollen sparas (problem blir ett ärende på GitHub)")
+    ap.add_argument("--max-behind", type=int, default=20, help="larm om fler bolag än så saknar en rapport som kalendern säger har kommit")
     args = ap.parse_args()
     global FILE_CACHE
     FILE_CACHE = args.raw_cache
@@ -3703,8 +3704,23 @@ def main():
     read_ok = [s for s in expected if any(lo <= r["date"] <= hi and r.get("q") for r in (mfn.get(s, {}).get("reports") or {}).values())]
     if len(expected) >= 8 and len(read_ok) < 0.25 * len(expected):
         problems.append("Kvartalsrapporterna läses inte: bara %d av %d bolag som rapporterat de senaste dagarna fick sina siffror inlästa." % (len(read_ok), len(expected)))
+    # Bolag som halkat efter: kalendern säger att en rapport kom för 4–60 dagar sedan, MFN har lästs efter det, men den
+    # senaste inlästa rapporten är äldre. Några får det alltid vara (avnoterade, rapporter som inte ligger på MFN).
+    behind = []
+    for s in slugs:
+        m = mfn.get(s) or {}
+        due = report_due(m.get("cal") or [])
+        if not due or not 4 <= days_since(due) <= 60 or (m.get("checked") or "") < due:
+            continue
+        newest = max((r["date"] for r in (m.get("reports") or {}).values()), default="")
+        if newest < (dt.date.fromisoformat(due) - dt.timedelta(days=5)).isoformat():
+            behind.append(s)
+    print("  Bolag som saknar sin senaste rapport: %d" % len(behind))
+    if len(behind) > args.max_behind:
+        problems.append("%d bolag saknar sin senaste rapport fast kalendern säger att den har kommit (gränsen är %d), till exempel %s." %
+                        (len(behind), args.max_behind, ", ".join(sorted(behind)[:8])))
     health = {"date": today, "pages": pages, "failedPages": failed_pages, "emptyPages": empty_pages, "newReports": interims,
-              "expected": len(expected), "readOk": len(read_ok), "withQuarter": with_q, "problems": problems}
+              "expected": len(expected), "readOk": len(read_ok), "withQuarter": with_q, "behind": len(behind), "problems": problems}
     if args.health:
         json.dump(health, open(args.health, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     for p in problems:
