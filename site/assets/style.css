@@ -35,7 +35,7 @@
   --navy-line: rgba(255, 255, 255, 0.13);
   --navy-pos: #8ab8f0;
   --navy-neg: #f2958a;
-  --hero-bg: #0c2e23;
+  --hero-bg: #0d3428;
   --rule: #0f1a16;
   --logo-ink: #0f1a16;
   --logo-dot: #0e6b4e;
@@ -66,9 +66,9 @@
   --tip-fg: #0f1a16;
   --tabbar-bg: #ffffff;
   --backdrop: rgba(8, 20, 16, 0.55);
-  --radius: 8px;
-  --radius-sm: 6px;
-  --radius-lg: 12px;
+  --radius: 10px;
+  --radius-sm: 8px;
+  --radius-lg: 14px;
   --shadow-sm: none;
   --shadow: 0 6px 18px -8px rgba(15, 26, 22, 0.16);
   --shadow-lg: 0 18px 40px -16px rgba(12, 46, 35, 0.28);
@@ -399,7 +399,7 @@ main { padding-top: 0; padding-bottom: 72px; outline: none; min-height: 60vh; }
 .block-head h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
 .block-head .note { font-size: 13px; color: var(--fg-muted); }
 .block > .desc { font-size: 13.5px; color: var(--fg-muted); margin: -6px 0 14px; max-width: 78ch; }
-.section-gap { margin-top: 52px; }
+.section-gap { margin-top: 64px; }
 .section-gap-sm { margin-top: 14px; }
 .section-title { font-size: 26px; font-weight: 700; letter-spacing: -0.025em; margin: 56px 0 16px; padding-top: 14px; border-top: 2px solid var(--rule); }
 .lead { font-size: 17px; line-height: 1.55; max-width: 68ch; color: var(--fg-soft); }
@@ -448,7 +448,7 @@ a.hl-name:hover { color: var(--link); text-decoration: none; }
 
 .table-wrap { overflow-x: auto; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); container-type: inline-size; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
-th, td { padding: 12px 14px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border-muted); font-variant-numeric: tabular-nums; }
+th, td { padding: 13px 14px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--border-muted); font-variant-numeric: tabular-nums; }
 th:first-child, td:first-child { padding-left: 18px; }
 th:last-child, td:last-child { padding-right: 18px; }
 th.l, td.l { text-align: left; }
@@ -793,8 +793,8 @@ a.btn { color: var(--fg); }
 .subnav a[aria-current="page"] { background: var(--fg); border-color: var(--fg); color: var(--bg); }
 
 /* Signalmoduler: insynshandel, dubbelsignal, blankning och räntor */
-.modules { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-.module { position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 22px 22px 16px; display: flex; flex-direction: column; min-width: 0; box-shadow: var(--shadow-sm); transition: border-color 0.25s, box-shadow 0.35s var(--spring), transform 0.35s var(--spring); }
+.modules { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.module { position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 26px 26px 18px; display: flex; flex-direction: column; min-width: 0; box-shadow: var(--shadow-sm); transition: border-color 0.25s, box-shadow 0.35s var(--spring), transform 0.35s var(--spring); }
 .module:hover { border-color: var(--border-strong); }
 .module-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 .module-head h2 { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; }
@@ -1744,6 +1744,25 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
 /* Mjuk övergång mellan sidor */
 #app.fade-in > * { animation: page-in 0.22s var(--ease) both; animation-delay: calc(min(var(--i, 0), 3) * 20ms); }
 @keyframes page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+/* Startsidan: en samlad start när sidan öppnas (rubriken, sedan staplarna, sedan raden under bandet) */
+@keyframes hero-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+body[data-page="oversikt"] #app.fade-in .rc-main > * { animation: hero-rise 0.6s var(--spring) both; }
+body[data-page="oversikt"] #app.fade-in .rc-main > :nth-child(2) { animation-delay: 70ms; }
+body[data-page="oversikt"] #app.fade-in .rc-main > :nth-child(n+3) { animation-delay: 140ms; }
+body[data-page="oversikt"] #app.fade-in .mv-bar i { transform-origin: left; animation: bar-grow 0.7s var(--spring) both; animation-delay: 180ms; }
+body[data-page="oversikt"] #app.fade-in .mv-col + .mv-col .mv-bar i { animation-delay: 300ms; }
+body[data-page="oversikt"] #app.fade-in .mv-list li:nth-child(2) i { animation-delay: 220ms; }
+body[data-page="oversikt"] #app.fade-in .mv-list li:nth-child(3) i { animation-delay: 260ms; }
+body[data-page="oversikt"] #app.fade-in .mv-list li:nth-child(4) i { animation-delay: 300ms; }
+body[data-page="oversikt"] #app.fade-in .mv-list li:nth-child(5) i { animation-delay: 340ms; }
+body[data-page="oversikt"] #app.fade-in .mv-col + .mv-col li i { animation-delay: 380ms !important; }
+body[data-page="oversikt"] #app.fade-in .quick.rail .ql { animation: hero-rise 0.5s var(--spring) both; animation-delay: 260ms; }
+/* Kort och genvägar som går att klicka på lyfts lite när man pekar på dem */
+.module, .ql, .story, .mgr { transition: border-color 0.2s var(--ease), transform 0.35s var(--spring), background-color 0.2s; }
+@media (hover: hover) {
+  .module:hover, .mgr:hover, .story:hover { transform: translateY(-2px); border-color: var(--border-strong); }
+  .quick.rail .ql:hover .ql-v { color: var(--navy-accent); }
+}
 /* Mjuk övergång när man byter mellan ljust och mörkt läge */
 body, .table-wrap, .chart-card, .panel { transition-property: background-color, border-color, color, box-shadow; transition-duration: 0.2s; }
 
@@ -1901,8 +1920,8 @@ html.pdf *, html.pdf *::before, html.pdf *::after { animation: none !important; 
 .rep-table td .sub { display: block; font-size: 12px; font-weight: 400; color: var(--fg-muted); white-space: normal; }
 
 /* Klickbara kort och rader reagerar likadant när man pekar på dem */
-.module, .mgr, .story, .g-item, .ql { transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease), background-color 0.18s var(--ease); }
-.module:hover, .mgr:hover, .story:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
+.module, .mgr, .story, .g-item, .ql { transition: border-color 0.18s var(--ease), transform 0.35s var(--spring), background-color 0.18s var(--ease); }
+.module:hover, .mgr:hover, .story:hover { border-color: var(--border-strong); }
 
 /* Följ fonderna: bara jämförelsen mellan grupperna, ingen slutsats i ord */
 .bt-answer-duel { grid-template-columns: minmax(0, 1fr); }
