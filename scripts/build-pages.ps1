@@ -1895,12 +1895,7 @@ Page "agarandel/" "agarandel" "Fondernas ägarandel – hur mycket fonderna äge
   "Hur stor andel av svenska börsbolag som ägs av svenska fonder, vilka bolag fonderna äger mest av och var de ökade och minskade sin andel $QL." `
   $defaultImg $content -Crumbs @("Fondernas ägarandel", "agarandel/")
 
-# ---------- Backtest och metodrapport (räknas i appen, här står en sammanfattning för sökmotorer) ----------
-$content = '<div class="page-head"><h1>Lönar det sig att följa fonderna?</h1><p class="meta lead">Ett backtest på historisk data sedan 2019: går de svenska aktier som fonderna köper mest bättre än de som de säljer? ' +
-  'Bara med information som fanns när den behövdes.</p></div><p class="desc">' + (A "/#/backtest" "Se resultatet") + '</p>'
-Page "backtest/" "backtest" "Lönar det sig att följa fonderna? Backtest | Fondinsyn" `
-  "Backtest sedan 2019: går de svenska aktier som fonderna köper mest bättre än de som fonderna säljer? Metod, resultat och begränsningar." `
-  $defaultImg $content -Crumbs @("Backtest", "backtest/")
+# ---------- Metodrapport (räknas i appen, här står en sammanfattning för sökmotorer) ----------
 $content = '<div class="page-head"><h1>Metodrapport</h1><p class="meta lead">Hur Fondinsyn samlar in och räknar sin data: källor, nettoköp, splitjustering, fondflöden, ägarandel, signaler och backtest.</p></div>' +
   '<p class="desc">' + (A "/#/metod" "Läs metodrapporten") + '</p>'
 Page "metod/" "metod" "Metodrapport – så räknar Fondinsyn | Fondinsyn" `

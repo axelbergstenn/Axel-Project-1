@@ -46,7 +46,6 @@ ROUTES=(
   "/sparande/|sparande"
   "/agarandel/|agarandel"
   "/rantor/|rantor"
-  "/backtest/|backtest"
   "/metod/|metod"
   "/ordlista/|ordlista"
   "/#/bevakning|bevakning"

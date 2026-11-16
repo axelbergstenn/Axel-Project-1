@@ -404,7 +404,7 @@ function Build-History($releases, $file) {
         $pv = [double]$prevValue[$isin]
         if ($pv -lt 0.02 * $v -or $v -lt 0.02 * $pv) { $fl = "null"; $fa = "null" }
       }
-      # Kursförändring sedan förra kvartalet, splitjusterad (används av backtestet). Saknas kurs något av kvartalen blir den null.
+      # Kursförändring sedan förra kvartalet, splitjusterad (för kursförändringen per kvartal). Saknas kurs något av kvartalen blir den null.
       $ret = "null"
       # Rasar antalet fonder som äger aktien med mer än 70 % är det oftast ett byte av ISIN (split med nytt aktieslag),
       # en avnotering eller en fusion. Kursen bygger då på några få kvarglömda rapporter och räknas inte.

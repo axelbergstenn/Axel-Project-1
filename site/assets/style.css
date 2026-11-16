@@ -87,26 +87,26 @@
 
 /* Mörkt läge: väljs med knappen i sidhuvudet och sparas i webbläsaren (data-theme på <html>) */
 :root[data-theme="dark"] {
-  /* Mörkt läge: skogsnatt, samma lager som i ljust läge */
-  --canvas: #0a100e;
-  --bg: #131b18;
-  --bg-subtle: #0f1613;
-  --bg-hover: #1a2420;
+  /* Mörkt läge: skogsnatt, samma lager som i ljust läge (en aning ljusare sedan nov 2026, inte svart) */
+  --canvas: #121a17;
+  --bg: #1a2420;
+  --bg-subtle: #16201c;
+  --bg-hover: #222e29;
   --fg: #edf2ef;
-  --fg-soft: #c6d0cb;
-  --fg-muted: #8f9c96;
-  --border: #22302a;
-  --border-strong: #34443d;
-  --border-muted: #18221e;
+  --fg-soft: #c8d2cd;
+  --fg-muted: #97a49e;
+  --border: #2a3832;
+  --border-strong: #3c4d46;
+  --border-muted: #202b26;
   --brand: #3fbf8c;
   --brand-ink: #7fd9b3;
   --brand-soft: rgba(63, 191, 140, 0.14);
   --brand-border: rgba(127, 217, 179, 0.3);
-  --navy: #07100c;
-  --navy-2: #131b18;
+  --navy: #0d1612;
+  --navy-2: #1a2420;
   --navy-fg: #e8eeeb;
   --navy-muted: #8f9c96;
-  --hero-bg: #0e2b21;
+  --hero-bg: #133528;
   --rule: #5d6a64;
   --logo-ink: #edf2ef;
   --logo-dot: #3fbf8c;
@@ -127,14 +127,14 @@
   --dot-index: #5d6a64;
   --dot-warn: #c98226;
   --zone: rgba(240, 140, 0, 0.1);
-  --seg-bg: #0a100e;
+  --seg-bg: #121a17;
   --seg-active: #22302a;
   --chip-bg: #1a2420;
   --sk-a: #1a1a1b;
   --sk-b: #242426;
   --tip-bg: #1a2420;
   --tip-fg: #edf2ef;
-  --tabbar-bg: #131b18;
+  --tabbar-bg: #1a2420;
   --backdrop: rgba(0, 0, 0, 0.66);
   --shadow-sm: none;
   --shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.6);
@@ -172,9 +172,9 @@ b, strong { font-weight: 600; }
 /* Rubriker och de stora siffrorna i Schibsted Grotesk, allt annat i Inter Tight */
 h1, .section-title, .block-head h2, .module-head h2, .ac-text h2, .rc-title, .sp-word, .know-card h3, .kq-head h3, .know-h, .panel h3,
 .story h3, .rep-head h2, .md-sec h2, .empty-state h2, .newsletter h2, .prose h2, .text-page h2, .brand,
-.figures dd, .hf-value, .hl-name, .ql-v, .mod-big b, .kt-big, .cmp-num, .bt-duel b { font-family: var(--display); letter-spacing: -0.01em; }
+.figures dd, .hf-value, .hl-name, .ql-v, .mod-big b, .kt-big, .cmp-num { font-family: var(--display); letter-spacing: -0.01em; }
 /* Schibsteds tabellsiffror är breda: de stora talen får proportionella siffror */
-.figures dd, .hf-value, .ql-v, .mod-big b, .kt-big, .cmp-num, .bt-duel b, .hero-stats dd { font-variant-numeric: proportional-nums lining-nums; }
+.figures dd, .hf-value, .ql-v, .mod-big b, .kt-big, .cmp-num, .hero-stats dd { font-variant-numeric: proportional-nums lining-nums; }
 table, .hl-value, .tk-v, .mod-v, .rep-v { font-variant-numeric: tabular-nums; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .skip-link { position: absolute; left: 12px; top: -48px; z-index: 100; background: var(--brand); color: #fff; padding: 8px 14px; border-radius: var(--radius-sm); font-weight: 600; transition: top 0.15s; }
@@ -679,11 +679,6 @@ a.btn { color: var(--fg); }
 .embed-code { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .embed-code code { flex: 1 1 320px; min-width: 0; font-family: var(--mono); font-size: 12px; background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; overflow-wrap: anywhere; color: var(--fg-soft); }
 
-/* Backtest */
-.bt-tools { display: flex; align-items: center; gap: 10px 16px; flex-wrap: wrap; margin-bottom: 14px; font-size: 13.5px; }
-.bt-answer { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 20px 32px; align-items: center; padding: 22px 24px; margin-bottom: 24px; border-radius: var(--radius-lg); background: var(--bg); border: 1px solid var(--border); }
-.bt-answer .kicker { margin-bottom: 6px; }
-
 /* ---------- Statistikrutan: bedömning, urval, effekt, konfidensintervall, p-värde och källkritik ---------- */
 .stat-box { margin-top: 16px; padding: 18px 22px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); }
 .sb-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
@@ -704,13 +699,6 @@ a.btn { color: var(--fg); }
 .sb-more summary { cursor: pointer; color: var(--link); font-size: 13.5px; font-weight: 500; }
 .sb-more p { margin: 8px 0 0; font-size: 13.5px; color: var(--fg-soft); line-height: 1.6; max-width: 78ch; }
 @media (max-width: 760px) { .stat-box { padding: 16px; } .sb-figs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.bt-verdict { font-size: 16.5px; line-height: 1.6; font-weight: 500; color: var(--fg); max-width: 70ch; }
-.bt-duel { display: flex; align-items: center; justify-content: center; gap: 16px; padding-left: 24px; border-left: 1px solid var(--border); }
-.bt-duel div:not(.bt-vs) { display: flex; flex-direction: column; align-items: center; text-align: center; }
-.bt-duel span { font-size: 12.5px; color: var(--fg-muted); font-weight: 600; }
-.bt-duel b { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
-.bt-duel small { font-size: 12px; color: var(--fg-muted); }
-.bt-vs { font-size: 13px; color: var(--fg-muted); }
 
 /* Metodrapport */
 .method { max-width: 860px; }
@@ -1218,18 +1206,6 @@ a.btn { color: var(--fg); }
 .chart-examples ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px 24px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 .chart-examples li { font-size: 13.5px; line-height: 1.5; color: var(--fg-soft); }
 .chart-examples a { font-weight: 650; }
-/* Punktdiagrammets fyra hörn: de största affärerna i varje */
-.quad-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 24px; }
-.quad { min-width: 0; padding-left: 10px; border-left: 3px solid var(--bar-pos); }
-.quad.q-sell { border-left-color: var(--bar-neg); }
-.quad h4 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0 0 4px; font-size: 13px; font-weight: 650; color: var(--fg); }
-.quad h4 .muted { font-size: 11.5px; font-weight: 500; }
-.quad ol { list-style: none; margin: 0; padding: 0; }
-.quad li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: baseline; padding: 4px 0; border-top: 1px solid var(--border-muted); font-size: 13px; }
-.quad li a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--fg); }
-.q-x { font-size: 12px; color: var(--fg-muted); white-space: nowrap; }
-.q-f { font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; }
-@media (max-width: 640px) { .quad-grid { grid-template-columns: minmax(0, 1fr); } }
 /* "Närstående till" vid insideraffärer, med förklaring när man pekar */
 .close-of { color: var(--fg-muted); border-bottom: 1px dotted var(--border-strong); cursor: help; }
 .chart-note { font-size: 13px; color: var(--fg-muted); margin: 10px 2px 2px; line-height: 1.55; }
@@ -1484,8 +1460,6 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .rc-movers { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 32px; }
   .mv-list li { grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr) 5.8em; }
   .about-card { grid-template-columns: minmax(0, 1fr); }
-  .bt-answer { grid-template-columns: minmax(0, 1fr); }
-  .bt-duel { padding-left: 0; border-left: 0; padding-top: 16px; border-top: 1px solid var(--border); }
   .story-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .highlights.hl-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .highlights.hl-4 .hl:nth-child(3)::before { display: none; }
@@ -1579,9 +1553,6 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   /* Uppdateringstakten tar mycket plats på en telefon och finns på Om-sidan */
   .about-card .ac-freq, .about-card .ac-stamp { display: none; }
   .ac-text p { font-size: 13.5px; }
-  .bt-answer { padding: 16px; }
-  .bt-verdict { font-size: 14.5px; }
-  .bt-duel b { font-size: 22px; }
   .ac-text { padding-right: 24px; }
   .ac-freq { padding-right: 0; gap: 10px 14px; }
   .ac-freq dd { font-size: 14px; }
@@ -1847,7 +1818,6 @@ html.pdf *, html.pdf *::before, html.pdf *::after { animation: none !important; 
   .md-table { font-size: 10.5px; break-inside: avoid; }
   .md-formula { font-size: 10.5px !important; }
   .method .actions-row, .method .page-head .actions-row { display: none; }
-  .bt-answer { border: 1px solid #e8edee; }
 
   /* Omslaget: skogsgrönt, rubriken, nyckeltalen och innehållet */
   .print-cover { page: cover; display: flex !important; flex-direction: column; box-sizing: border-box; height: 297mm; padding: 18mm 18mm 15mm; break-after: page;
@@ -1909,10 +1879,6 @@ html.pdf *, html.pdf *::before, html.pdf *::after { animation: none !important; 
   /* Listorna med köp och sälj delas inte mellan två sidor */
   .rep-section .grid-2 { break-inside: avoid; }
 
-  .quad-grid { gap: 10px 18px; }
-  .quad li { font-size: 11px; padding: 3px 0; }
-  .quad h4 { font-size: 11.5px; }
-  .q-x { font-size: 10px; }
   .rep-table { box-shadow: none; break-inside: avoid; }
   .rep-table th, .rep-table td { padding: 6px 10px; font-size: 11px; }
   .chart .c-ptlabel { font-size: 10px; }
@@ -1923,6 +1889,3 @@ html.pdf *, html.pdf *::before, html.pdf *::after { animation: none !important; 
 .module, .mgr, .story, .g-item, .ql { transition: border-color 0.18s var(--ease), transform 0.35s var(--spring), background-color 0.18s var(--ease); }
 .module:hover, .mgr:hover, .story:hover { border-color: var(--border-strong); }
 
-/* Följ fonderna: bara jämförelsen mellan grupperna, ingen slutsats i ord */
-.bt-answer-duel { grid-template-columns: minmax(0, 1fr); }
-.bt-answer-duel .bt-duel { justify-content: flex-start; padding: 0; border: 0; }

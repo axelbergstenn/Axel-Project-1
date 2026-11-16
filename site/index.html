@@ -42,7 +42,7 @@
       var ffTheme = localStorage.getItem("ff-theme");
       if (ffTheme === "dark" || (!ffTheme && !/[?&]pdf/.test(location.search) && window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches)) {
         document.documentElement.setAttribute("data-theme", "dark");
-        document.querySelector('meta[name="theme-color"]').setAttribute("content", "#131b18");
+        document.querySelector('meta[name="theme-color"]').setAttribute("content", "#1a2420");
       }
     } catch (e) {}
   </script>
@@ -149,7 +149,6 @@
           <a href="#/sparande">Fondsparandet</a>
           <a href="#/agarandel">Fondernas ägarandel</a>
           <a href="#/forvaltare">Kända förvaltare</a>
-          <a href="#/backtest">Följ fonderna</a>
           <a href="#/avgifter">Avgiftskollen</a>
           <a href="#/risk">Risk och avkastning</a>
           <a href="#/jamfor">Jämför fonder</a>
@@ -224,7 +223,6 @@
         <a href="#/sparande" data-nav="sparande"><b>Fondsparandet</b><span>Vart spararnas pengar går</span></a>
         <a href="#/agarandel" data-nav="agarandel"><b>Fondernas ägarandel</b><span>Hur mycket av bolagen fonderna äger</span></a>
         <a href="#/forvaltare" data-nav="forvaltare"><b>Kända förvaltare</b><span>Vad de kända aktiva fonderna gör</span></a>
-        <a href="#/backtest" data-nav="backtest"><b>Följ fonderna</b><span>Lönar det sig att köpa det fonderna köper?</span></a>
         <a href="#/avgifter" data-nav="avgifter"><b>Avgiftskollen</b><span>Indexnära fonder och vad de kostar</span></a>
         <a href="#/risk" data-nav="risk"><b>Risk och avkastning</b><span>Alla aktiefonder på en karta</span></a>
         <a href="#/jamfor" data-nav="jamfor"><b>Jämför fonder</b><span>Hur lika är två fonder?</span></a>
