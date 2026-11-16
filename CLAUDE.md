@@ -48,7 +48,7 @@ CHROME=... PYTHON=py bash scripts/smoke-test.sh site                     # rökt
 Ägarens designregler finns i `CLAUDEwebdesign copy.md` (ligger bara lokalt). Viktigast:
 
 - **Grundstil:** skogsgrön och SEB-inspirerad.
-  - Grågrön bakgrund (`--canvas`) med vita ytor ovanpå. Kort har tunna kanter och inga skuggor.
+  - I ljust läge en sval, neutral grå bakgrund (`--canvas` #f4f6f9, som runt ett Word-dokument, inte beige eller grönaktig) med vita ytor ovanpå. Kort har tunna kanter och inga skuggor.
   - Skogsgrönt (`--navy` #0c2e23, `--brand` #0e6b4e) är enda accentfärgen.
   - Överst ligger en skogsgrön marknadsremsa. Varje sidas huvud (`.page-head`, flikar och nyckeltal direkt efter) är ett vitt band i full bredd, målat med `border-image` med utfall så att sidan inte blir bredare.
   - Startsidan börjar med kvartalets rubrik som ett skogsgrönt band i full bredd (`.rep-card` och `.quick.rail`), med kvartalets största köp och sälj som staplar och Kvartal-symbolen svagt i bakgrunden.

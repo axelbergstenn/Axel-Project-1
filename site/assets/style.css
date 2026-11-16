@@ -12,16 +12,17 @@
 /* ---------- Färger och mått ---------- */
 
 :root {
-  --canvas: #ebeeec;
+  /* Ljust läge: sval, neutral grå bakgrund (som runt ett dokument i Word) med vita ytor */
+  --canvas: #f4f6f9;
   --bg: #ffffff;
-  --bg-subtle: #f5f7f6;
-  --bg-hover: #eef2f0;
-  --fg: #0f1a16;
-  --fg-soft: #33403a;
-  --fg-muted: #5b6862;
-  --border: #dbe1de;
-  --border-strong: #c2cbc6;
-  --border-muted: #e9eeeb;
+  --bg-subtle: #f7f8fa;
+  --bg-hover: #f0f2f5;
+  --fg: #111a17;
+  --fg-soft: #343d3a;
+  --fg-muted: #5c6670;
+  --border: #dfe3e8;
+  --border-strong: #c5ccd4;
+  --border-muted: #eceff3;
   --brand: #0e6b4e;
   --brand-ink: #0a5640;
   --brand-soft: #dcefe5;
@@ -45,7 +46,7 @@
   --neg-bg: #fbecea;
   --bar-pos: #2f6fbf;
   --bar-neg: #cc4a3c;
-  --bar-neutral: #c5cec9;
+  --bar-neutral: #c9cfd6;
   --warn: #a2470b;
   --warn-bg: #fcf1c0;
   --warn-border: #fbe99d;
@@ -56,9 +57,9 @@
   --dot-active: #16825d;
   --dot-index: #aab4af;
   --zone: rgba(240, 140, 0, 0.09);
-  --seg-bg: #e6ebe8;
+  --seg-bg: #e9ecf0;
   --seg-active: #ffffff;
-  --chip-bg: #eef2f0;
+  --chip-bg: #eef1f5;
   --sk-a: #e9edf1;
   --sk-b: #f4f6f8;
   --tip-bg: #ffffff;
