@@ -618,8 +618,7 @@
       '<select class="select-sm" id="repQ" aria-label="Kvartal">' + opts + "</select>" +
       '<div class="seg" role="group" aria-label="Marknad i rapporten">' + pick("se", "Sverige") + pick("world", "Globalt") + "</div></div></div>" +
       '<div class="rc-body"><div class="rc-main">' + body + repGoLinks(pq, pm) +
-      (pq === state.index.quarters[0].id ? '<p class="rc-next">Fonderna rapporterar sina innehav en gång per kvartal, och Finansinspektionen publicerar dem en tid efter kvartalets slut. ' +
-        quarterLabel(nextQuarter(pq)) + " läggs in samma morgon som det publiceras.</p>" : "") +
+      (pq === state.index.quarters[0].id ? '<p class="rc-next">' + quarterLabel(nextQuarter(pq)) + " läggs in automatiskt samma dag som Finansinspektionen publicerar det.</p>" : "") +
       "</div>" + movers + "</div></section>";
   }
   // Kvartalets fem största köp och sälj som staplar i samma skala, så att storlekarna går att jämföra
@@ -677,9 +676,9 @@
   // "Läs rapporten" öppnar PDF:en i en ny flik när den finns, annars webbversionen
   function repGoLinks(q, market) {
     var pdf = hasPdf(q, market === "world");
-    return '<span class="rc-go"><a class="btn btn-primary" id="repGo" href="' + (pdf ? pdfHref(q, market === "world") : reportHref(q)) + '"' +
-      (pdf ? ' target="_blank" rel="noopener" data-pdf="1"' : "") + ">Läs rapporten" + (pdf ? ' <span class="btn-tag">PDF</span>' : "") + "</a>" +
-      (pdf ? '<a class="rc-web" id="repWeb" href="' + reportHref(q) + '">Webbversion</a>' : "") + "</span>";
+    // Webbversionen är huvudvägen, PDF:en finns att ladda ner bredvid
+    return '<span class="rc-go"><a class="btn btn-primary" id="repGo" href="' + reportHref(q) + '">Läs rapporten</a>' +
+      (pdf ? '<a class="rc-web rc-pdf" id="repPdf" href="' + pdfHref(q, market === "world") + '" target="_blank" rel="noopener" download>Ladda ner PDF</a>' : "") + "</span>";
   }
 
   // Kvartalets nettoköp som en stor siffra, en mening som sätter den i perspektiv och staplar för tre år
@@ -4474,7 +4473,8 @@
     var nFunds = Object.keys(d.fi).length;
     var sec = function (n, title, body) { return '<section class="md-sec"><h2><span class="md-n">' + n + "</span>" + title + "</h2>" + body + "</section>"; };
     var pdf = hasPdfName("metodrapport");
-    var printHead = '<div class="print-only print-head"><b>Fondinsyn</b><span>Metodrapport</span><span>www.fondinsyn.se</span></div>';
+    var printHead = '<div class="print-only print-head"><b>Fondinsyn</b><span>Metodrapport</span><span>www.fondinsyn.se</span></div>' +
+      "<style>@page { @top-right { content: 'Metodrapport'; } }</style>";
     var btText = bt && bt.N && btA.N ?
       "<p>Resultat " + quarterLabel(bt.periods[0].held) + "–" + quarterLabel(bt.periods[bt.N - 1].held) + " (" + bt.N + " kvartal, i snitt " + nf0.format(bt.avgN) + " aktier per kvartal):</p>" +
       '<table class="md-table"><thead><tr><th class="l">Grupp</th><th>Snitt per kvartal</th><th>Per år</th></tr></thead><tbody>' +
@@ -5217,7 +5217,8 @@
       "<h1>" + esc(headline) + "</h1>" +
       '<p class="intro">' + lead + "</p>" +
       '<p class="hero-sub">Jämförelsen gäller ' + int(t.funds) + " fonder som rapporterade sina innehav till Finansinspektionen både " + quarterLabel(m.prevId) +
-      " och " + quarterLabel(state.q) + " (den " + dateText(m.curr) + ")" + (state.excludeIndex ? ", utan indexfonder" : "") + ".</p></div>" +
+      " och " + quarterLabel(state.q) + " (den " + dateText(m.curr) + ")" + (state.excludeIndex ? ", utan indexfonder" : "") + "." +
+      (state.q === state.index.quarters[0].id ? ' <span class="rep-next">' + quarterLabel(nextQuarter(state.q)) + " läggs in automatiskt samma dag som Finansinspektionen publicerar det.</span>" : "") + "</p></div>" +
       '<div class="hero-side">' + heroFigure(net) + '<dl class="hero-stats">' + stat(int(t.funds), "fonder jämförs") + stat(int(t.held), word + " aktier") +
       stat(t.value >= 1e11 ? nf0.format(t.value / 1e9) + " mdkr" : bigSek(t.value), "fondernas innehav") + "</dl></div></header>";
 
@@ -5316,11 +5317,44 @@
       '<div class="pc-toc"><h2>I rapporten</h2><ol>' + titles.map(function (x, i) { return "<li><span>" + (i < 9 ? "0" : "") + (i + 1) + "</span>" + x + "</li>"; }).join("") + "</ol></div>" +
       '<p class="pc-foot">Fondernas innehav ' + dateText(m.curr) + " jämfört med " + dateText(m.prev) + ", ur fondbolagens rapporter till Finansinspektionen. Sammanställd av Fondinsyn " +
       dateText(new Date().toISOString().slice(0, 10)) + ". Inte investeringsrådgivning.</p></section>";
-    return '<article class="report">' + cover + printHead + head +
+    // PDF: sammanfattningen efter omslaget, med det viktigaste i punktform (utan länkar)
+    var first = function (txt, n) {
+      var x = String(txt || "").replace(/<[^>]+>/g, ""), out = "";
+      for (var k = 0; k < (n || 1); k++) { var i = x.search(/\.\s/); if (i < 0) { out += x; break; } out += x.slice(0, i + 2); x = x.slice(i + 2); }
+      return out.trim();
+    };
+    var names = function (list) { return sentenceList(list, function (s) { return esc(s.name) + " (" + bigSek(s.flow, true) + ")"; }); };
+    var points = [];
+    points.push("Svenska fonder " + (net >= 0 ? "nettoköpte" : "nettosålde") + " " + word + " aktier för <b>" + bigSek(Math.abs(net)) + "</b> under " + quarterLabel(state.q) + ".");
+    if (buys.length) points.push("<b>Mest köpta:</b> " + names(buys.slice(0, 3)) + ".");
+    if (sells.length) points.push("<b>Mest sålda:</b> " + names(sells.slice(0, 3)) + ".");
+    if (sectors.length) points.push("<b>Sektorer:</b> " + esc(sectors[0].s) + " fick mest pengar (" + bigSek(sectors[0].v * 1e6, true) + ")" +
+      (sectors[sectors.length - 1].v < 0 ? ", " + esc(lcWord(sectors[sectors.length - 1].s)) + " såldes mest (" + bigSek(sectors[sectors.length - 1].v * 1e6, true) + ")" : "") + ".");
+    if (news[0]) points.push("<b>Nya favoriter:</b> " + news[0].nNew + " fonder köpte in sig i " + esc(news[0].name) + " för första gången.");
+    if (chase) points.push("<b>Köpte de vinnarna?</b> " + first(chase.text, 2));
+    if (shortSec) points.push("<b>Blankning:</b> " + first(shortSec.text));
+    if (offerSec) points.push("<b>Uppköp:</b> " + first(offerSec.text, 2));
+    if (saveSec) points.push("<b>Sparandet:</b> " + first(saveSec.text));
+    var summary = '<section class="print-only print-summary"><p class="ps-kicker">Sammanfattning</p><h2>Det viktigaste i korthet</h2><ol>' +
+      points.map(function (x) { return "<li>" + x + "</li>"; }).join("") + "</ol></section>";
+    // PDF: baksidan med källor, definitioner och kontakt
+    var back = '<section class="print-only print-back"><h2>Om rapporten</h2><div class="pb-grid">' +
+      "<div><h3>Källa</h3><p>Fondbolagen rapporterar varje kvartal alla sina fonders innehav till Finansinspektionen, som publicerar uppgifterna. " +
+      "Rapporten jämför " + int(t.funds) + " fonder som rapporterade både " + quarterLabel(m.prevId) + " (" + dateText(m.prev) + ") och " + quarterLabel(state.q) + " (" + dateText(m.curr) + ")" +
+      (state.excludeIndex ? ", utan indexfonder" : "") + ".</p></div>" +
+      "<div><h3>Nettoköp</h3><p>Förändringen i antal aktier gånger kursen vid kvartalets slut. Kursrörelser påverkar alltså inte siffran, bara vad fonderna faktiskt köpt och sålt.</p></div>" +
+      "<div><h3>Övriga källor</h3><p>Blankning och uppköp från Finansinspektionens register, fondsparandet från Fondbolagens förening och bolagens egna kvartalsrapporter.</p></div>" +
+      "<div><h3>Metod</h3><p>Alla definitioner, urval och begränsningar finns i metodrapporten på fondinsyn.se/metod.</p></div></div>" +
+      '<div class="pb-foot"><div class="pc-brand"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path class="bm-a" d="M17.5 2.08A14 14 0 0 1 29.92 14.5H17.5Z"/>' +
+      '<path d="M29.92 17.5A14 14 0 0 1 17.5 29.92V17.5Z"/><path d="M14.5 29.92A14 14 0 0 1 2.08 17.5H14.5Z"/><path d="M2.08 14.5A14 14 0 0 1 14.5 2.08V14.5Z"/></svg>Fondinsyn</div>' +
+      "<p>www.fondinsyn.se · " + CONTACT + "<br>Fondinsyn är oberoende och gratis. Rapporten är inte investeringsrådgivning.</p></div></section>";
+    // Sidhuvud och sidnummer på varje sida utom omslaget (marginalrutor i @page)
+    var pageStyle = "<style>@page { @top-right { content: 'Kvartalsrapport " + quarterLabel(state.q) + " · " + Word + "'; } }</style>";
+    return '<article class="report">' + pageStyle + cover + summary + printHead + head +
       (facts.length ? '<section class="section-gap"><h2 class="visually-hidden">I korthet</h2><div class="highlights hl-' + facts.length + '">' + facts.join("") + "</div></section>" : "") +
       out.join("") +
       '<div class="rep-share section-gap">' + pdfBtn + '<button type="button" class="btn" id="repShare" data-url="' + esc(url) + '">Kopiera länk till rapporten</button></div>' +
-      newsletterBox() + printFoot + "</article>";
+      newsletterBox() + printFoot + back + "</article>";
   }
 
   // ---------- Nyhetsbrev ----------
@@ -5905,7 +5939,7 @@
     fonder: { label: "Fonder", items: [["fonder", "Alla fonder", "#/fonder"], ["fondbolag", "Fondbolag", "#/fondbolag"], ["sparande", "Fondsparandet", "#/sparande"],
       ["agarandel", "Fondernas ägarandel", "#/agarandel"], ["forvaltare", "Kända förvaltare", "#/forvaltare"], ["backtest", "Följ fonderna", "#/backtest"],
       ["avgifter", "Avgiftskollen", "#/avgifter"], ["risk", "Risk och avkastning", "#/risk"], ["jamfor", "Jämför fonder", "#/jamfor"]] },
-    om: { label: "Om Fondinsyn", items: [["om", "Om datan", "#/om"], ["metod", "Metodrapport", "#/metod"], ["ordlista", "Ordlista", "#/ordlista"], ["kontakt", "Kontakt", "#/kontakt"]] }
+    om: { label: "Om Fondinsyn", items: [["om", "Om datan", "#/om"], ["metod", "Metodrapport", "#/metod"], ["ordlista", "Ordlista", "#/ordlista"], ["data", "Data och API", "/oppen-data/"], ["kontakt", "Kontakt", "#/kontakt"]] }
   };
   // Sidor som hör till en avdelning i menyraden (blankning, uppköp och insynshandel under Aktier, ägarandel och sparande under Fonder, emittenterna under Räntor)
   var PAGE_SECTION = { aktie: "aktier", insyn: "aktier", blankning: "aktier", blankare: "aktier", uppkop: "aktier", rantor: "rantor", emittent: "rantor",
@@ -6348,7 +6382,7 @@
       refreshReportCard();
       return;
     }
-    if (e.target.closest("#repGo:not([data-pdf]), #repWeb, .rc-web-link") && repPick.market && repPick.market !== state.market) setMarket(repPick.market);
+    if (e.target.closest("#repGo, .rc-web-link") && repPick.market && repPick.market !== state.market) setMarket(repPick.market);
     var mk = e.target.closest("[data-market]");
     if (mk) {
       setMarket(mk.getAttribute("data-market"));
@@ -6501,7 +6535,7 @@
   });
   document.addEventListener("change", function (e) {
     var id = e.target.id;
-    if (id === "subnavPick") { location.hash = e.target.value; return; }
+    if (id === "subnavPick") { var v = e.target.value; if (v.charAt(0) === "#") location.hash = v; else location.href = v; return; }
     if (id === "insMin") { insiderFilter.min = +e.target.value; var my = window.scrollY; render(); window.scrollTo(0, my); return; }
     if (id === "stockSector") { stockFilter.sector = e.target.value; renderStockTable(); }
     if (id === "stockMin") { stockFilter.min = e.target.value; renderStockTable(); }
