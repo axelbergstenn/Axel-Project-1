@@ -164,7 +164,7 @@ a:hover { text-decoration: underline; text-decoration-thickness: 1px; text-under
 :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
 :root[data-theme="dark"] :focus-visible { outline-color: var(--brand-ink); }
 h1, h2, h3 { margin: 0; line-height: 1.2; }
-h1 { font-size: 38px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; text-wrap: balance; }
+h1 { font-size: 38px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; text-wrap: balance; overflow-wrap: break-word; -webkit-hyphens: auto; hyphens: auto; }
 h2 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
 h3 { font-size: 15px; font-weight: 600; }
 p { margin: 0; }
@@ -1352,6 +1352,7 @@ table.cmp-table thead th { font-size: 13px; color: var(--fg); text-transform: no
 .rep-pdf { font-size: 13px; font-weight: 700; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--fg-soft); }
 .rep-pdf:hover { text-decoration: none; border-color: var(--fg-muted); color: var(--fg); }
 .rep-pdf::before { content: "↓ "; }
+.rep-pdf.rep-lang::before { content: none; }
 .rep-share { display: flex; gap: 10px; flex-wrap: wrap; }
 .print-only { display: none; }
 .rep-market .seg-btn { padding: 6px 16px; font-size: 14px; }

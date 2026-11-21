@@ -1032,7 +1032,7 @@
     var world = isin.slice(0, 2) !== "SE";
     var crumbs = '<div class="crumbs"><a href="#/aktier" data-market="' + (world ? "world" : "se") + '">' + (world ? "Globala aktier" : "Aktier") + "</a> / " + esc(name) + "</div>";
     var metaParts = [];
-    if (s ? s.sector : hs.sector) metaParts.push(esc(s ? s.sector : hs.sector));
+    if (s ? s.sector : hs.sector) metaParts.push(sectorLink(s ? s.sector : hs.sector, world ? "world" : "se"));
     if (world) metaParts.push(esc(countryName(s ? s.country : hs.country)));
     metaParts.push(esc(isin));
     // Kursen kommer ur fondernas kvartalsrapporter och gäller kvartalsslutet, inte i dag. Dagens kurs finns hos Nasdaq.
@@ -2938,6 +2938,14 @@
 
   // ---------- Sektorrotation ----------
 
+  // Adressen till sektorns fasta sida, samma regel som Slug i build-pages.ps1. Bara svenska aktier har sektorsidor.
+  function sectorHref(sec) {
+    return "/sektor/" + String(sec).toLowerCase().replace(/&/g, " och ").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") + "/";
+  }
+  function sectorLink(sec, market) {
+    return market === "se" && sec && sec !== "Övrigt" ? '<a href="' + sectorHref(sec) + '">' + esc(sec) + "</a>" : esc(sec);
+  }
+
   function sectorFlows(market) {
     var h = state.history, out = {};
     Object.keys(h.stocks).forEach(function (isin) {
@@ -2969,7 +2977,7 @@
 
     var bars = '<ul class="divbars">' + sectors.map(function (s) {
       var v = flows[s][qi] || 0, w = Math.abs(v) / maxNow * 50;
-      return "<li><span class=\"db-label\">" + esc(s) + '</span><span class="db-track"><i class="' + (v >= 0 ? "pos" : "neg") + '" style="width:' + w.toFixed(1) +
+      return "<li><span class=\"db-label\">" + sectorLink(s, state.market) + '</span><span class="db-track"><i class="' + (v >= 0 ? "pos" : "neg") + '" style="width:' + w.toFixed(1) +
         "%;" + (v >= 0 ? "left:50%" : "right:50%") + '"></i></span><span class="db-val ' + cls(v) + '">' + bigSek(v * 1e6, true) + "</span></li>";
     }).join("") + "</ul>";
 
@@ -2981,7 +2989,7 @@
       var q = h.quarters[k];
       return '<th class="' + (n < cols.length - 4 ? "hide-sm" : "") + '">Q' + q.slice(5) + " " + q.slice(2, 4) + "</th>";
     }).join("") + "</tr></thead><tbody>" + sectors.map(function (s) {
-      return '<tr><td class="l">' + esc(s) + "</td>" + cols.map(function (k, n) {
+      return '<tr><td class="l">' + sectorLink(s, state.market) + "</td>" + cols.map(function (k, n) {
         var v = flows[s][k] || 0, a = Math.min(1, Math.abs(v) / maxAll);
         var pctMix = Math.round(8 + a * 62);
         var bg = Math.abs(v) < 1 ? "" : ' style="background:color-mix(in srgb, var(' + (v > 0 ? "--bar-pos" : "--bar-neg") + ") " + pctMix + '%, transparent)"';
@@ -4936,7 +4944,9 @@
     var head = '<header class="hero rep-hero"><div class="hero-text">' +
       '<div class="crumbs"><a href="/rapport/">Kvartalsrapporter</a> / ' + quarterLabel(state.q) + "</div>" +
       '<div class="rep-tools"><div class="seg rep-market" role="group" aria-label="Rapport för">' + mbtn("se", "Svenska aktier") + mbtn("world", "Globala aktier") + "</div>" +
-      (hasPdf(state.q, world) ? '<a class="rep-pdf" href="' + pdfHref(state.q, world) + '" target="_blank" rel="noopener">PDF</a>' : "") + "</div>" +
+      (hasPdf(state.q, world) ? '<a class="rep-pdf" href="' + pdfHref(state.q, world) + '" target="_blank" rel="noopener">PDF</a>' : "") +
+      // Sammanfattningen på engelska finns för svenska aktier (byggs av build-pages.ps1)
+      (!world && !pdfMode ? '<a class="rep-pdf rep-lang" href="/en/report/' + reportSlug(state.q) + '/" hreflang="en" lang="en">In English</a>' : "") + "</div>" +
       '<p class="kicker">Kvartalsrapport ' + quarterLabel(state.q) + " · " + Word + "</p>" +
       "<h1>" + esc(headline) + "</h1>" +
       '<p class="intro">' + lead + "</p>" +
@@ -5658,7 +5668,7 @@
 
   // Avdelningarna i menyraden och sidorna i varje avdelning (flikarna överst på sidan)
   var SECTIONS = {
-    aktier: { label: "Aktier och marknad", items: [["aktier", "Alla aktier", "#/aktier"], ["blankning", "Blankning", "#/blankning"], ["uppkop", "Uppköp", "#/uppkop"],
+    aktier: { label: "Aktier och marknad", items: [["aktier", "Alla aktier", "#/aktier"], ["sektor", "Sektorer", "/sektor/"], ["blankning", "Blankning", "#/blankning"], ["uppkop", "Uppköp", "#/uppkop"],
       ["insyn", "Insynshandel", "#/insyn"]] },
     fonder: { label: "Fonder", items: [["fonder", "Alla fonder", "#/fonder"], ["fondbolag", "Fondbolag", "#/fondbolag"], ["sparande", "Fondsparandet", "#/sparande"],
       ["agarandel", "Fondernas ägarandel", "#/agarandel"], ["forvaltare", "Kända förvaltare", "#/forvaltare"],
@@ -5666,7 +5676,7 @@
     om: { label: "Om Fondinsyn", items: [["om", "Om datan", "#/om"], ["metod", "Metodrapport", "#/metod"], ["ordlista", "Ordlista", "#/ordlista"], ["data", "Data och API", "/oppen-data/"], ["kontakt", "Kontakt", "#/kontakt"]] }
   };
   // Sidor som hör till en avdelning i menyraden (blankning, uppköp och insynshandel under Aktier, ägarandel och sparande under Fonder, emittenterna under Räntor)
-  var PAGE_SECTION = { aktie: "aktier", insyn: "aktier", blankning: "aktier", blankare: "aktier", uppkop: "aktier", rantor: "rantor", emittent: "rantor",
+  var PAGE_SECTION = { aktie: "aktier", sektor: "aktier", insyn: "aktier", blankning: "aktier", blankare: "aktier", uppkop: "aktier", rantor: "rantor", emittent: "rantor",
     fond: "fonder", fondbolag: "fonder", sparande: "fonder", agarandel: "fonder", forvaltare: "fonder", avgifter: "fonder", risk: "fonder", jamfor: "fonder",
     ordlista: "om", kontakt: "om", metod: "om" };
 

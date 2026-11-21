@@ -32,7 +32,7 @@ CHROME=... PYTHON=py bash scripts/smoke-test.sh site                     # rökt
 - Diagram registreras med `chart(draw)` och ritas efter att HTML:en satts in, med `FFCharts` i `charts.js` (SVG, färger från CSS-klasser).
 - Händelser hanteras centralt med delegering på `document`, till exempel `data-rep-pick` och `id="repQ"`.
 
-**Statiska sidor.** `scripts/build-pages.ps1` skapar en sida per aktie, fond, fondbolag och så vidare utifrån `site/index.html` (med `<base href="/">`), plus sitemap, RSS, delningsbilder (SVG→PNG med rsvg-convert) och sökdata. Appen tar över sidan när den laddats; `body[data-route]` talar om vilken vy den ska rita.
+**Statiska sidor.** `scripts/build-pages.ps1` skapar en sida per aktie, fond, fondbolag och så vidare utifrån `site/index.html` (med `<base href="/">`), plus sitemap, RSS, delningsbilder (SVG→PNG med rsvg-convert) och sökdata. Appen tar över sidan när den laddats; `body[data-route]` talar om vilken vy den ska rita. Sidor med `data-keep` (ordlistan, rapportlistan, sektorsidorna `/sektor/` och rapporterna på engelska `/en/`) ritas inte om av appen. Kör inte `-WriteHome` lokalt utan att återställa `site/index.html` efteråt, eftersom den skriver in startsidan i mallen.
 
 **"Känn bolaget"** (`scripts/build-companies.py`).
 - Källor: endast bolagens egna rapporter. Det är MFN (mfn.se) och ESEF-årsredovisningar via filings.xbrl.org. **Använd aldrig Wikipedia eller Wikidata.**

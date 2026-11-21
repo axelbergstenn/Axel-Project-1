@@ -637,6 +637,30 @@ function ReportOgSvg($kicker, $headline, $netLabel, $net, $items) {
   return $sb.ToString()
 }
 
+# Engelska tal och sektornamn för rapporten på engelska (/en/report/)
+$EN_SECTOR = @{ "Industri" = "Industrials"; "Hälsovård" = "Health care"; "IT" = "IT"; "Sällanköpsvaror" = "Consumer discretionary"; "Fastigheter" = "Real estate"
+  "Finans" = "Financials"; "Kommunikationstjänster" = "Communication services"; "Material" = "Materials"; "Dagligvaror" = "Consumer staples"; "Energi" = "Energy"; "Kraftförsörjning" = "Utilities" }
+function EnSector($s) { if ($EN_SECTOR.ContainsKey([string]$s)) { return $EN_SECTOR[[string]$s] }; return [string]$s }
+function EnNum($v, [int]$dec) {
+  $t = ([math]::Round([double]$v, $dec)).ToString("N$dec", [System.Globalization.CultureInfo]::InvariantCulture)
+  if ($t.StartsWith("-")) { $t = $MINUS + $t.Substring(1) }
+  return $t
+}
+function EnSek($v, [switch]$Sign) {
+  $v = [double]$v; $a = [math]::Abs($v)
+  if ($a -eq 0) { return "SEK 0" }
+  if ($a -lt 5e4) { return "<SEK 0.1m" }
+  $t = if ($a -ge 1e9) { (EnNum ($a / 1e9) 1) + "bn" } elseif ($a -ge 1e8) { (EnNum ($a / 1e6) 0) + "m" } else { (EnNum ($a / 1e6) 1) + "m" }
+  $sg = if ($v -lt 0) { $MINUS } elseif ($Sign) { "+" } else { "" }
+  return "SEK " + $sg + $t
+}
+function EnMkr($v) { $m = [double]$v / 1e6; $t = if ([math]::Abs($m) -ge 100) { EnNum $m 0 } else { EnNum $m 1 }; if ($m -gt 0) { return "+" + $t }; return $t }
+function EnJoin($items) {
+  $items = @($items)
+  if ($items.Count -eq 0) { return "" }
+  if ($items.Count -eq 1) { return $items[0] }
+  return (($items[0..($items.Count - 2)]) -join ", ") + " and " + $items[-1]
+}
 function Image($name, $svg) {
   Save "og/$name.svg" $svg
   if ($HasRsvg) { return "og/$name.png" }
@@ -709,7 +733,7 @@ function PreList($route) {
 }
 
 # $rel: "aktie/volvo-b/" (sparas som index.html) eller ett filnamn som "404.html"
-function Page($rel, $route, $title, $desc, $image, $content, $Crumbs, $Ld, [switch]$NoIndex, [switch]$Keep) {
+function Page($rel, $route, $title, $desc, $image, $content, $Crumbs, $Ld, [switch]$NoIndex, [switch]$Keep, $Lang = "sv", $Alt) {
   $url = $BaseUrl + "/" + $(if ($rel.EndsWith("/")) { $rel } else { "" })
   $head = $tag.charset + "`n  <base href=`"/`">" + $(if ($NoIndex) { "`n  <meta name=`"robots`" content=`"noindex`">" } else { "" })
   $t = $template.Replace($tag.charset, $head)
@@ -721,6 +745,13 @@ function Page($rel, $route, $title, $desc, $image, $content, $Crumbs, $Ld, [swit
   $t = $t.Replace($tag.ogUrl, '<meta property="og:url" content="' + (Esc $url) + '">')
   $t = $t.Replace($tag.ogImage, '<meta property="og:image" content="' + (Esc ($BaseUrl + "/" + $image)) + '">')
   $t = $t.Replace($tag.canon, '<link rel="canonical" href="' + (Esc $url) + '">')
+  # Sidor på engelska, och länkar mellan språkversionerna (hreflang) när $Alt är den andra versionens adress
+  if ($Lang -eq "en") { $t = $t.Replace('<html lang="sv">', '<html lang="en">').Replace('<meta property="og:locale" content="sv_SE">', '<meta property="og:locale" content="en_GB">') }
+  if ($Alt) {
+    $svUrl = if ($Lang -eq "en") { $BaseUrl + "/" + $Alt } else { $url }; $enUrl = if ($Lang -eq "en") { $url } else { $BaseUrl + "/" + $Alt }
+    $canonNow = '<link rel="canonical" href="' + (Esc $url) + '">'
+    $t = $t.Replace($canonNow, $canonNow + "`n  <link rel=`"alternate`" hreflang=`"sv`" href=`"" + (Esc $svUrl) + "`">`n  <link rel=`"alternate`" hreflang=`"en`" href=`"" + (Esc $enUrl) + "`">")
+  }
   if ($route) { $t = $t.Replace($tag.body, '<body data-route="' + (Esc $route) + '"' + $(if ($Keep) { " data-keep" } else { "" }) + '>') }
   $t = $t.Replace($tag.main, '<main id="app" class="container" tabindex="-1">' + $content + "</main>")
   $t = $t.Replace('"__LATEST__"', (J $Q)).Replace('/*PRE*/', (PreList $route))
@@ -1225,6 +1256,7 @@ if ($gl) {
 function ReportSlug($qid) { return $qid.Substring(0, 4) + "-q" + $qid.Substring(5) }
 $reportQs = @($index.quarters | ForEach-Object { [string]$_.id })
 $reportList = @()
+$enList = @()
 for ($ri = 0; $ri -lt $reportQs.Count; $ri++) {
   $qid = $reportQs[$ri]
   $qd = if ($qid -eq $Q) { $cur } else { LoadQuarter $qid }
@@ -1291,7 +1323,51 @@ for ($ri = 0; $ri -lt $reportQs.Count; $ri++) {
   $article = '{"@context":"https://schema.org","@type":"Article","headline":' + (J "Fondernas köp och sälj $repQL") + ',"description":' + (J $desc) +
     ',"datePublished":' + (J ([string]$m.built)) + ',"dateModified":' + (J ([string]$m.built)) + ',"inLanguage":"sv-SE","image":' + (J "$BaseUrl/$img") +
     ',"author":{"@type":"Organization","name":"Fondinsyn","url":' + (J "$BaseUrl/") + '},"publisher":{"@type":"Organization","name":"Fondinsyn","url":' + (J "$BaseUrl/") + "}}"
-  Page "rapport/$rs/" "rapport/$qid" "Fondernas köp och sälj $repQL – kvartalsrapport | Fondinsyn" $desc $img $content -Crumbs @("Kvartalsrapporter", "rapport/", $repQL, "rapport/$rs/") -Ld $article
+  Page "rapport/$rs/" "rapport/$qid" "Fondernas köp och sälj $repQL – kvartalsrapport | Fondinsyn" $desc $img $content -Crumbs @("Kvartalsrapporter", "rapport/", $repQL, "rapport/$rs/") -Ld $article -Alt "en/report/$rs/"
+  # Samma kvartal på engelska (/en/report/<kvartal>/): kortare, för utländska läsare och delning
+  $enHead = if ($sectors.Count -and $by[$sectors[0]] -gt 0) { "Swedish funds bought " + (LcWord (EnSector $sectors[0])) + $(if ($buys.Count) { ", led by " + $buys[0].name } else { "" }) }
+            elseif ($sectors.Count) { "Swedish funds sold " + (LcWord (EnSector $sectors[-1])) + $(if ($sells.Count) { ", led by " + $sells[0].name } else { "" }) }
+            else { "What Swedish funds traded in $repQL" }
+  $enTop = { param($list) EnJoin @($list | Select-Object -First 3 | ForEach-Object { (A (IsinUrl $_.isin) $_.name) + " (" + (EnSek $_.flow -Sign) + ")" }) }
+  $enParas = @("Swedish mutual funds were <b>net " + $(if ($net -ge 0) { "buyers" } else { "sellers" }) + "</b> of Swedish equities in $repQL, at <b>" + (EnSek ([math]::Abs($net))) +
+    "</b>. The figures cover " + (EnNum $qd.tFunds 0) + " funds that reported holdings for both $repPL and $repQL.")
+  if ($buys.Count) { $enParas += "The most bought stocks were " + (& $enTop $buys) + "." }
+  if ($sells.Count) { $enParas += "The most sold were " + (& $enTop $sells) + "." }
+  $enRowsB = NewList; foreach ($s in @($buys | Select-Object -First 10)) { $enRowsB.Add(@((A (IsinUrl $s.isin) $s.name), (Colored $s.flow (EnMkr $s.flow)), (EnNum $s.f2 0))) }
+  $enRowsS = NewList; foreach ($s in @($sells | Select-Object -First 10)) { $enRowsS.Add(@((A (IsinUrl $s.isin) $s.name), (Colored $s.flow (EnMkr $s.flow)), (EnNum $s.f2 0))) }
+  $en = '<article class="report" lang="en"><div class="page-head"><div class="crumbs"><a href="/en/">Reports in English</a> / ' + $repQL + " vs " + $repPL + "</div>" +
+    "<h1>" + (Esc $enHead) + "</h1></div>" + '<div class="prose">' + (($enParas | ForEach-Object { "<p>$_</p>" }) -join "") + "</div>" +
+    '<div class="grid-2 section-gap">' + (Block "Most bought" (Table @("Stock", "Net buying (SEK m)", "Funds") $enRowsB) "") +
+    (Block "Most sold" (Table @("Stock", "Net buying (SEK m)", "Funds") $enRowsS) "") + "</div>"
+  if ($sectors.Count) {
+    $rows = NewList; foreach ($k in $sectors) { $rows.Add(@((Esc (EnSector $k)), (Colored $by[$k] (EnSek $by[$k] -Sign)))) }
+    $en += Block "Sectors" (Table @("Sector", "Net buying") $rows) "section-gap"
+  }
+  if ($qiR -ge 0) {
+    $bsE = @(StreakList $qd.stocks $qiR 1); $ssE = @(StreakList $qd.stocks $qiR -1)
+    if ($bsE.Count -or $ssE.Count) {
+      $p = ""
+      if ($bsE.Count) { $p += "Funds have been net buyers of " + (A (IsinUrl $bsE[0].s.isin) $bsE[0].s.name) + " for <b>" + $bsE[0].n + " quarters in a row</b>. " }
+      if ($ssE.Count) { $p += "They have been net sellers of " + (A (IsinUrl $ssE[0].s.isin) $ssE[0].s.name) + " for " + $ssE[0].n + " quarters in a row." }
+      $en += Block "Trends" "<p>$p</p>" "section-gap"
+    }
+  }
+  if ($news.Count) {
+    $en += Block "New favourites" ("<p><b>" + $news[0].nNew + " funds</b> bought " + (A (IsinUrl $news[0].isin) $news[0].name) + " for the first time" +
+      $(if ($news.Count -gt 1) { ", and " + $news[1].nNew + " bought " + (Esc $news[1].name) } else { "" }) + ".</p>") "section-gap"
+  }
+  $enNav = @((A "/rapport/$rs/" "Full report in Swedish"))
+  if ($ri + 1 -lt $reportQs.Count) { $enNav += A "/en/report/$(ReportSlug $reportQs[$ri + 1])/" ("← " + (QLabel $reportQs[$ri + 1])) }
+  if ($ri -gt 0) { $enNav += A "/en/report/$(ReportSlug $reportQs[$ri - 1])/" ((QLabel $reportQs[$ri - 1]) + " →") }
+  $en += '<p class="desc section-gap">Net buying is the change in the number of shares held by funds that reported both quarters, valued at the share price at the end of the quarter. Not investment advice.</p>' +
+    '<p class="desc">' + ($enNav -join " · ") + " · Source: quarterly fund holdings reported to Finansinspektionen, the Swedish financial supervisory authority.</p></article>"
+  $enDesc = "Swedish funds were net " + $(if ($net -ge 0) { "buyers" } else { "sellers" }) + " of Swedish stocks for " + (EnSek ([math]::Abs($net))) + " in $repQL." +
+    $(if ($top3.Count) { " Most bought: " + (EnJoin $top3) + "." } else { "" })
+  $enArticle = '{"@context":"https://schema.org","@type":"Article","headline":' + (J $enHead) + ',"description":' + (J $enDesc) +
+    ',"datePublished":' + (J ([string]$m.built)) + ',"dateModified":' + (J ([string]$m.built)) + ',"inLanguage":"en","image":' + (J "$BaseUrl/$img") +
+    ',"author":{"@type":"Organization","name":"Fondinsyn","url":' + (J "$BaseUrl/") + '},"publisher":{"@type":"Organization","name":"Fondinsyn","url":' + (J "$BaseUrl/") + "}}"
+  Page "en/report/$rs/" "en/report/$qid" "What Swedish funds bought and sold in $repQL | Fondinsyn" $enDesc $img $en -Crumbs @("Reports in English", "en/", $repQL, "en/report/$rs/") -Ld $enArticle -Keep -Lang "en" -Alt "rapport/$rs/"
+  $enList += [pscustomobject]@{ label = $repQL; slug = $rs; headline = $enHead }
   $reportList += [pscustomobject]@{ q = $qid; label = $repQL; slug = $rs; headline = $headline; desc = $desc }
 }
 
@@ -1378,7 +1454,109 @@ foreach ($r in $reportList) {
 Page "rapport/" "rapport" "Kvartalsrapporter – vad fonderna köpte och sålde | Fondinsyn" "Varje kvartal: vilka svenska aktier fonderna köpte och sålde mest, sektorerna de flyttade pengar till och de längsta köpsviterna." $defaultImg -Crumbs @("Kvartalsrapporter", "rapport/") -Keep (
   '<div class="page-head"><h1>Kvartalsrapporter</h1></div><p class="lead">En sammanfattning per kvartal av vad svenska fonder köpte och sålde, både svenska och globala aktier. Byggd på innehaven som fondbolagen rapporterar till Finansinspektionen.</p>' +
   (Table @("Kvartal", "Svenska aktier", "Globala aktier") $rows))
+$rows = NewList
+foreach ($r in $enList) { $rows.Add(@((A "/en/report/$($r.slug)/" $r.label), (Esc $r.headline))) }
+Page "en/" "en" "Fondinsyn in English – what Swedish funds buy and sell" "Quarterly reports in English on what Swedish mutual funds bought and sold, based on the holdings funds report to Finansinspektionen." $defaultImg -Crumbs @("Reports in English", "en/") -Keep -Lang "en" (
+  '<div lang="en"><div class="page-head"><h1>Reports in English</h1></div><p class="lead">Every quarter, Swedish mutual funds report their full holdings to Finansinspektionen, the Swedish financial supervisory authority. Fondinsyn compares them with the previous quarter to show what the funds bought and sold. These are short English summaries; the full reports, stock pages and fund pages are in Swedish.</p>' +
+  '<div class="section-gap">' + (Table @("Quarter", "Headline") $rows) + "</div></div>")
 Write-Host "  $($reportList.Count) kvartalsrapporter"
+
+# ---------- Sektorsidor (/sektor/<sektor>/): vad fonderna köper och äger inom varje bransch ----------
+
+$secOrder = @{}
+foreach ($s in $pageStocks) { if ($s.sector -ne "Övrigt") { $secOrder[$s.sector] = 1 } }
+# Nettoköp per sektor och kvartal ur historiken, samma regel som appen: nya och avvecklade innehav räknas inte
+$secHist = @{}
+if ($hist) {
+  foreach ($p in $hist.stocks.PSObject.Properties) {
+    if (-not $p.Name.StartsWith("SE")) { continue }
+    $e = $p.Value; $sn = [string]$e[1]
+    if (-not $sn -or $sn -eq "Övrigt") { continue }
+    if (-not $secHist.ContainsKey($sn)) { $secHist[$sn] = @{} }
+    $byQh = @{}; foreach ($r in $e[3]) { $byQh[[int]$r[0]] = $r }
+    foreach ($r in $e[3]) {
+      $prevR = $byQh[[int]$r[0] - 1]
+      if (-not $prevR -or -not ($prevR[1] -gt 0) -or -not ($r[1] -gt 0) -or $null -eq $r[3]) { continue }
+      $secHist[$sn][[int]$r[0]] = [double]$secHist[$sn][[int]$r[0]] + [double]$r[3]
+    }
+  }
+}
+$secList = NewList
+foreach ($sn in @($secOrder.Keys | Sort-Object)) {
+  $inSec = @($pageStocks | Where-Object { $_.sector -eq $sn })
+  $contS = @($inSec | Where-Object { $_.price -and $null -ne $_.netFlow })
+  $flowS = 0.0; foreach ($s in $contS) { $flowS += $s.flow }
+  $valS = 0.0; foreach ($s in $inSec) { $valS += $s.val2 }
+  $fundIds = @{}; foreach ($s in $inSec) { foreach ($h in $s.holders) { $fundIds[$h.f.id] = 1 } }
+  $secList.Add([pscustomobject]@{ name = $sn; slug = (Slug $sn); stocks = $inSec; cont = $contS; flow = $flowS; val = $valS; nFunds = $fundIds.Count })
+}
+$secTotalVal = 0.0; foreach ($x in $secList) { $secTotalVal += $x.val }
+
+function SectorNav($skip) {
+  return '<p class="desc section-gap">Fler sektorer: ' + ((@($secList | Where-Object { $_.name -ne $skip }) | ForEach-Object { A "/sektor/$($_.slug)/" $_.name }) -join " · ") + "</p>"
+}
+
+foreach ($x in $secList) {
+  $sn = $x.name
+  $buysS = @($x.cont | Where-Object { $_.flow -gt 0 } | Sort-Object flow -Descending)
+  $sellsS = @($x.cont | Where-Object { $_.flow -lt 0 } | Sort-Object flow)
+  $bigS = @($x.stocks | Sort-Object val2 -Descending)
+  $newS = @($x.cont | Where-Object { $_.nNew -gt 0 } | Sort-Object nNew -Descending)
+  $share = if ($secTotalVal) { $x.val / $secTotalVal * 100 } else { 0 }
+  $lc = LcWord $sn
+
+  $paras = @("Svenska fonder äger aktier inom $lc för <b>" + (BigSek $x.val) + "</b>, fördelat på " + (Plural $x.stocks.Count "bolag" "bolag") + " och " + (Num0 $x.nFunds) + " fonder. Det är " +
+    (Fmt $share 1) + " % av fondernas svenska aktier.")
+  $paras += "Under $QL " + $(if ($x.flow -ge 0) { "nettoköpte" } else { "nettosålde" }) + " fonderna aktier inom $lc för <b>" + (BigSek ([math]::Abs($x.flow))) + "</b>." +
+    $(if ($buysS.Count) { " Mest köptes " + (JoinSv @($buysS | Select-Object -First 3 | ForEach-Object { (A (StockUrl $_) $_.name) + " (" + (BigSek $_.flow -Sign) + ")" })) + "." } else { "" }) +
+    $(if ($sellsS.Count) { " Mest såldes " + (JoinSv @($sellsS | Select-Object -First 2 | ForEach-Object { (A (StockUrl $_) $_.name) + " (" + (BigSek $_.flow -Sign) + ")" })) + "." } else { "" })
+  if ($newS.Count) { $paras += "Flest nya ägare fick " + (A (StockUrl $newS[0]) $newS[0].name) + ": " + (Plural $newS[0].nNew "fond" "fonder") + " köpte in sig för första gången." }
+
+  # Nettoköp per kvartal, de senaste åtta kvartalen
+  $barsS = @(); $histHtml = ""
+  if ($hist -and $hq -ge 1 -and $secHist.ContainsKey($sn)) {
+    $qs = @(); for ($k = [math]::Max(1, $hq - 7); $k -le $hq; $k++) { $qs += $k }
+    $maxH = [math]::Max(1.0, [math]::Abs($x.flow / 1e6)); foreach ($k in $qs) { if ($k -ne $hq) { $maxH = [math]::Max($maxH, [math]::Abs([double]$secHist[$sn][$k])) } }
+    $li = ""
+    foreach ($k in $qs) {
+      # Senaste kvartalet tas ur samma uträkning som texten, så att stapeln och texten visar samma tal
+      $v = if ($k -eq $hq) { $x.flow / 1e6 } else { [double]$secHist[$sn][$k] }; $barsS += $v
+      $w = [math]::Abs($v) / $maxH * 50
+      $li += '<li><span class="db-label">' + (QLabel ([string]$hist.quarters[$k])) + '</span><span class="db-track"><i class="' + $(if ($v -ge 0) { "pos" } else { "neg" }) + '" style="width:' +
+        $w.ToString("0.0", [System.Globalization.CultureInfo]::InvariantCulture) + "%;" + $(if ($v -ge 0) { "left:50%" } else { "right:50%" }) + '"></i></span><span class="db-val ' + (SignClass $v) + '">' + (BigSek ($v * 1e6) -Sign) + "</span></li>"
+    }
+    $histHtml = Block "Nettoköp per kvartal" ('<ul class="divbars">' + $li + "</ul>") "section-gap"
+  }
+
+  $rowsB = NewList; foreach ($s in @($buysS | Select-Object -First 10)) { $rowsB.Add(@((A (StockUrl $s) $s.name), (Colored $s.flow (Mkr $s.flow -Sign)), (Num0 $s.f2))) }
+  $rowsS = NewList; foreach ($s in @($sellsS | Select-Object -First 10)) { $rowsS.Add(@((A (StockUrl $s) $s.name), (Colored $s.flow (Mkr $s.flow -Sign)), (Num0 $s.f2))) }
+  $rowsH = NewList; foreach ($s in @($bigS | Select-Object -First 20)) { $rowsH.Add(@((A (StockUrl $s) $s.name), (Mkr $s.val2), (Num0 $s.f2), $(if ($null -ne $s.netFlow) { Colored $s.flow (Mkr $s.flow -Sign) } else { "–" }))) }
+
+  $content = '<div class="page-head"><div class="crumbs"><a href="/sektor/">Sektorer</a> / ' + (Esc $sn) + "</div><h1>Vad köper fonderna inom " + (Esc $lc) + "?</h1></div>" +
+    '<div class="prose">' + (($paras | ForEach-Object { "<p>$_</p>" }) -join "") + "</div>" +
+    '<div class="grid-2 section-gap">' + (Block "Mest köpta $QL" (Table @("Aktie", "Nettoköp (mkr)", "Fonder") $rowsB) "") +
+    (Block "Mest sålda $QL" (Table @("Aktie", "Nettoköp (mkr)", "Fonder") $rowsS) "") + "</div>" +
+    $histHtml +
+    (Block "Fondernas största innehav inom $lc" (Table @("Aktie", "Innehav (mkr)", "Fonder", "Nettoköp $QL (mkr)") $rowsH) "section-gap") +
+    (SectorNav $sn) + (Source "/#/aktier" "Alla aktier")
+
+  $desc = "Svenska fonder " + $(if ($x.flow -ge 0) { "nettoköpte" } else { "nettosålde" }) + " aktier inom $lc för " + (BigSek ([math]::Abs($x.flow))) + " under $QL." +
+    $(if ($buysS.Count) { " Mest köpte de " + (JoinSv @($buysS | Select-Object -First 3 | ForEach-Object { $_.name })) + "." } else { "" }) +
+    " Se fondernas största innehav, köp och sälj inom $lc."
+  $statsS = @(@("Bolag", (Num0 $x.stocks.Count), "#0f1a16"), @("Innehav", (BigSek $x.val), "#0f1a16"), @("Nettoköp $QL", (BigSek $x.flow -Sign), (FlowColor $x.flow)))
+  $img = if ($barsS.Count) { Image "sektor-$($x.slug)" (OgSvg $sn "Svenska fonders köp och sälj · $QL" $statsS "Fondernas nettoköp per kvartal, senaste $($barsS.Count) kvartalen" $barsS $null) } else { $defaultImg }
+  Page "sektor/$($x.slug)/" "sektor/$($x.slug)" "Vad köper fonderna inom ${lc}? $QL | Fondinsyn" $desc $img $content -Crumbs @("Sektorer", "sektor/", $sn, "sektor/$($x.slug)/") -Keep
+}
+
+$rows = NewList
+foreach ($x in @($secList | Sort-Object flow -Descending)) {
+  $topB = @($x.cont | Where-Object { $_.flow -gt 0 } | Sort-Object flow -Descending | Select-Object -First 1)
+  $rows.Add(@((A "/sektor/$($x.slug)/" $x.name), (Colored $x.flow (BigSek $x.flow -Sign)), (BigSek $x.val), $(if ($topB.Count) { A (StockUrl $topB[0]) $topB[0].name } else { "–" })))
+}
+Page "sektor/" "sektor" "Sektorer – vad köper fonderna i varje bransch? | Fondinsyn" "Svenska fonders köp, sälj och innehav per sektor ${QL}: industri, finans, fastigheter, hälsovård, IT och fler." $defaultImg -Crumbs @("Sektorer", "sektor/") -Keep (
+  '<div class="page-head"><h1>Sektorer</h1></div><p class="lead">Vad svenska fonder köpte och sålde inom varje bransch under ' + $QL + ', och hur mycket de äger. Sektorn är den som fonderna själva anger (GICS).</p>' +
+  '<div class="section-gap">' + (Table @("Sektor", "Nettoköp $QL", "Innehav", "Mest köpt") $rows) + "</div>" + (Source "/#/oversikt" "Sektorrotation över tid"))
+Write-Host "  $($secList.Count) sektorsidor"
 
 # Ordlistans sidor (efter rapporterna, så att begreppet kvartalsrapport kan länka till dem)
 foreach ($tp in $termPages) {
