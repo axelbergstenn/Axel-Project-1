@@ -6069,7 +6069,7 @@
     resizeTimer = setTimeout(function () { drawCharts(); segThumbs(); navIndicator(); }, 150);
   });
 
-  // Ljust eller mörkt läge. Utan eget val följer sidan systemets inställning. Ett val med knappen sparas i
+  // Ljust eller mörkt läge. Ljust är standard; mörkt bara om man själv har valt det. Ett val med knappen sparas i
   // webbläsaren och läses in redan i <head> (index.html), så att sidan inte hinner visas i fel läge.
   function isDark() { return document.documentElement.getAttribute("data-theme") === "dark"; }
   function syncThemeBtn() {
@@ -6087,17 +6087,6 @@
     syncThemeBtn();
   }
   syncThemeBtn();
-  // Byter systemet läge (till exempel mörkt på kvällen) följer sidan med, om man inte själv har valt
-  if (window.matchMedia && !/[?&]pdf/.test(location.search)) {
-    var darkMq = window.matchMedia("(prefers-color-scheme: dark)");
-    var onSystemTheme = function (e) {
-      var saved = null;
-      try { saved = localStorage.getItem("ff-theme"); } catch (err) { /* ingen lagring */ }
-      if (!saved) setTheme(e.matches ? "dark" : "light", true);
-    };
-    if (darkMq.addEventListener) darkMq.addEventListener("change", onSystemTheme); else if (darkMq.addListener) darkMq.addListener(onSystemTheme);
-  }
-
   // Förhandsvisningen av inbäddningsrutan laddas först när rutan fälls ut, i samma läge som sidan
   document.addEventListener("toggle", function (e) {
     var box = e.target;
