@@ -1982,6 +1982,14 @@ if ($offersSeo -and $offersSeo.offers) {
     $defaultImg $content -Crumbs @("Uppköp", "uppkop/")
 }
 
+# Återköp och nyemissioner (scripts/build-news.py). Appen ritar listorna; den fasta sidan har rubrik och beskrivning för sökmotorer.
+Page "aterkop/" "aterkop" "Återköp av egna aktier – vilka bolag köper tillbaka aktier? | Fondinsyn" `
+  "Svenska börsbolag som köper tillbaka sina egna aktier: belopp senaste 30 och 90 dagarna, snittpris och nya återköpsprogram. Ur bolagens egna pressmeddelanden." `
+  $defaultImg ('<div class="page-head"><h1>Återköp av egna aktier</h1><p class="meta lead">Bolag som köper tillbaka sina egna aktier, ur bolagens veckovisa pressmeddelanden.</p></div>') -Crumbs @("Återköp", "aterkop/")
+Page "emissioner/" "emissioner" "Nyemissioner – börsbolag som tar in nya pengar | Fondinsyn" `
+  "Riktade emissioner och företrädesemissioner i bolag som svenska fonder äger, med belopp, teckningskurs och vilka fonder som köpte. Ur bolagens egna pressmeddelanden." `
+  $defaultImg ('<div class="page-head"><h1>Nyemissioner</h1><p class="meta lead">Börsbolag som tar in nya pengar genom att ge ut nya aktier.</p></div>') -Crumbs @("Nyemissioner", "emissioner/")
+
 # Avgiftskollen: indexnära aktiefonder med hög avgift (samma regler som viewFees i app.js)
 $closet = @($infos | Where-Object { $_.aum -ge 100e6 -and (Category $_) -eq "closet" } | Sort-Object { -($_.aum * $_.feeMax) })
 if ($closet.Count) {

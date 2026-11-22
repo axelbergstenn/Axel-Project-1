@@ -134,6 +134,12 @@ jobs:
         timeout-minutes: 5
         run: python3 scripts/build-bids.py
 
+      # Nyheter från bolagen, återköp och nyemissioner ur pressmeddelandena på MFN. Läget sparas i data/news-state.json.
+      - name: Hämta nyheter, återköp och emissioner från MFN
+        continue-on-error: true
+        timeout-minutes: 10
+        run: python3 scripts/build-news.py
+
       # Spararnas nettoflöden per fondtyp (Fondbolagens förening, månadsvis) och uppskattade flöden per fond (ur FI-datan)
       - name: Bygg fondsparandet
         shell: pwsh

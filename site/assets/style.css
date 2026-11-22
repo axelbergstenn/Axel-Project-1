@@ -621,6 +621,29 @@ a.btn { color: var(--fg); }
 /* Vad Fondinsyn är och hur ofta datan uppdateras */
 .about-card { position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px 48px; align-items: center; padding: 22px 26px; margin: 28px 0 0; border-radius: var(--radius-lg); background: var(--bg); border: 1px solid var(--border); }
 /* Genvägarna till avsnitten på aktiesidan: följer med under menyn när man scrollar */
+/* Nyheter från bolagen: datum, etikett och rubrik på en rad, tunna linjer mellan raderna */
+.nw-list { list-style: none; margin: 0; padding: 4px 20px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.nw-list li { display: grid; grid-template-columns: 64px minmax(0, 1fr); column-gap: 14px; row-gap: 2px; align-items: baseline; padding: 11px 0; font-size: 14.5px; }
+.nw-list li + li { border-top: 1px solid var(--border-muted); }
+.nw-list .news-tag { grid-column: 2; justify-self: start; }
+.nw-list .nw-title { grid-column: 2; color: var(--fg); line-height: 1.45; }
+.nw-list .nw-title:hover { color: var(--link); }
+.nw-date { grid-row: 1 / span 3; font-size: 12.5px; color: var(--fg-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.nw-co { grid-column: 2; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-weight: 600; }
+.news-tag { display: inline-block; font-size: 11.5px; font-weight: 600; line-height: 20px; padding: 0 8px; border-radius: 999px; background: var(--chip-bg); color: var(--fg-soft); }
+.news-tag.nt-rapport, .news-tag.nt-bud { background: var(--brand-soft); color: var(--fg); }
+.nw-facts { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; font-size: 14.5px; }
+.nw-facts li { padding-left: 14px; position: relative; }
+.nw-facts li::before { content: ""; position: absolute; left: 0; top: 0.65em; width: 6px; height: 6px; border-radius: 50%; background: var(--brand); }
+.nw-more { margin-top: 10px; }
+.nw-more summary { cursor: pointer; font-size: 14px; font-weight: 600; color: var(--link); margin-bottom: 10px; }
+.lead-figure { font-size: 17px; margin: 0 0 8px; }
+@media (max-width: 640px) {
+  .nw-list { padding: 2px 16px; }
+  .nw-list li { grid-template-columns: minmax(0, 1fr); }
+  .nw-date { grid-row: auto; }
+  .nw-list .news-tag, .nw-list .nw-title, .nw-co { grid-column: 1; }
+}
 /* Läget just nu: fyra korta rader överst på aktiesidan, i spalter med tunna linjer */
 .stock-sum { margin: 0 0 28px; padding-top: 14px; border-top: 2px solid var(--rule); }
 .ss-h { font-size: 17px; margin: 0 0 12px; }

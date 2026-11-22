@@ -52,6 +52,8 @@ ROUTES=(
   "/sektor/industri/|sektor"
   "/en/|en"
   "/en/report/2026-q2/|en"
+  "/aterkop/|aterkop"
+  "/emissioner/|emissioner"
   "/#/bevakning|bevakning"
   "/#/portfolj|portfolj"
   "/#/jamfor/51718/60730|jamfor"
