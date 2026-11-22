@@ -621,6 +621,21 @@ a.btn { color: var(--fg); }
 /* Vad Fondinsyn är och hur ofta datan uppdateras */
 .about-card { position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px 48px; align-items: center; padding: 22px 26px; margin: 28px 0 0; border-radius: var(--radius-lg); background: var(--bg); border: 1px solid var(--border); }
 /* Genvägarna till avsnitten på aktiesidan: följer med under menyn när man scrollar */
+/* Läget just nu: fyra korta rader överst på aktiesidan, i spalter med tunna linjer */
+.stock-sum { margin: 0 0 28px; padding-top: 14px; border-top: 2px solid var(--rule); }
+.ss-h { font-size: 17px; margin: 0 0 12px; }
+.stock-sum dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0; margin: 0; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.stock-sum dl > div { position: relative; padding: 14px 18px 16px; min-width: 0; }
+.stock-sum dl > div + div::before { content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 1px; background: var(--border); }
+.stock-sum dt { font-size: 12.5px; font-weight: 600; color: var(--fg-muted); margin-bottom: 4px; }
+.stock-sum dd { margin: 0; font-size: 14.5px; line-height: 1.5; color: var(--fg); }
+.stock-sum dd b { font-weight: 700; }
+.ss-more { font-size: 13px; font-weight: 600; white-space: nowrap; }
+@media (max-width: 760px) {
+  .stock-sum dl { grid-template-columns: minmax(0, 1fr); }
+  .stock-sum dl > div { padding: 12px 16px; }
+  .stock-sum dl > div + div::before { left: 16px; right: 16px; top: 0; bottom: auto; width: auto; height: 1px; }
+}
 .jump { position: sticky; top: 69px; z-index: 20; display: flex; gap: 4px; margin: 0 0 24px; padding: 8px 0; overflow-x: auto; scrollbar-width: none;
   background: var(--canvas); border-bottom: 1px solid var(--border); }
 .jump::-webkit-scrollbar { display: none; }
@@ -1453,6 +1468,9 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
 .tabbar { display: none; }
 
 /* ---------- Mellanstora skärmar ---------- */
+
+/* Menyraden: på smalare skärmar döljs Fonder och Rapporter (de finns i Meny) */
+@media (max-width: 1240px) { .mainnav a[data-nav="fonder"], .mainnav a[data-nav="rapport"] { display: none; } }
 
 @media (max-width: 1200px) {
   .topbar-inner { gap: 18px; }

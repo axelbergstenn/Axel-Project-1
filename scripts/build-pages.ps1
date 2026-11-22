@@ -2141,6 +2141,10 @@ try {
   $sh = ReadJson "shorts.json"
   $shTop = foreach ($a in @($sh.aggregate | Sort-Object { -[double]$_[2] } | Select-Object -First 6)) { "[" + (J $a[0]) + "," + (J $a[1]) + "," + ([double]$a[2]).ToString("0.##", $Inv) + "]" }
   $front.Add('"shorts":[' + (@($shTop) -join ",") + "]")
+  # Där blankningen ökat mest de senaste 30 dagarna (procentenheter), för startsidan
+  $shUp = foreach ($a in @($sh.aggregate | Where-Object { $_[1] -and $null -ne $_[4] -and [double]$_[4] -ge 0.1 } | Sort-Object { -[double]$_[4] } | Select-Object -First 5)) {
+    "[" + (J $a[0]) + "," + (J $a[1]) + "," + ([double]$a[2]).ToString("0.##", $Inv) + "," + ([double]$a[4]).ToString("0.##", $Inv) + "]" }
+  $front.Add('"shortsUp":[' + (@($shUp) -join ",") + "]")
 } catch { }
 # Spararnas nettosparande senaste månaden (data/flows.json från build-flows.ps1), i MSEK
 try {
