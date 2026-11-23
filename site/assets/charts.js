@@ -73,7 +73,13 @@
     var lg = opts && opts.legend && opts.legend.length ? legend(container, opts.legend) : null;
     var w = Math.max(240, container.clientWidth);
     var svg = el("svg", { width: w, height: height, viewBox: "0 0 " + w + " " + height, "class": "c-svg" + (fresh ? " c-in" : ""), role: "img" }, null);
-    if (opts && opts.aria) svg.setAttribute("aria-label", opts.aria);
+    // Namn för skärmläsare: opts.aria, annars närmaste rubrik före diagrammet i samma avsnitt
+    var sec = container.closest && container.closest("section, .block, .know-card, .panel"), hd = null;
+    if (sec) Array.prototype.forEach.call(sec.querySelectorAll("h2, h3, h4, .chart-title"), function (h) {
+      if (h.compareDocumentPosition(container) & 4) hd = h;
+    });
+    var name = opts && opts.aria || (hd && hd.textContent.replace(/\s+/g, " ").trim());
+    if (name) svg.setAttribute("aria-label", opts && opts.aria ? name : "Diagram: " + name);
     container.appendChild(svg);
     var tip = document.createElement("div");
     tip.className = "chart-tip";

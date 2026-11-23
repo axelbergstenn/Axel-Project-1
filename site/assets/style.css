@@ -464,7 +464,9 @@ th.l, td.l { text-align: left; }
 /* Textkolumner (person, status) får radbrytas, siffror och datum stannar på en rad */
 td.l:not(.muted) { white-space: normal; min-width: 8em; }
 thead th { background: var(--bg); font-weight: 500; font-size: 12.5px; color: var(--fg-muted); border-bottom: 1px solid var(--border-strong); position: sticky; top: 0; vertical-align: bottom; padding-top: 13px; padding-bottom: 10px; }
-thead th button { all: unset; cursor: pointer; }
+thead th button { all: unset; cursor: pointer; position: relative; }
+/* Större yta att trycka på än själva texten (rubrikerna är små, särskilt på mobilen) */
+thead th button::after { content: ""; position: absolute; inset: -10px -6px; }
 thead th button:hover { color: var(--fg); }
 thead th button:focus-visible { outline: 2px solid var(--brand); }
 thead th[aria-sort] { color: var(--fg); font-weight: 600; }

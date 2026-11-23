@@ -419,7 +419,7 @@
       if (!c.value || opts.static) return "<th" + al + ' scope="col">' + c.label + "</th>";
       var active = sort && sort.col === c.key;
       var aria = active ? ' aria-sort="' + (sort.dir > 0 ? "ascending" : "descending") + '"' : "";
-      var arrow = active ? (sort.dir > 0 ? " ▲" : " ▼") : "";
+      var arrow = active ? '<span aria-hidden="true">&nbsp;' + (sort.dir > 0 ? "▲" : "▼") + "</span>" : "";
       return "<th" + al + aria + ' scope="col"><button type="button" data-sort="' + key + ":" + c.key + '">' + c.label + arrow + "</button></th>";
     }).join("");
     var body = rows.map(function (r, n) {
@@ -986,7 +986,7 @@
       var cur = d.bb[0], rows = d.bb[1], d30 = daysAgo(30), n = 0, v = 0;
       rows.forEach(function (r) { if (r[0] >= d30) { n += r[1]; v += r[3]; } });
       if (n) facts.push("Bolaget har köpt tillbaka <b>" + int(n) + " egna aktier</b> för " + curAmount(v, cur) + " de senaste 30 dagarna, i snitt " +
-        nf2.format(v / n) + (cur === "EUR" ? " euro" : " kr") + " per aktie (senast " + esc(rows[0][0]) + "). " + '<a href="#/aterkop">Alla återköp</a>');
+        nf2.format(v / n) + (cur === "EUR" ? " euro" : " kr") + " per aktie (senast " + dateText(rows[0][0]) + "). " + '<a href="#/aterkop">Alla återköp</a>');
     }
     (d.issues || []).slice(0, 2).forEach(function (x) {
       facts.push((ISSUE_KIND[x[1]] || "Nyemission") + " " + esc(x[0]) + (x[2] ? " om " + curAmount(x[2], x[3]) : "") + (x[4] ? ", teckningskurs " + nf2.format(x[4]) + " kr" : "") +
@@ -1054,7 +1054,7 @@
     var active = rows.filter(function (r) { return r.n30 > 0; });
     var tot30 = active.reduce(function (a, r) { return a + (r.cur === "SEK" ? r.v30 : 0); }, 0);
     var nameOf = function (r) {
-      var sub = "senast " + esc(r.last) + (r.n30 ? " · " + int(r.n30) + " aktier på 30 dagar" : "");
+      var sub = "senast " + shortStamp(r.last) + (r.n30 ? " · " + int(r.n30) + " aktier på 30 dagar" : "");
       return r.s ? nameCell(stockHref(r.s), r.name, sub) : '<span class="nm-plain">' + esc(r.name) + '</span><span class="sub show-sm">' + sub + "</span>";
     };
     var cols = [
@@ -1194,7 +1194,7 @@
     var rows = picked.filter(function (x) { return x.g != null || x.res || x.mg; });
     var bare = picked.filter(function (x) { return !(x.g != null || x.res || x.mg); }).sort(function (a, b) { return (b.s.val2 || 0) - (a.s.val2 || 0); });
     var perName = function (k) { var a = k.split("/"); return periodText(a[0], +a[1]); };
-    var perOpts = pers.map(function (k) { return '<option value="' + k + '"' + (k === reportsFilter.per ? " selected" : "") + ">" + capFirst(perName(k)) + " (" + perCount[k] + ")</option>"; }).join("") +
+    var perOpts = pers.map(function (k) { return '<option value="' + k + '"' + (k === reportsFilter.per ? " selected" : "") + ">" + capFirst(perName(k)) + "</option>"; }).join("") +
       '<option value="alla"' + (reportsFilter.per === "alla" ? " selected" : "") + ">Alla perioder</option>";
     var listOpts = '<option value="">Alla listor</option>' + BORS_LISTS.map(function (l) {
       return '<option value="' + l[0] + '"' + (reportsFilter.list === l[0] ? " selected" : "") + ">" + l[2] + "</option>";
@@ -1591,12 +1591,12 @@
     // Uppköpserbjudanden på bolaget
     if (needOffers()) {
       offersFor(isin).forEach(function (o) {
-        html += '<div class="notice offer-notice"><b>Uppköpserbjudande ' + o.date + "</b> från " + esc(o.bidder) +
+        html += '<div class="notice offer-notice"><b>Uppköpserbjudande ' + dateText(o.date) + "</b> från " + esc(o.bidder) +
           (o.price != null ? ", " + offerPriceText(o) + " per aktie" : "") + (o.premium != null ? " (premie " + nf1.format(o.premium) + " %)" : "") +
           '. <a href="#/uppkop/' + encodeURIComponent(o.id) + '">Se vilka fonder som ägde bolaget</a></div>';
       });
       if (needBids()) newBids(isin).forEach(function (b) {
-        html += '<div class="notice offer-notice"><b>Nytt uppköpserbjudande ' + b.date + "</b>" + (b.bidder ? " från " + esc(b.bidder) : "") +
+        html += '<div class="notice offer-notice"><b>Nytt uppköpserbjudande ' + dateText(b.date) + "</b>" + (b.bidder ? " från " + esc(b.bidder) : "") +
           (b.price != null ? ", " + bidPriceText(b) + " per aktie" : "") + (b.premium != null ? " (premie " + nf1.format(b.premium) + " %)" : "") +
           (b.rec === "ja" ? ". Styrelsen rekommenderar budet" : b.rec === "nej" ? ". Styrelsen avråder från budet" : "") +
           '. <a href="' + safeUrl(b.url) + '" target="_blank" rel="noopener">Pressmeddelandet ↗</a></div>';
@@ -4164,7 +4164,7 @@
     var targetCell = function (o) {
       var nm = o.name || "Okänt bolag";
       var href = o.isins && o.isins.length ? "#/aktie/" + o.isins[0] : null;
-      var sub = o.date + " · " + esc(o.bidder) + (o.premium != null ? " · premie " + nf1.format(o.premium) + " %" : "");
+      var sub = dateText(o.date) + " · " + esc(o.bidder) + (o.premium != null ? " · premie " + nf1.format(o.premium) + " %" : "");
       return (href ? nameCell(href, nm, sub) : '<span class="nm-plain">' + esc(nm) + '</span><span class="sub show-sm">' + sub + "</span>");
     };
     var cols = [
@@ -4239,7 +4239,7 @@
       { key: "w", label: "Andel av fonden", cell: function (h) { return h.w != null ? nf2.format(h.w * 100) + " %" : "–"; }, value: function (h) { return h.w; } }
     ];
     return '<div class="page-head"><div class="crumbs"><a href="#/uppkop">Uppköp</a> / ' + esc(o.name || o.bidder) + "</div>" +
-      "<h1>" + esc(o.name || "Okänt målbolag") + '</h1><p class="meta">Bud från ' + esc(o.bidder) + " · " + esc(o.type) + " · " + o.date + "</p></div>" +
+      "<h1>" + esc(o.name || "Okänt målbolag") + '</h1><p class="meta">Bud från ' + esc(o.bidder) + " · " + esc(o.type) + " · " + dateText(o.date) + "</p></div>" +
       // Uppgifter som inte gick att läsa ur erbjudandehandlingen visas inte
       '<dl class="figures">' + (o.price != null || o.type === "Aktiebud" ? fig("Pris per aktie", offerPriceText(o)) : "") +
       (o.premium != null ? fig("Premie", nf1.format(o.premium) + " %", "mot stängningskursen före budet") : "") +
@@ -4687,7 +4687,7 @@
         "Genom att jämföra två kvartal fond för fond räknas nettoköp och nettosälj ut per aktie, fond och fondbolag. Ovanpå det läggs insynshandel, blankning, uppköp, " +
         "räntor, fondsparande och avkastning från andra öppna källor.</p>" +
         "<p>Just nu omfattar datan " + idx.length + " jämförda kvartal i detalj och historik sedan " + (hasHist ? quarterLabel(state.history.quarters[0]) : "2018") + ". Senaste kvartalet, " +
-        quarterLabel(m.id) + ", innehåller " + int(nFunds) + " fonder och " + int(d.se.stocks.length) + " svenska aktier. Allt hämtas och räknas automatiskt varje morgon.</p>") +
+        quarterLabel(m.id) + ", innehåller " + int(nFunds) + " fonder och " + int(d.se.stocks.length) + " svenska aktier. Allt hämtas och räknas automatiskt tre gånger om dagen.</p>") +
 
       sec(2, "Källor",
         '<table class="md-table md-stack"><thead><tr><th class="l">Källa</th><th class="l">Innehåll</th><th class="l">Uppdateras</th></tr></thead><tbody>' +
@@ -4757,7 +4757,7 @@
         "<li>Inget på Fondinsyn är investeringsrådgivning.</li></ul>") +
 
       sec(10, "Kvalitet och teknik",
-        "<p>Allt hämtas och räknas automatiskt varje morgon. Innan något publiceras kontrolleras datan (antal fonder, aktier och kvartal ska vara rimliga), och stoppas publiceringen om något ser fel ut. " +
+        "<p>Allt hämtas och räknas automatiskt tre gånger om dagen. Innan något publiceras kontrolleras datan (antal fonder, aktier och kvartal ska vara rimliga), och stoppas publiceringen om något ser fel ut. " +
         "Sajten är statisk och kräver inget konto. Datan finns att ladda ner som CSV och JSON, se <a href=\"/oppen-data/\">Data och API</a>.</p>") +
       '<div class="print-only print-foot">Fondinsyn (www.fondinsyn.se). Metodrapport skapad ' + dateText(new Date().toISOString().slice(0, 10)) + ". Inte investeringsrådgivning.</div>" +
       "</article>";
@@ -4938,7 +4938,7 @@
   function viewInsider() {
     document.title = "Insynshandel – Fondinsyn";
     var head = '<div class="page-head"><h1>Insynshandel</h1><p class="meta lead">Köp och sälj som vd:ar, styrelseledamöter och andra i ledande ställning har gjort i sina egna bolag. ' +
-      "Från Finansinspektionens insynsregister, uppdateras varje morgon. " + termLink("insynshandel", "Vad är insynshandel?") + "</p></div>";
+      "Från Finansinspektionens insynsregister, uppdateras tre gånger om dagen. " + termLink("insynshandel", "Vad är insynshandel?") + "</p></div>";
     if (!needInsider()) return head + (failed("insider") ? errorBlock() : loadingBlock("Laddar insynshandel…"));
     var I = state.insider, ds = quarterData().se, since30 = daysAgo(30);
     // "Bara egna affärer" räknar bort närståendes affärer (familj och bolag som personen kontrollerar eller företräder)
@@ -5769,7 +5769,7 @@
       '<li><b>Räntepapper</b> (obligationer och certifikat) och <b>fondandelar</b> visas på fondsidan och under <a href="#/rantor">Räntor</a>. Emittenten läses ur värdepapperets namn, ' +
       "och papper som förfallit räknas inte som sålda. Marknadsräntorna kommer från Riksbanken.</li></ul>" +
       '<p class="desc">Fondinsyn räknar antalet besök med GoatCounter, som inte använder kakor och inte sparar några personuppgifter.</p>' +
-      "<h2>Uppdatering</h2><p>Allt hämtas automatiskt varje morgon. Insynshandel och blankning ändras dagligen, fondsparandet varje månad och fondinnehaven en gång per kvartal. Finansinspektionen publicerar kvartalets innehav ungefär tolv veckor efter kvartalsslut, utan fast datum. FI publicerar ibland om äldre kvartal med rättelser, och de hämtas också automatiskt. Alla detaljer finns i <a href='#/metod'>metodrapporten</a>.</p>" +
+      "<h2>Uppdatering</h2><p>Allt hämtas automatiskt tre gånger om dagen, morgon, mitt på dagen och kväll. Insynshandel och blankning ändras dagligen, fondsparandet varje månad och fondinnehaven en gång per kvartal. Finansinspektionen publicerar kvartalets innehav ungefär tolv veckor efter kvartalsslut, utan fast datum. FI publicerar ibland om äldre kvartal med rättelser, och de hämtas också automatiskt. Alla detaljer finns i <a href='#/metod'>metodrapporten</a>.</p>" +
       (m && m.src ? "<p>Källfiler för " + quarterLabel(state.q) + ": <code>" + esc(m.src[0]) + "</code> och <code>" + esc(m.src[1]) + "</code>.</p>" : "") +
       '<h2>Källa</h2><p><a href="https://www.fi.se/sv/vara-register/fondinnehav/fondinnehav-per-kvartal/" target="_blank" rel="noopener">Finansinspektionen – Fondinnehav per kvartal</a></p>' +
       "<p>Informationen på sidan är inte investeringsrådgivning.</p></div>";
@@ -6310,6 +6310,13 @@
     if (r.page === "rantor") renderIssuerTable();
     drawCharts();
     lazyLoad();
+    // Tabellerna får avsnittets rubrik som namn, så att skärmläsare kan skilja dem åt
+    Array.prototype.forEach.call(app.querySelectorAll("table:not([aria-label]):not([aria-labelledby])"), function (t, i) {
+      var sec = t.closest("section, .block, .know-card"), h = sec && sec.querySelector("h2, h3");
+      if (!h) return;
+      if (!h.id) h.id = "tbl-h" + i;
+      t.setAttribute("aria-labelledby", h.id);
+    });
     // Sidan markeras i menyn, och dess avdelning i menyraden och flikraden
     var navKey = { aktie: "aktier", fond: "fonder", blankare: "blankning", emittent: "rantor", reaktioner: "bolagsrapporter" }[r.page] || r.page;
     var section = PAGE_SECTION[r.page] || navKey;
