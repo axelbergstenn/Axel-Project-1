@@ -6194,10 +6194,12 @@
   // Sidor som hör till en avdelning i menyraden (blankning, uppköp och insynshandel under Aktier, ägarandel och sparande under Fonder, emittenterna under Räntor)
   var PAGE_SECTION = { aktie: "aktier", sektor: "aktier", bolagsrapporter: "aktier", reaktioner: "aktier", lista: "aktier", aterkop: "aktier", emissioner: "aktier", insyn: "aktier", blankning: "aktier", blankare: "aktier", uppkop: "aktier", rantor: "rantor", emittent: "rantor",
     fond: "fonder", fondbolag: "fonder", sparande: "fonder", agarandel: "fonder", forvaltare: "fonder", avgifter: "fonder", risk: "fonder", jamfor: "fonder",
-    ordlista: "om", kontakt: "om", metod: "om" };
-  // Aktier och Fonder i menyraden fälls ut med avdelningens sidor, i stället för en rad med flikar på sidan
+    ordlista: "om", kontakt: "om", metod: "om", data: "om" };
+  // Aktier, Fonder och Om i menyraden fälls ut med avdelningens sidor, i stället för en rad med flikar på sidan
   // (på mobilen, där menyraden saknas, finns sidorna kvar i en rullgardin överst på sidan)
-  var DD_SECTIONS = { aktier: 1, fonder: 1 };
+  var DD_SECTIONS = { aktier: 1, fonder: 1, om: 1 };
+  // Beskrivningarna tas ur menyn (#moreMenu); de här sidorna har ingen beskrivning där
+  var DD_DESC = { om: "Källorna och hur allt räknas", metod: "Definitioner, uppskattningar och begränsningar", ordlista: "Begreppen förklarade", data: "Ladda ner datan som CSV och JSON", kontakt: "Frågor, fel i datan och idéer" };
   Object.keys(DD_SECTIONS).forEach(function (key) {
     var a = document.querySelector('.mainnav > a[data-nav="' + key + '"]'), sec = SECTIONS[key];
     if (!a || !sec) return;
@@ -6207,8 +6209,8 @@
     dd.appendChild(a);
     a.insertAdjacentHTML("beforeend", '<svg class="dd-chev" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3"/></svg>');
     dd.insertAdjacentHTML("beforeend", '<div class="nav-dd-menu">' + sec.items.map(function (it) {
-      var d = document.querySelector('#moreMenu a[data-nav="' + it[0] + '"] span');
-      return '<a href="' + it[2] + '" data-sub="' + it[0] + '"><b>' + esc(it[1]) + "</b>" + (d ? "<span>" + esc(d.textContent) + "</span>" : "") + "</a>";
+      var d = document.querySelector('#moreMenu a[data-nav="' + it[0] + '"] span'), txt = d ? d.textContent : DD_DESC[it[0]];
+      return '<a href="' + it[2] + '" data-sub="' + it[0] + '"><b>' + esc(it[1]) + "</b>" + (txt ? "<span>" + esc(txt) + "</span>" : "") + "</a>";
     }).join("") + "</div>");
     // Menyn stängs när man valt en sida och öppnas igen nästa gång musen kommer tillbaka
     dd.addEventListener("click", function (e) {
@@ -6216,7 +6218,7 @@
       if (l) { l.blur(); dd.classList.add("shut"); }
     });
     dd.addEventListener("mouseleave", function () { dd.classList.remove("shut"); });
-    // Esc stänger menyn och lämnar fokus på Aktier eller Fonder
+    // Esc stänger menyn och lämnar fokus på menyvalet
     dd.addEventListener("keydown", function (e) {
       if (e.key === "Escape") { dd.classList.add("shut"); a.focus(); }
     });
