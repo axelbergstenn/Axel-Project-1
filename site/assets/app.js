@@ -6227,6 +6227,28 @@
   var PAGE_SECTION = { aktie: "aktier", sektor: "aktier", bolagsrapporter: "aktier", reaktioner: "aktier", lista: "aktier", aterkop: "aktier", emissioner: "aktier", insyn: "aktier", blankning: "aktier", blankare: "aktier", uppkop: "aktier", rantor: "rantor", emittent: "rantor",
     fond: "fonder", fondbolag: "fonder", sparande: "fonder", agarandel: "fonder", forvaltare: "fonder", avgifter: "fonder", risk: "fonder", jamfor: "fonder",
     ordlista: "om", kontakt: "om", metod: "om" };
+  // Aktier och Fonder i menyraden fälls ut med avdelningens sidor, i stället för en rad med flikar på sidan
+  // (på mobilen, där menyraden saknas, finns sidorna kvar i en rullgardin överst på sidan)
+  var DD_SECTIONS = { aktier: 1, fonder: 1 };
+  Object.keys(DD_SECTIONS).forEach(function (key) {
+    var a = document.querySelector('.mainnav > a[data-nav="' + key + '"]'), sec = SECTIONS[key];
+    if (!a || !sec) return;
+    var dd = document.createElement("div");
+    dd.className = "nav-dd";
+    a.parentNode.insertBefore(dd, a);
+    dd.appendChild(a);
+    a.insertAdjacentHTML("beforeend", '<svg class="dd-chev" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3"/></svg>');
+    dd.insertAdjacentHTML("beforeend", '<div class="nav-dd-menu">' + sec.items.map(function (it) {
+      var d = document.querySelector('#moreMenu a[data-nav="' + it[0] + '"] span');
+      return '<a href="' + it[2] + '" data-sub="' + it[0] + '"><b>' + esc(it[1]) + "</b>" + (d ? "<span>" + esc(d.textContent) + "</span>" : "") + "</a>";
+    }).join("") + "</div>");
+    // Menyn stängs när man valt en sida och öppnas igen nästa gång musen kommer tillbaka
+    dd.addEventListener("click", function (e) {
+      var l = e.target.closest(".nav-dd-menu a");
+      if (l) { dd.classList.add("shut"); l.blur(); }
+    });
+    dd.addEventListener("mouseleave", function () { dd.classList.remove("shut"); });
+  });
 
   // Kvartalsrapporten har egna flikar för marknaden
   var MARKET_PAGES = { oversikt: 1, aktier: 1, fonder: 1, fondbolag: 1 };
@@ -6323,15 +6345,19 @@
       var own = top && top.querySelector('[data-nav="' + navKey + '"]');
       if (key === (top ? (own ? navKey : section) : navKey)) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
+    document.querySelectorAll(".nav-dd-menu a").forEach(function (a) {
+      if (a.getAttribute("data-sub") === navKey && r.page !== "aktie" && r.page !== "fond") a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+    });
     // Flikar för avdelningen överst på sidan (Fonder: Alla fonder, Risk och avkastning, Fondbolag ...)
     var sec = SECTIONS[section];
     var onList = sec && sec.items.some(function (it) { return it[0] === navKey && (r.page === navKey || r.page === "reaktioner") && (!r.arg || r.page === "lista"); });
     if (onList && html !== null) {
       // På mobilen blir flikarna en rullgardin, så att de inte tar flera rader
-      app.insertAdjacentHTML("afterbegin", '<nav class="subnav" aria-label="' + esc(sec.label) + '">' + sec.items.map(function (it) {
+      var solo = DD_SECTIONS[section];
+      app.insertAdjacentHTML("afterbegin", (solo ? "" : '<nav class="subnav" aria-label="' + esc(sec.label) + '">' + sec.items.map(function (it) {
         return '<a href="' + it[2] + '"' + (it[0] === navKey ? ' aria-current="page"' : "") + ">" + it[1] + "</a>";
-      }).join("") + "</nav>" +
-        '<div class="subnav-pick"><label class="sp-label" for="subnavPick">Välj sida i ' + esc(sec.label) + '</label><select id="subnavPick" class="select-sm">' + sec.items.map(function (it) {
+      }).join("") + "</nav>") +
+        '<div class="subnav-pick' + (solo ? " solo" : "") + '"><label class="sp-label" for="subnavPick">Välj sida i ' + esc(sec.label) + '</label><select id="subnavPick" class="select-sm">' + sec.items.map(function (it) {
           return '<option value="' + it[2] + '"' + (it[0] === navKey ? " selected" : "") + ">" + it[1] + "</option>";
         }).join("") + "</select></div>");
     }
@@ -6472,15 +6498,15 @@
   function navIndicator() {
     var nav = document.querySelector(".mainnav"), ind = nav && nav.querySelector(".nav-ind");
     if (!ind || !nav.offsetParent) return;
-    var a = nav.querySelector('a[aria-current="page"]');
+    var a = nav.querySelector(':scope > a[aria-current="page"], .nav-dd > a[aria-current="page"]');
     // Första gången (och när linjen varit dold) hamnar den direkt på plats utan att glida dit
     var jump = !nav.classList.contains("has-ind");
     nav.classList.toggle("has-ind", !!a);
     if (!a) return;
-    var pad = parseFloat(getComputedStyle(a).paddingLeft) || 0;
+    var pad = parseFloat(getComputedStyle(a).paddingLeft) || 0, padR = parseFloat(getComputedStyle(a).paddingRight) || 0;
     if (jump) ind.style.transition = "none";
-    ind.style.width = (a.offsetWidth - 2 * pad) + "px";
-    ind.style.transform = "translateX(" + (a.offsetLeft + pad) + "px)";
+    ind.style.width = (a.offsetWidth - pad - padR) + "px";
+    ind.style.transform = "translateX(" + (a.getBoundingClientRect().left - nav.getBoundingClientRect().left + pad) + "px)";
     if (jump) { void ind.offsetWidth; ind.style.transition = ""; }
   }
 
