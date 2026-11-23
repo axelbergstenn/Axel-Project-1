@@ -56,3 +56,6 @@ site/data/news/
 site/data/news-latest.json
 site/data/buybacks.json
 site/data/issues.json
+site/data/stocklist.json
+site/bolagsrapporter/
+site/lista/

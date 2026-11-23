@@ -952,7 +952,7 @@
       var r = x.r;
       return "<li>" + nameCell(x.s, esc(String(r[2]).replace(/\s+\d{4}(-Q\d)?$/, "").toLowerCase())) + '<span class="mod-v rw-date">' + day(r[1]) + "</span></li>";
     }).join("");
-    return '<section class="block section-gap rw"><div class="block-head"><h2>Rapporter</h2></div>' +
+    return '<section class="block section-gap rw"><div class="block-head"><h2>Rapporter</h2><a class="note" href="#/bolagsrapporter">Alla rapporter och kalendern</a></div>' +
       '<p class="desc">Kvartalsrapporter från de bolag som fonderna äger mest av, med siffrorna ur bolagens egna rapporter. Förändringen jämförs med samma kvartal året innan.</p>' +
       '<div class="rw-grid">' +
       '<div><h3 class="rw-h">Senaste tio dagarna</h3>' + (recentHtml ? '<ul class="mod-list">' + recentHtml + "</ul>" : '<p class="desc">Inga rapporter de senaste tio dagarna.</p>') + "</div>" +
@@ -1129,6 +1129,210 @@
       table("iss-list", cols, rows, { sort: { col: "date", dir: -1 }, limit: 40, expand: true, csv: true }) + "</section>" +
       '<p class="desc section-gap">Källa: bolagens pressmeddelanden på MFN, för bolag som svenska fonder äger. Belopp och teckningskurs visas när de står i pressmeddelandet. ' +
       "Fonderna: fonder som ökade sitt innehav i aktien under kvartalet då emissionen gjordes, enligt Finansinspektionen. Alla köp behöver inte vara i emissionen.</p>";
+  }
+
+  // ---------- Bolagens rapporter och börslistorna (data/stocklist.json, scripts/build-stocklists.py) ----------
+  // Senaste kvartalsrapporten för varje bolag som fonderna äger, ur bolagens egna rapporter, och börslistan
+  // (Large, Mid och Small Cap och First North) enligt bolagets sida på MFN.
+  var BORS_LISTS = [
+    ["large", "large-cap", "Large Cap", "Large Cap Stockholm", "de största bolagen på Stockholmsbörsen, med ett börsvärde över en miljard euro"],
+    ["mid", "mid-cap", "Mid Cap", "Mid Cap Stockholm", "medelstora bolag på Stockholmsbörsen, med ett börsvärde mellan 150 miljoner och en miljard euro"],
+    ["small", "small-cap", "Small Cap", "Small Cap Stockholm", "mindre bolag på Stockholmsbörsen, med ett börsvärde under 150 miljoner euro"],
+    ["fn", "first-north", "First North", "First North Stockholm", "Nasdaqs tillväxtmarknad för mindre bolag, med enklare regler än huvudlistan"]
+  ];
+  function borsList(key) { return BORS_LISTS.filter(function (l) { return l[0] === key || l[1] === key; })[0] || null; }
+  function needStockList() {
+    return need("stocklist", function () { return getJSON("data/stocklist.json").then(function (d) { state.stockList = d; }); });
+  }
+  // Det aktieslag som fonderna äger mest av
+  function ownedStock(isins, se) {
+    var best = null;
+    isins.forEach(function (i) { var s = se.byIsin[i]; if (s && (s.f2 || s.f1b) && (!best || (s.val2 || 0) > (best.val2 || 0))) best = s; });
+    return best;
+  }
+  function listOf(isins) {
+    var l = state.stockList && state.stockList.lists;
+    for (var i = 0; l && i < isins.length; i++) if (l[isins[i]]) return l[isins[i]];
+    return null;
+  }
+  var reportsFilter = { per: "", list: "" };
+
+  function viewCompanyReports() {
+    document.title = "Bolagens rapporter – kvartalsrapporter och rapportkalender | Fondinsyn";
+    var head = '<div class="page-head"><h1>Bolagens rapporter</h1><p class="meta lead">Den senaste kvartalsrapporten från varje bolag som svenska fonder äger, med siffrorna ur bolagens egna rapporter. ' +
+      "Allt jämförs med samma kvartal året innan.</p></div>";
+    if (!needStockList()) return head + (failed("stocklist") ? errorBlock() : loadingBlock("Laddar rapporterna…"));
+    var se = quarterData().se, d = state.stockList;
+    var all = [];
+    d.reports.forEach(function (r) {
+      var s = ownedStock(r[0], se);
+      if (!s) return;
+      var fin = s.sector === "Finans", nums = !r[8];
+      var rev = nums && !fin && r[5] && r[5][0] > 0 && r[5][1] > 0 ? r[5] : null;
+      var ebit = nums && r[6] && r[6][0] != null && r[6][1] != null ? r[6] : null;
+      var net = nums && r[7] && r[7][0] != null && r[7][1] != null ? r[7] : null;
+      var res = ebit || net;
+      all.push({
+        s: s, name: s.name, isin: s.isin, date: r[1], p: r[2], m: r[3], cur: r[4], list: listOf(r[0]),
+        g: rev ? rev[0] / rev[1] - 1 : null,
+        res: res, resKind: ebit ? "ebit" : net ? "net" : null,
+        rg: res ? (res[1] > 0 ? res[0] / res[1] - 1 : null) : null,
+        better: res ? res[0] - res[1] : null,
+        mg: rev && ebit && Math.abs(ebit[0]) <= rev[0] ? [ebit[0] / rev[0], ebit[1] / rev[1]] : null,
+        react: r[9]
+      });
+    });
+    // Perioderna med flest rapporter; den senaste med minst tio rapporter är förvald
+    var perCount = {};
+    all.forEach(function (x) { var k = x.p + "/" + x.m; perCount[k] = (perCount[k] || 0) + 1; });
+    var pers = Object.keys(perCount).filter(function (k) { return perCount[k] >= 10; }).sort().reverse();
+    if (!reportsFilter.per || (reportsFilter.per !== "alla" && pers.indexOf(reportsFilter.per) < 0)) reportsFilter.per = pers[0] || "alla";
+    var picked = all.filter(function (x) {
+      return (reportsFilter.per === "alla" || x.p + "/" + x.m === reportsFilter.per) && (!reportsFilter.list || x.list === reportsFilter.list);
+    });
+    // Rapporter där inga siffror kunde bekräftas står under tabellen i stället för som rader med bara streck
+    var rows = picked.filter(function (x) { return x.g != null || x.res || x.mg; });
+    var bare = picked.filter(function (x) { return !(x.g != null || x.res || x.mg); }).sort(function (a, b) { return (b.s.val2 || 0) - (a.s.val2 || 0); });
+    var perName = function (k) { var a = k.split("/"); return periodText(a[0], +a[1]); };
+    var perOpts = pers.map(function (k) { return '<option value="' + k + '"' + (k === reportsFilter.per ? " selected" : "") + ">" + capFirst(perName(k)) + " (" + perCount[k] + ")</option>"; }).join("") +
+      '<option value="alla"' + (reportsFilter.per === "alla" ? " selected" : "") + ">Alla perioder</option>";
+    var listOpts = '<option value="">Alla listor</option>' + BORS_LISTS.map(function (l) {
+      return '<option value="' + l[0] + '"' + (reportsFilter.list === l[0] ? " selected" : "") + ">" + l[2] + "</option>";
+    }).join("");
+
+    // Sammanfattning: hur många som växte och förbättrade resultatet
+    var withG = rows.filter(function (x) { return x.g != null; }), withR = rows.filter(function (x) { return x.better != null; });
+    var grew = withG.filter(function (x) { return x.g > 0; }).length, better = withR.filter(function (x) { return x.better > 0; }).length;
+    var med = null;
+    if (withG.length >= 5) {
+      var gs = withG.map(function (x) { return x.g; }).sort(function (a, b) { return a - b; }), mid = Math.floor(gs.length / 2);
+      med = gs.length % 2 ? gs[mid] : (gs[mid - 1] + gs[mid]) / 2;
+    }
+    var lead = "";
+    if (withG.length >= 5 || withR.length >= 5) {
+      var parts = [];
+      if (withG.length >= 5) parts.push("<b>" + int(grew) + " av " + int(withG.length) + "</b> bolag ökade försäljningen");
+      if (withR.length >= 5) parts.push("<b>" + int(better) + " av " + int(withR.length) + "</b> fick ett bättre resultat");
+      lead = '<p class="lead-figure">' + (reportsFilter.per !== "alla" ? capFirst(perName(reportsFilter.per)) + ": " : "") + parts.join(" och ") + "." +
+        (med != null ? " Försäljningen ändrades med " + '<b class="' + cls(med) + '">' + pct(med) + "</b> för ett typiskt bolag (medianen)." : "") + "</p>";
+    }
+    var resText = function (x) {
+      if (!x.res) return "–";
+      if (x.rg != null && x.res[0] >= 0) return '<span class="' + cls(x.rg) + '">' + pct(x.rg) + "</span>";
+      return '<span class="' + cls(x.better) + '">' + (x.better >= 0 ? (x.res[0] >= 0 ? "Till vinst" : "Mindre förlust") : (x.res[0] < 0 ? (x.res[1] < 0 ? "Större förlust" : "Till förlust") : "Lägre")) + "</span>";
+    };
+    var listName = function (k) { var l = borsList(k); return l ? l[2] : ""; };
+    var cols = [
+      { key: "name", label: "Bolag", align: "l", cls: "name", value: function (x) { return x.name; }, cell: function (x) {
+        return nameCell(stockHref(x.s), x.name, shortStamp(x.date) + (x.g != null ? " · försäljning " + pct(x.g) : ""));
+      } },
+      { key: "list", label: "Lista", align: "l", cls: "muted", hideSm: true, cell: function (x) { return esc(listName(x.list)) || "–"; }, value: function (x) { return x.list ? "0lmsf".indexOf(x.list.charAt(0)) + x.list : null; } },
+      { key: "date", label: "Rapport", hideSm: true, cell: function (x) { return esc(shortStamp(x.date)); }, value: function (x) { return x.date; } },
+      { key: "g", label: "Försäljning", hideSm: true, cell: function (x) { return x.g == null ? "–" : '<span class="' + cls(x.g) + '">' + pct(x.g) + "</span>"; }, value: function (x) { return x.g; } },
+      { key: "rg", label: "Resultat", cell: resText, value: function (x) { return x.rg != null && x.res[0] >= 0 ? x.rg : x.better == null ? null : x.better > 0 ? 9 : -9; } },
+      { key: "mg", label: "Rörelsemarginal", hideSm: true, cell: function (x) {
+        return x.mg ? nf1.format(x.mg[0] * 100) + ' %<span class="sub">' + nf1.format(x.mg[1] * 100) + " % i fjol</span>" : "–";
+      }, value: function (x) { return x.mg ? x.mg[0] : null; } },
+      { key: "react", label: "Aktien på rapportdagen", hideSm: true, cell: function (x) { return x.react == null ? "–" : '<span class="' + cls(x.react) + '">' + pct(x.react / 100, 1) + "</span>"; }, value: function (x) { return x.react; } }
+    ];
+
+    // Kommande rapporter de närmaste 30 dagarna
+    var today = new Date().toISOString().slice(0, 10), until = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+    var next = [];
+    d.next.forEach(function (r) {
+      var s = ownedStock(r[0], se);
+      if (s && r[1] >= today && r[1] <= until && (!reportsFilter.list || listOf(r[0]) === reportsFilter.list)) next.push({ s: s, date: r[1], what: r[2], list: listOf(r[0]) });
+    });
+    var byDay = [];
+    next.forEach(function (x) {
+      var last = byDay[byDay.length - 1];
+      if (!last || last.date !== x.date) byDay.push(last = { date: x.date, items: [] });
+      last.items.push(x);
+    });
+    byDay.forEach(function (g) { g.items.sort(function (a, b) { return (b.s.val2 || 0) - (a.s.val2 || 0); }); });
+    var dayName = function (dd) {
+      var t = new Date(dd + "T12:00:00");
+      return dd === today ? "I dag" : capFirst(["söndag", "måndag", "tisdag", "onsdag", "torsdag", "fredag", "lördag"][t.getDay()]) + " " + t.getDate() + " " + MONTHS[t.getMonth()];
+    };
+    var cal = byDay.map(function (g) {
+      return '<div class="cal-day"><h3 class="rw-h">' + dayName(g.date) + '</h3><ul class="mod-list">' + g.items.map(function (x) {
+        return '<li><span class="mod-n"><a href="' + stockHref(x.s) + '">' + esc(shortCo(x.s.name)) + '</a><span class="mod-s">' +
+          [listName(x.list), /^kvartalsrapport/i.test(x.what) ? "" : esc(String(x.what).replace(/\s+\d{4}(-Q\d)?$/, "").toLowerCase())].filter(Boolean).join(" · ") + "</span></span>" +
+          '<span class="mod-v muted" title="Fondernas innehav">' + bigSek(x.s.val2) + "</span></li>";
+      }).join("") + "</ul></div>";
+    }).join("");
+
+    return head +
+      '<div class="toolbar"><select class="select-sm" id="repsPer" aria-label="Rapportperiod">' + perOpts + "</select>" +
+      '<select class="select-sm" id="repsList" aria-label="Börslista">' + listOpts + "</select>" +
+      '<span class="count">' + int(picked.length) + " rapporter</span></div>" + lead +
+      '<section class="block section-gap"><div class="block-head"><h2>Senaste rapporterna</h2></div>' +
+      table("co-reports", cols, rows, { sort: { col: "date", dir: -1 }, limit: 50, expand: true, csv: true, empty: "Inga rapporter för det här urvalet." }) +
+      (bare.length ? '<p class="desc">Har också rapporterat, men siffrorna kunde inte bekräftas: ' + bare.map(function (x) {
+        return '<a href="' + stockHref(x.s) + '">' + esc(shortCo(x.name)) + "</a>";
+      }).join(", ") + ".</p>" : "") + "</section>" +
+      '<section class="block section-gap"><div class="block-head"><h2>Kommande rapporter</h2><span class="note">De närmaste 30 dagarna, med fondernas innehav i bolaget</span></div>' +
+      (cal ? '<div class="cal-grid">' + cal + "</div>" : '<p class="desc">Inga rapporter är inlagda de närmaste 30 dagarna.</p>') + "</section>" +
+      '<p class="desc section-gap">Källa: bolagens egna kvartalsrapporter och pressmeddelanden på MFN. Siffrorna tas bara med när de bekräftas av pressmeddelandet eller årsredovisningen; ' +
+      "annars står ett streck. Försäljningen visas inte för banker och andra finansbolag. Resultat är rörelseresultatet, eller resultatet efter skatt när rörelseresultatet saknas. " +
+      "Aktien på rapportdagen är kursens förändring den dag rapporten kom.</p>";
+  }
+
+  function viewBorsList(key) {
+    var L = borsList(key) || BORS_LISTS[0];
+    document.title = L[3] + " – vad köper fonderna? | Fondinsyn";
+    var tabs = '<div class="tabs list-tabs" role="navigation" aria-label="Börslistor">' + BORS_LISTS.map(function (l) {
+      return '<a class="tab" href="#/lista/' + l[1] + '"' + (l === L ? ' aria-selected="true" aria-current="page"' : "") + ">" + l[2] + "</a>";
+    }).join("") + "</div>";
+    var head = '<div class="page-head"><h1>' + L[3] + '</h1><p class="meta lead">' + capFirst(L[4]) + ". Här syns vad svenska fonder köpte och sålde i bolagen " +
+      quarterLabel(state.q) + ", vad insiders gjort de senaste 90 dagarna och hur mycket som är blankat.</p>" + tabs + "</div>";
+    if (!needStockList()) return head + (failed("stocklist") ? errorBlock() : loadingBlock("Laddar listan…"));
+    var se = quarterData().se, lists = state.stockList.lists;
+    var rows = se.stocks.filter(function (s) { return (s.f2 || s.f1b) && lists[s.isin] === L[0]; });
+    var haveIns = needInsider(), haveShorts = needShorts(), haveShares = needShares();
+    var since = daysAgo(90);
+    rows.forEach(function (s) {
+      var b = 0, sl = 0, n = 0;
+      if (haveIns) (state.insider.byIsin[s.isin] || []).forEach(function (r) {
+        if (r.tx < since) return;
+        if (r.kind === "buy") { b += r.sek || 0; n++; } else if (r.kind === "sell") { sl += r.sek || 0; n++; }
+      });
+      s._ins = haveIns && n ? b - sl : null;
+      var a = haveShorts ? state.shorts.byIsin[s.isin] : null;
+      s._short = haveShorts ? (a ? a.pct : 0) : null;
+    });
+    var flow = 0, nb = 0, ns = 0, insNet = 0, insN = 0;
+    rows.forEach(function (s) {
+      if (s.isNew || s.isGone || s.flow == null) return;
+      flow += s.flow;
+      if (s.flow > 0) nb++; else if (s.flow < 0) ns++;
+    });
+    rows.forEach(function (s) { if (s._ins != null) { insNet += s._ins; insN++; } });
+    var top = rows.filter(function (s) { return !s.isNew && !s.isGone && s.flow; }).sort(function (a, b) { return b.flow - a.flow; });
+    var shortest = haveShorts ? rows.filter(function (s) { return s._short > 0; }).sort(function (a, b) { return b._short - a._short; })[0] : null;
+    var figs = '<dl class="figures">' +
+      fig("Fonderna netto " + quarterLabel(state.q), '<span class="' + cls(flow) + '">' + bigSek(flow, true) + "</span>", "köpte i " + int(nb) + " bolag, sålde i " + int(ns)) +
+      (haveIns ? fig("Insiders netto, 90 dagar", '<span class="' + cls(insNet) + '">' + bigSek(insNet, true) + "</span>", "affärer i " + int(insN) + " bolag") : "") +
+      (top.length ? fig("Mest köpt av fonderna", '<a href="' + stockHref(top[0]) + '">' + esc(shortCo(top[0].name)) + "</a>", bigSek(top[0].flow, true)) : "") +
+      (shortest ? fig("Mest blankad", '<a href="' + stockHref(shortest) + '">' + esc(shortCo(shortest.name)) + "</a>", nf2.format(shortest._short) + " % av aktierna") : "") +
+      "</dl>";
+    var nameWithSub = stockCol(function (s) { return esc(s.sector) + " · " + int(s.f2) + " fonder · " + mkr(s.val2) + " mkr"; });
+    var cols = [nameWithSub, col.sector, col.funds, col.value];
+    if (haveShares) cols.push({ key: "own", label: "Ägarandel", hideSm: true, cell: function (s) { return ownText(ownShare(s)); }, value: function (s) { return ownShare(s); } });
+    cols.push(col.flow);
+    cols.push({ key: "ins", label: "Insiders 90 d", hideSm: true, cell: function (s) {
+      return s._ins == null ? '<span class="muted">–</span>' : '<span class="' + cls(s._ins) + '">' + bigSek(s._ins, true) + "</span>";
+    }, value: function (s) { return s._ins; } });
+    cols.push({ key: "short", label: "Blankat", hideSm: true, cell: function (s) {
+      return s._short == null ? "…" : s._short ? nf2.format(s._short) + " %" : '<span class="muted">–</span>';
+    }, value: function (s) { return s._short; } });
+    var others = BORS_LISTS.filter(function (l) { return l !== L; }).map(function (l) { return '<a href="#/lista/' + l[1] + '">' + l[2] + "</a>"; });
+    return head + figs +
+      '<section class="block section-gap"><div class="block-head"><h2>Aktierna på ' + L[2] + '</h2><span class="note">' + int(rows.length) + " aktier som fonderna äger</span></div>" +
+      table("list-" + L[0], cols, rows, { sort: { col: "flow", dir: -1 }, limit: 50, expand: true, csv: true, empty: "Inga aktier." }) + "</section>" +
+      '<p class="desc section-gap">Listan enligt bolagets sida på MFN. Fondernas köp och sälj gäller ' + quarterLabel(state.q) + " jämfört med " + quarterLabel(quarterData().meta.prevId) +
+      ", ur Finansinspektionens innehavsdata. Insiders är köp minus sälj enligt Finansinspektionens insynsregister, blankningen enligt Finansinspektionens blankningsregister. " +
+      "Se också " + others.join(", ") + ' och <a href="#/bolagsrapporter">bolagens rapporter</a>.</p>';
   }
 
   // ---------- Aktier ----------
@@ -2242,7 +2446,8 @@
     if (f.employees) facts.push(["Anställda", "ca " + int(f.employees[0]) + (f.employees[1] && +f.employees[1] < yearNow - 1 ? ' <span class="muted">(' + f.employees[1] + ")</span>" : "")]);
     if (f.ceo) facts.push(["Vd", esc(f.ceo)]);
     if (f.industry) facts.push(["Bransch", esc(f.industry)]);
-    if (f.list) facts.push(["Handlas på", esc(f.list)]);
+    var flist = BORS_LISTS.filter(function (l) { return l[3] === f.list; })[0];
+    if (f.list) facts.push(["Handlas på", flist ? '<a href="#/lista/' + flist[1] + '">' + esc(f.list) + "</a>" : esc(f.list)]);
     if (f.ticker && f.ticker.length) facts.push([f.ticker.length > 1 ? "Kortnamn" : "Kortnamn på börsen", esc(f.ticker.join(" och "))]);
     if (f.inc) facts.push(["Registrerat i", "delstaten " + esc(f.inc)]);
     if (f.fye) facts.push(["Räkenskapsåret slutar", "i " + esc(f.fye)]);
@@ -3637,7 +3842,7 @@
           items.push({ kind: "Blankare", label: h.name, sub: h.positions.length + " aktier blankade", href: holderHref(h.name) });
         });
       }
-      var pages = [["Sektorer", "/sektor/"], ["Insynshandel", "#/insyn"], ["Återköp av egna aktier", "#/aterkop"], ["Nyemissioner", "#/emissioner"], ["Räntor", "#/rantor"], ["Räntefonder", "#/fonder/rantefonder"], ["Fondbolag", "#/fondbolag"],["Ordlista och vanliga frågor", "#/ordlista"], ["Blankning", "#/blankning"], ["Blankare", "#/blankare"], ["Kvartalsrapport", "#/rapport"], ["Uppköp", "#/uppkop"], ["Avgiftskollen", "#/avgifter"], ["Risk och avkastning", "#/risk"], ["Kända förvaltare", "#/forvaltare"], ["Min fondportfölj", "#/portfolj"], ["Jämför fonder", "#/jamfor"], ["Om datan", "#/om"], ["Kontakt", "#/kontakt"]];
+      var pages = [["Sektorer", "/sektor/"], ["Insynshandel", "#/insyn"], ["Återköp av egna aktier", "#/aterkop"], ["Nyemissioner", "#/emissioner"], ["Bolagens rapporter och rapportkalender", "#/bolagsrapporter"], ["Large Cap", "#/lista/large-cap"], ["Mid Cap", "#/lista/mid-cap"], ["Small Cap", "#/lista/small-cap"], ["First North", "#/lista/first-north"], ["Räntor", "#/rantor"], ["Räntefonder", "#/fonder/rantefonder"], ["Fondbolag", "#/fondbolag"],["Ordlista och vanliga frågor", "#/ordlista"], ["Blankning", "#/blankning"], ["Blankare", "#/blankare"], ["Kvartalsrapport", "#/rapport"], ["Uppköp", "#/uppkop"], ["Avgiftskollen", "#/avgifter"], ["Risk och avkastning", "#/risk"], ["Kända förvaltare", "#/forvaltare"], ["Min fondportfölj", "#/portfolj"], ["Jämför fonder", "#/jamfor"], ["Om datan", "#/om"], ["Kontakt", "#/kontakt"]];
       pages.forEach(function (pg) { if (scoreMatch(pg[0], q) >= 0) items.push({ kind: "Sidor", label: pg[0], sub: "", href: pg[1] }); });
       // Inga exakta träffar: sök igen med stavfel tillåtna
       if (!items.length && !search.fuzzy) { search.fuzzy = true; try { runSearch(); } finally { search.fuzzy = false; } return; }
@@ -5900,14 +6105,14 @@
   // Avdelningarna i menyraden och sidorna i varje avdelning (flikarna överst på sidan)
   var SECTIONS = {
     aktier: { label: "Aktier och marknad", items: [["aktier", "Alla aktier", "#/aktier"], ["sektor", "Sektorer", "/sektor/"], ["blankning", "Blankning", "#/blankning"], ["uppkop", "Uppköp", "#/uppkop"], ["aterkop", "Återköp", "#/aterkop"], ["emissioner", "Emissioner", "#/emissioner"],
-      ["insyn", "Insynshandel", "#/insyn"]] },
+      ["insyn", "Insynshandel", "#/insyn"], ["bolagsrapporter", "Bolagens rapporter", "#/bolagsrapporter"], ["lista", "Börslistor", "#/lista/large-cap"]] },
     fonder: { label: "Fonder", items: [["fonder", "Alla fonder", "#/fonder"], ["fondbolag", "Fondbolag", "#/fondbolag"], ["sparande", "Fondsparandet", "#/sparande"],
       ["agarandel", "Fondernas ägarandel", "#/agarandel"], ["forvaltare", "Kända förvaltare", "#/forvaltare"],
       ["avgifter", "Avgiftskollen", "#/avgifter"], ["risk", "Risk och avkastning", "#/risk"], ["jamfor", "Jämför fonder", "#/jamfor"]] },
     om: { label: "Om Fondinsyn", items: [["om", "Om datan", "#/om"], ["metod", "Metodrapport", "#/metod"], ["ordlista", "Ordlista", "#/ordlista"], ["data", "Data och API", "/oppen-data/"], ["kontakt", "Kontakt", "#/kontakt"]] }
   };
   // Sidor som hör till en avdelning i menyraden (blankning, uppköp och insynshandel under Aktier, ägarandel och sparande under Fonder, emittenterna under Räntor)
-  var PAGE_SECTION = { aktie: "aktier", sektor: "aktier", aterkop: "aktier", emissioner: "aktier", insyn: "aktier", blankning: "aktier", blankare: "aktier", uppkop: "aktier", rantor: "rantor", emittent: "rantor",
+  var PAGE_SECTION = { aktie: "aktier", sektor: "aktier", bolagsrapporter: "aktier", lista: "aktier", aterkop: "aktier", emissioner: "aktier", insyn: "aktier", blankning: "aktier", blankare: "aktier", uppkop: "aktier", rantor: "rantor", emittent: "rantor",
     fond: "fonder", fondbolag: "fonder", sparande: "fonder", agarandel: "fonder", forvaltare: "fonder", avgifter: "fonder", risk: "fonder", jamfor: "fonder",
     ordlista: "om", kontakt: "om", metod: "om" };
 
@@ -5953,6 +6158,8 @@
       case "uppkop": html = viewOffers(r.arg); break;
       case "aterkop": html = viewBuybacks(); break;
       case "emissioner": html = viewIssues(); break;
+      case "bolagsrapporter": html = viewCompanyReports(); break;
+      case "lista": html = viewBorsList(r.arg); break;
       case "rapport": html = viewReport(r.arg); break;
       case "blankning": html = viewShorts(); break;
       case "insyn": html = viewInsider(); break;
@@ -6005,7 +6212,7 @@
     });
     // Flikar för avdelningen överst på sidan (Fonder: Alla fonder, Risk och avkastning, Fondbolag ...)
     var sec = SECTIONS[section];
-    var onList = sec && sec.items.some(function (it) { return it[0] === navKey && r.page === navKey && !r.arg; });
+    var onList = sec && sec.items.some(function (it) { return it[0] === navKey && r.page === navKey && (!r.arg || r.page === "lista"); });
     if (onList && html !== null) {
       // På mobilen blir flikarna en rullgardin, så att de inte tar flera rader
       app.insertAdjacentHTML("afterbegin", '<nav class="subnav" aria-label="' + esc(sec.label) + '">' + sec.items.map(function (it) {
@@ -6550,6 +6757,7 @@
     var id = e.target.id;
     if (id === "subnavPick") { var v = e.target.value; if (v.charAt(0) === "#") location.hash = v; else location.href = v; return; }
     if (id === "insMin") { insiderFilter.min = +e.target.value; var my = window.scrollY; render(); window.scrollTo(0, my); return; }
+    if (id === "repsPer" || id === "repsList") { reportsFilter[id === "repsPer" ? "per" : "list"] = e.target.value; var ry = window.scrollY; render(); window.scrollTo(0, ry); return; }
     if (id === "stockSector") { stockFilter.sector = e.target.value; renderStockTable(); }
     if (id === "stockMin") { stockFilter.min = e.target.value; renderStockTable(); }
     if (id === "fundCo") { fundFilter.co = e.target.value; renderFundTable(); }

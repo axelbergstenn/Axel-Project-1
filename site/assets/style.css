@@ -936,6 +936,12 @@ a.btn { color: var(--fg); }
 .rw .mod-s { font-size: 12.5px; margin-top: 1px; }
 .rw .mod-v { font-size: 14.5px; }
 .rw .mod-v.rw-date { font-weight: 600; color: var(--fg-muted); }
+.list-tabs { flex-wrap: wrap; margin: 18px 0 0; border-bottom: 0; }
+.list-tabs .tab { text-decoration: none; }
+.cal-grid { display: grid; overflow: hidden; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.cal-day { min-width: 0; padding: 16px 24px 8px; border-left: 1px solid var(--border-muted); margin-left: -1px; border-bottom: 1px solid var(--border-muted); margin-bottom: -1px; }
+.cal-day .mod-list li { padding: 9px 0; font-size: 14px; }
+@media (max-width: 640px) { .cal-day { padding: 14px 16px 6px; } .list-tabs { gap: 0; } .list-tabs .tab { padding: 10px 7px; font-size: 14px; } }
 @media (max-width: 640px) { .rw-grid { grid-template-columns: minmax(0, 1fr); } .rw-grid > div { padding: 14px 16px 6px; } .rw-grid > div + div { border-left: 0; border-top: 1px solid var(--border); } }
 .know-tiles.in-card { margin-top: 0; }
 /* Nyckeltalen i ett kort står i spalter med en tunn linje ovanför, inte i grå rutor */

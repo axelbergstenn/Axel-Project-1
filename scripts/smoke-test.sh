@@ -54,6 +54,8 @@ ROUTES=(
   "/en/report/2026-q2/|en"
   "/aterkop/|aterkop"
   "/emissioner/|emissioner"
+  "/bolagsrapporter/|bolagsrapporter"
+  "/lista/large-cap/|lista"
   "/#/bevakning|bevakning"
   "/#/portfolj|portfolj"
   "/#/jamfor/51718/60730|jamfor"

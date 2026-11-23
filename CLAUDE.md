@@ -36,6 +36,8 @@ CHROME=... PYTHON=py bash scripts/smoke-test.sh site                     # rökt
 
 **Nyheter, återköp och nyemissioner** (`scripts/build-news.py`): bolagens pressmeddelanden ur MFN:s nyhetsflöde (HTML), med etikett efter rubriken. Återköpsbelopp läses ur dagstabellerna och sparas bara när antal × snittpris stämmer med beloppet. Läget i `data/news-state.json` (120 dagar); `--reparse` läser om ur `.cache/mfn`.
 
+**Bolagens rapporter och börslistorna** (`scripts/build-stocklists.py`): samlar senaste kvartalsrapporten, nästa rapportdatum och börslistan (Large/Mid/Small Cap, First North enligt MFN) ur `site/data/bolag/` till `site/data/stocklist.json`. Sidorna `#/bolagsrapporter` och `#/lista/<lista>`.
+
 **"Känn bolaget"** (`scripts/build-companies.py`).
 - Källor: endast bolagens egna rapporter. Det är MFN (mfn.se) och ESEF-årsredovisningar via filings.xbrl.org. **Använd aldrig Wikipedia eller Wikidata.**
 - Kvartalssiffror läses ur rapport-PDF:erna med pypdfium2 och sparas bara om pressmeddelandet eller årsomsättningen bekräftar dem.

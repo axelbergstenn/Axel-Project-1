@@ -1990,6 +1990,17 @@ Page "emissioner/" "emissioner" "Nyemissioner – börsbolag som tar in nya peng
   "Riktade emissioner och företrädesemissioner i bolag som svenska fonder äger, med belopp, teckningskurs och vilka fonder som köpte. Ur bolagens egna pressmeddelanden." `
   $defaultImg ('<div class="page-head"><h1>Nyemissioner</h1><p class="meta lead">Börsbolag som tar in nya pengar genom att ge ut nya aktier.</p></div>') -Crumbs @("Nyemissioner", "emissioner/")
 
+# Bolagens rapporter och börslistorna (scripts/build-stocklists.py). Appen ritar tabellerna.
+Page "bolagsrapporter/" "bolagsrapporter" "Bolagens rapporter – kvartalssiffror och rapportkalender | Fondinsyn" `
+  "Senaste kvartalsrapporten från bolagen som svenska fonder äger: försäljning, resultat och marginal mot samma kvartal i fjol, och vilka bolag som rapporterar de närmaste 30 dagarna." `
+  $defaultImg ('<div class="page-head"><h1>Bolagens rapporter</h1><p class="meta lead">Den senaste kvartalsrapporten från varje bolag som svenska fonder äger, med siffrorna ur bolagens egna rapporter.</p></div>') -Crumbs @("Bolagens rapporter", "bolagsrapporter/")
+foreach ($bl in @(@("large-cap", "Large Cap Stockholm", "de största bolagen på Stockholmsbörsen"), @("mid-cap", "Mid Cap Stockholm", "de medelstora bolagen på Stockholmsbörsen"),
+    @("small-cap", "Small Cap Stockholm", "de mindre bolagen på Stockholmsbörsen"), @("first-north", "First North Stockholm", "tillväxtbolagen på First North"))) {
+  Page "lista/$($bl[0])/" "lista/$($bl[0])" "$($bl[1]) – vad köper fonderna? | Fondinsyn" `
+    "Vad svenska fonder köper och säljer i $($bl[2]), med insynshandel de senaste 90 dagarna och blankning." `
+    $defaultImg ('<div class="page-head"><h1>' + $bl[1] + '</h1><p class="meta lead">Vad svenska fonder köper och säljer i ' + $bl[2] + '.</p></div>') -Crumbs @($bl[1], "lista/$($bl[0])/")
+}
+
 # Avgiftskollen: indexnära aktiefonder med hög avgift (samma regler som viewFees i app.js)
 $closet = @($infos | Where-Object { $_.aum -ge 100e6 -and (Category $_) -eq "closet" } | Sort-Object { -($_.aum * $_.feeMax) })
 if ($closet.Count) {
