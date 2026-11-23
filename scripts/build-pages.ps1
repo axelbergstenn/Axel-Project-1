@@ -146,16 +146,17 @@ function Block($title, $inner, $cls) { return '<section class="block ' + $cls + 
 
 # Tabell: första kolumnen är vänsterställd (namn), resten högerställda (tal)
 # Kolumn fyra och framåt döljs på mobil (hide-sm), som i appens tabeller
-function Table($heads, $rows) {
+# $Left: antal kolumner från vänster som är text och vänsterställs (resten är tal)
+function Table($heads, $rows, [int]$Left = 1) {
   $sb = New-Object System.Text.StringBuilder
   [void]$sb.Append('<div class="table-wrap"><table><thead><tr>')
   for ($i = 0; $i -lt $heads.Count; $i++) {
-    [void]$sb.Append($(if ($i -eq 0) { '<th class="l" scope="col">' } elseif ($i -ge 3) { '<th class="hide-sm" scope="col">' } else { '<th scope="col">' }) + $heads[$i] + "</th>")
+    [void]$sb.Append($(if ($i -lt $Left) { '<th class="l" scope="col">' } elseif ($i -ge 3) { '<th class="hide-sm" scope="col">' } else { '<th scope="col">' }) + $heads[$i] + "</th>")
   }
   [void]$sb.Append("</tr></thead><tbody>")
   foreach ($r in $rows) {
     [void]$sb.Append("<tr>")
-    for ($i = 0; $i -lt $r.Count; $i++) { [void]$sb.Append($(if ($i -eq 0) { '<td class="l name">' } elseif ($i -ge 3) { '<td class="hide-sm">' } else { "<td>" }) + $r[$i] + "</td>") }
+    for ($i = 0; $i -lt $r.Count; $i++) { [void]$sb.Append($(if ($i -eq 0) { '<td class="l name">' } elseif ($i -lt $Left) { '<td class="l">' } elseif ($i -ge 3) { '<td class="hide-sm">' } else { "<td>" }) + $r[$i] + "</td>") }
     [void]$sb.Append("</tr>")
   }
   if ($rows.Count -eq 0) { [void]$sb.Append('<tr><td class="empty" colspan="' + $heads.Count + '">Inga rader.</td></tr>') }
@@ -1051,7 +1052,7 @@ foreach ($fi in @($infos | Sort-Object { [double]$(if ($_.aum) { $_.aum } else {
 Page "fonder/" "fonder" "Alla svenska fonder – innehav och avgifter | Fondinsyn" "Alla $($infos.Count) svenska värdepappersfonder med fondbolag, fondförmögenhet och avgift. Se vad varje fond äger och har köpt och sålt." $defaultImg -Crumbs @("Fonder", "fonder/") (
   '<div class="page-head"><h1>Fonder</h1><p class="meta">' + $QL + ", innehav den " + $asOf + "</p></div>" +
   '<p class="lead">Alla svenska värdepappersfonder som rapporterar sina innehav till Finansinspektionen, sorterade efter fondförmögenhet.</p>' +
-  (Table @("Fond", "Fondbolag", "Förmögenhet", "Avgift") $rows))
+  (Table @("Fond", "Fondbolag", "Förmögenhet", "Avgift") $rows -Left 2))
 
 $rows = NewList
 foreach ($c in @($coList | Sort-Object aum -Descending)) { $rows.Add(@((A (CoUrl $c.name) $c.name), (Num0 $c.funds.Count), (BigSek $c.aum), (CoFee $c))) }
@@ -1414,8 +1415,8 @@ for ($ri = 0; $ri -lt $reportQs.Count; $ri++) {
   $tradeRows = { param($list) $rows = NewList; foreach ($s in @($list | Select-Object -First 10)) { $rows.Add(@((A "/#/aktie/$($s.isin)" $s.name), (Esc (CountryName $s.country)), (Colored $s.flow (Mkr $s.flow -Sign)))) }; , $rows }
   $content = '<article class="report"><div class="page-head"><div class="crumbs"><a href="/rapport/">Kvartalsrapporter</a> / ' + $repQL + " · globala aktier</div>" +
     "<h1>" + (Esc $headline) + "</h1></div>" + '<div class="prose">' + (($paras | ForEach-Object { "<p>$_</p>" }) -join "") + "</div>" +
-    '<div class="grid-2 section-gap">' + (Block "Kvartalets största köp" (Table @("Aktie", "Land", "Nettoköp (mkr)") (& $tradeRows $buys)) "") +
-    (Block "Kvartalets största sälj" (Table @("Aktie", "Land", "Nettoköp (mkr)") (& $tradeRows $sells)) "") + "</div>"
+    '<div class="grid-2 section-gap">' + (Block "Kvartalets största köp" (Table @("Aktie", "Land", "Nettoköp (mkr)") (& $tradeRows $buys) -Left 2) "") +
+    (Block "Kvartalets största sälj" (Table @("Aktie", "Land", "Nettoköp (mkr)") (& $tradeRows $sells) -Left 2) "") + "</div>"
   $rows = NewList; foreach ($k in @($countries | Select-Object -First 15)) { $rows.Add(@((Esc $k), (Colored $byCountry[$k] (BigSek $byCountry[$k] -Sign)))) }
   $content += Block "Länder" (Table @("Land", "Nettoköp") $rows) "section-gap"
   if ($sectors.Count) {
@@ -1458,7 +1459,7 @@ $rows = NewList
 foreach ($r in $enList) { $rows.Add(@((A "/en/report/$($r.slug)/" $r.label), (Esc $r.headline))) }
 Page "en/" "en" "Fondinsyn in English – what Swedish funds buy and sell" "Quarterly reports in English on what Swedish mutual funds bought and sold, based on the holdings funds report to Finansinspektionen." $defaultImg -Crumbs @("Reports in English", "en/") -Keep -Lang "en" (
   '<div lang="en"><div class="page-head"><h1>Reports in English</h1></div><p class="lead">Every quarter, Swedish mutual funds report their full holdings to Finansinspektionen, the Swedish financial supervisory authority. Fondinsyn compares them with the previous quarter to show what the funds bought and sold. These are short English summaries; the full reports, stock pages and fund pages are in Swedish.</p>' +
-  '<div class="section-gap">' + (Table @("Quarter", "Headline") $rows) + "</div></div>")
+  '<div class="section-gap">' + (Table @("Quarter", "Headline") $rows -Left 2) + "</div></div>")
 Write-Host "  $($reportList.Count) kvartalsrapporter"
 
 # ---------- Sektorsidor (/sektor/<sektor>/): vad fonderna köper och äger inom varje bransch ----------
@@ -1693,10 +1694,10 @@ $srcRows = NewList
 $srcRows.Add(@("Fondernas innehav", (A "https://www.fi.se/sv/vara-register/fondinnehav/fondinnehav-per-kvartal/" "Finansinspektionen, fondinnehav per kvartal"), "Varje kvartal, ungefär tolv veckor efter kvartalsslut", "$QL (innehav $asOf)"))
 $srcRows.Add(@("Avgifter och risk", "Samma kvartalsrapporter till FI", "Varje kvartal", $QL))
 $srcRows.Add(@("Räntepapper och fondandelar", "Samma kvartalsrapporter till FI", "Varje kvartal", $QL))
-$srcRows.Add(@("Marknadsräntor", (A "https://www.riksbank.se/sv/statistik/rantor-och-valutakurser/" "Riksbanken"), "Varje bankdag", "Hämtas varje morgon"))
-$srcRows.Add(@("Blankning", (A "https://www.fi.se/sv/vara-register/fis-marknadsregister/blankning/register/" "Finansinspektionen, blankningsregistret"), "Varje dag", "Hämtas varje morgon"))
-$srcRows.Add(@("Insynshandel", (A "https://marknadssok.fi.se/publiceringsklient" "Finansinspektionen, insynsregistret"), "Varje dag, arkiv sedan 2019", "Hämtas varje morgon"))
-$srcRows.Add(@("Uppköpserbjudanden", (A "https://www.fi.se/sv/vara-register/fis-marknadsregister/prospekt/register/" "Finansinspektionen, prospektregistret"), "Varje dag", "Hämtas varje morgon"))
+$srcRows.Add(@("Marknadsräntor", (A "https://www.riksbank.se/sv/statistik/rantor-och-valutakurser/" "Riksbanken"), "Varje bankdag", "Hämtas tre gånger om dagen"))
+$srcRows.Add(@("Blankning", (A "https://www.fi.se/sv/vara-register/fis-marknadsregister/blankning/register/" "Finansinspektionen, blankningsregistret"), "Varje dag", "Hämtas tre gånger om dagen"))
+$srcRows.Add(@("Insynshandel", (A "https://marknadssok.fi.se/publiceringsklient" "Finansinspektionen, insynsregistret"), "Varje dag, arkiv sedan 2019", "Hämtas tre gånger om dagen"))
+$srcRows.Add(@("Uppköpserbjudanden", (A "https://www.fi.se/sv/vara-register/fis-marknadsregister/prospekt/register/" "Finansinspektionen, prospektregistret"), "Varje dag", "Hämtas tre gånger om dagen"))
 $srcRows.Add(@("Avkastning", (A "https://www.pensionsmyndigheten.se/" "Pensionsmyndighetens fonddata"), "Varje vecka", "Fonder på premiepensionens fondtorg"))
 
 $dlRows = NewList
@@ -1882,11 +1883,11 @@ Write-Host "  dataset: $dsRows rader, $zipKb kB"
 
 $odContent = '<div class="page-head"><h1>Data och API</h1></div>' +
   '<p class="lead">Allt på Fondinsyn bygger på öppna data från Finansinspektionen och Pensionsmyndigheten. Här ser du var datan kommer ifrån, hur ofta den uppdateras, och hur du laddar ner den.</p>' +
-  (Block "Källor och uppdatering" (Table @("Data", "Källa", "Uppdateras", "Senast") $srcRows) "section-gap") +
-  '<p class="desc">Fondinsyn hämtar alla källor automatiskt varje morgon. Köp och sälj räknas som förändringen i antal aktier gånger kursen vid kvartalets slut, jämfört med ' + $prevQL + ". " + (A "/#/om" "Mer om metoden") + "</p>" +
-  (Block "Ladda ner för Excel" (Table @("Fil", "Innehåll", "Rader", "Storlek") $dlRows) "section-gap") +
+  (Block "Källor och uppdatering" (Table @("Data", "Källa", "Uppdateras", "Senast") $srcRows -Left 3) "section-gap") +
+  '<p class="desc">Fondinsyn hämtar alla källor automatiskt tre gånger om dagen. Köp och sälj räknas som förändringen i antal aktier gånger kursen vid kvartalets slut, jämfört med ' + $prevQL + ". " + (A "/#/om" "Mer om metoden") + "</p>" +
+  (Block "Ladda ner för Excel" (Table @("Fil", "Innehåll", "Rader", "Storlek") $dlRows -Left 2) "section-gap") +
   '<p class="desc">CSV med semikolon och decimalkomma, ' + $QL + ". Öppnas direkt i svenska Excel och Google Kalkylark.</p>" +
-  (Block "JSON för utvecklare" (Table @("Adress", "Innehåll") $apiRows) "section-gap") +
+  (Block "JSON för utvecklare" (Table @("Adress", "Innehåll") $apiRows -Left 2) "section-gap") +
   '<p class="desc">Filerna ligger på https://www.fondinsyn.se och kan hämtas fritt utan nyckel, även från andra webbplatser. Formatet kan ändras. Ange gärna Fondinsyn och Finansinspektionen som källa.</p>' +
   (Block "Öppet dataset för analys" ('<p>Hela historiken per aktie och kvartal sedan ' + (QLabel $firstQ) + ' (' + (Num0 $dsRows) + ' rader: fonder, innehav, nettoköp och kursförändring) och spararnas fondflöden per månad. ' +
     'Standard-CSV för Python, R, Excel och Kaggle, med beskrivning av varje kolumn. Uppdateras automatiskt, och varje nytt kvartal publiceras också som en release på GitHub.</p>' +
@@ -1925,15 +1926,15 @@ if ($insider) {
     , $t
   }
   $content = '<div class="page-head"><h1>Insynshandel</h1><p class="meta lead">Köp och sälj som vd:ar, styrelseledamöter och andra i ledande ställning har gjort i sina egna bolag ' +
-    "de senaste $($insider.days) dagarna, enligt Finansinspektionens insynsregister. Uppdateras varje morgon.</p></div>" +
+    "de senaste $($insider.days) dagarna, enligt Finansinspektionens insynsregister. Uppdateras tre gånger om dagen.</p></div>" +
     '<dl class="figures">' + (Fig "Insiderköp" (BigSek $insBuySum)) + (Fig "Insidersälj" (BigSek $insSellSum)) + (Fig "Köpaffärer" (Num0 $insBuyList.Count)) + (Fig "Säljaffärer" (Num0 $insSellList.Count)) + "</dl>" +
-    (Block "Största köpen" (Table @("Bolag", "Person", "Värde", "Affärsdag", "Befattning") (& $insTable $insBuyList)) "section-gap") +
-    (Block "Största försäljningarna" (Table @("Bolag", "Person", "Värde", "Affärsdag", "Befattning") (& $insTable $insSellList)) "section-gap") +
+    (Block "Största köpen" (Table @("Bolag", "Person", "Värde", "Affärsdag", "Befattning") (& $insTable $insBuyList) -Left 2) "section-gap") +
+    (Block "Största försäljningarna" (Table @("Bolag", "Person", "Värde", "Affärsdag", "Befattning") (& $insTable $insSellList) -Left 2) "section-gap") +
     '<p class="desc section-gap">Insiders kan sälja av många skäl, till exempel skatt, lån eller en bostad. Ett köp med egna pengar säger ofta mer. ' +
     'Närstående är familjemedlemmar eller bolag som personen kontrollerar eller företräder, till exempel ett investmentbolag där personen är vd, och deras affärer kan vara mycket större än personens egna. ' +
     (A "/rss/insyn.xml" "Följ insynshandeln via RSS") + ".</p>"
   Page "insyn/" "insyn" "Insynshandel – insiders köp och sälj i svenska bolag | Fondinsyn" `
-    "Vd:ar, styrelseledamöter och andra insiders köp och sälj i sina egna bolag de senaste $($insider.days) dagarna, från Finansinspektionens insynsregister. Uppdateras varje morgon." `
+    "Vd:ar, styrelseledamöter och andra insiders köp och sälj i sina egna bolag de senaste $($insider.days) dagarna, från Finansinspektionens insynsregister. Uppdateras tre gånger om dagen." `
     $defaultImg $content -Crumbs @("Insynshandel", "insyn/")
 }
 
@@ -1952,13 +1953,13 @@ if ($shortsSeo -and $shortsSeo.aggregate) {
     $holderRows.Add(@((A ("/#/blankare/" + [uri]::EscapeDataString($hk.ToLowerInvariant())) $hk), (Num0 $byHolder[$hk].Count)))
   }
   $content = '<div class="page-head"><h1>Blankning</h1><p class="meta lead">Vilka aktier på Stockholmsbörsen och First North som blankas mest, och vem som blankar. ' +
-    "Från Finansinspektionens blankningsregister, där positioner från 0,5 % av aktierna redovisas. Uppdateras varje morgon.</p></div>" +
+    "Från Finansinspektionens blankningsregister, där positioner från 0,5 % av aktierna redovisas. Uppdateras tre gånger om dagen.</p></div>" +
     (Block "Mest blankade aktier" (Table @("Bolag", "Blankat", "Förändring 30 dagar", "Senast ändrad") $shTopRows) "section-gap") +
     (Block "Största blankarna" (Table @("Blankare", "Antal aktier") $holderRows) "section-gap") +
     '<p class="desc section-gap">Blankning betyder att någon har lånat aktier och sålt dem för att köpa tillbaka billigare. Hög blankning visar att många tror på en nedgång, men kan också vara del av en annan affär. ' +
     (A "/ordlista/blankning/" "Vad är blankning?") + "</p>"
   Page "blankning/" "blankning" "Blankning – mest blankade aktier på Stockholmsbörsen | Fondinsyn" `
-    "De mest blankade aktierna på Stockholmsbörsen och First North och de största blankarna, från Finansinspektionens blankningsregister. Uppdateras varje morgon." `
+    "De mest blankade aktierna på Stockholmsbörsen och First North och de största blankarna, från Finansinspektionens blankningsregister. Uppdateras tre gånger om dagen." `
     $defaultImg $content -Crumbs @("Blankning", "blankning/")
 }
 
@@ -2235,7 +2236,14 @@ Page "404.html" "finnsinte" "Sidan finns inte | Fondinsyn" "Sidan finns inte på
 
 $sb = New-Object System.Text.StringBuilder
 [void]$sb.Append('<?xml version="1.0" encoding="UTF-8"?>' + "`n" + '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + "`n")
-foreach ($u in ($sitemap | Sort-Object -Unique)) { [void]$sb.Append("<url><loc>" + (Esc $u) + "</loc><lastmod>" + $qMeta.built + "</lastmod></url>`n") }
+# Sidor som byggs om med ny data varje dag (insynshandel, blankning, pressmeddelanden, räntor) får dagens datum,
+# resten datumet då kvartalets data byggdes. Då läser sökmotorerna om de sidor som faktiskt ändrats.
+$today = (Get-Date).ToString("yyyy-MM-dd")
+$dailyRe = '^' + [regex]::Escape($BaseUrl) + '/((insyn|blankning|blankare|aterkop|emissioner|bolagsrapporter|reaktioner|rantor|uppkop)/|lista/|$)'
+foreach ($u in ($sitemap | Sort-Object -Unique)) {
+  $mod = if ($u -match $dailyRe) { $today } else { $qMeta.built }
+  [void]$sb.Append("<url><loc>" + (Esc $u) + "</loc><lastmod>" + $mod + "</lastmod></url>`n")
+}
 [void]$sb.Append("</urlset>`n")
 Save "sitemap.xml" $sb.ToString()
 Save "robots.txt" ("User-agent: *`nAllow: /`n`nSitemap: $BaseUrl/sitemap.xml`n")
