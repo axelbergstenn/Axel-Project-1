@@ -813,6 +813,7 @@
   function loadFront() {
     getJSON("data/front.json").then(function (f) { state.front = f; }, function () { state.front = false; }).then(function () {
       renderTicker();
+      footerStamp();
       if (document.body.getAttribute("data-page") === "oversikt" && quarterData() && quarterData().se) render();
     });
   }
@@ -6547,6 +6548,12 @@
     try { gc.count({ path: path, title: document.title }); } catch (e) { /* räknaren får aldrig stoppa sajten */ }
   }
 
+  // Sidfoten: när sajten senast byggdes (data/front.json), annars när kvartalets fondinnehav hämtades
+  function footerStamp() {
+    var m = quarterData() && quarterData().meta, f = state.front;
+    $("updated").textContent = f && f.built ? "Uppdaterad " + shortStamp(f.built) : m ? "Fondinnehaven hämtade " + dateText(m.built) : "";
+  }
+
   function renderSummary() {
     var d = quarterData(), m = d.meta;
     var ds = state.market === "se" ? d.se : d.world;
@@ -6556,7 +6563,7 @@
     $("summary").innerHTML = head + " · <b>" + int(t.funds) + "</b> fonder" + (state.excludeIndex ? ' <span class="filter-on">utan indexfonder</span>' : "") +
       '<span class="hide-sm"> · <b>' + int(t.held) + "</b> " + marketWord() + " aktier</span> · Nettoköp <b class=\"" +
       cls(t.buy + t.sell) + "\">" + bigSek(t.buy + t.sell, true) + "</b>";
-    $("updated").textContent = "Uppdaterad " + m.built;
+    footerStamp();
     document.querySelectorAll("[data-market]").forEach(function (b) {
       if (b.closest("#marketSwitch")) b.setAttribute("aria-pressed", String(b.getAttribute("data-market") === state.market));
     });

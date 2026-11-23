@@ -1488,7 +1488,7 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .mgr-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 /* Sökknappen blir en rund ikon när sidhuvudet inte har plats för texten */
-@media (max-width: 1240px) {
+@media (max-width: 1080px) {
   .search-btn { flex: none; width: 38px; padding: 0; justify-content: center; }
   .search-btn-text, .search-btn kbd { display: none; }
 }
