@@ -1951,3 +1951,12 @@ html.pdf *, html.pdf *::before, html.pdf *::after { animation: none !important; 
 .module, .mgr, .story, .g-item, .ql { transition: border-color 0.18s var(--ease), transform 0.35s var(--spring), background-color 0.18s var(--ease); }
 .module:hover, .mgr:hover, .story:hover { border-color: var(--border-strong); }
 
+/* Börsens reaktion: små staplar för de senaste rapportdagarna */
+.rx-mini { display: inline-flex; gap: 3px; height: 30px; vertical-align: middle; }
+.rx-c { display: flex; flex-direction: column; width: 7px; }
+.rx-c b { display: flex; flex: 1; }
+.rx-c b.u { align-items: flex-end; border-bottom: 1px solid var(--border-strong); }
+.rx-c b.d { align-items: flex-start; }
+.rx-c i { display: block; width: 100%; }
+.rx-c b.u i { background: var(--pos); border-radius: 2px 2px 0 0; }
+.rx-c b.d i { background: var(--neg); border-radius: 0 0 2px 2px; }

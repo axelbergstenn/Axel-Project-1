@@ -56,6 +56,7 @@ ROUTES=(
   "/emissioner/|emissioner"
   "/bolagsrapporter/|bolagsrapporter"
   "/lista/large-cap/|lista"
+  "/reaktioner/|reaktioner"
   "/#/bevakning|bevakning"
   "/#/portfolj|portfolj"
   "/#/jamfor/51718/60730|jamfor"

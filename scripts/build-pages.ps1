@@ -1994,6 +1994,9 @@ Page "emissioner/" "emissioner" "Nyemissioner – börsbolag som tar in nya peng
 Page "bolagsrapporter/" "bolagsrapporter" "Bolagens rapporter – kvartalssiffror och rapportkalender | Fondinsyn" `
   "Senaste kvartalsrapporten från bolagen som svenska fonder äger: försäljning, resultat och marginal mot samma kvartal i fjol, och vilka bolag som rapporterar de närmaste 30 dagarna." `
   $defaultImg ('<div class="page-head"><h1>Bolagens rapporter</h1><p class="meta lead">Den senaste kvartalsrapporten från varje bolag som svenska fonder äger, med siffrorna ur bolagens egna rapporter.</p></div>') -Crumbs @("Bolagens rapporter", "bolagsrapporter/")
+Page "reaktioner/" "reaktioner" "Börsens reaktion på rapporterna – hur aktien rör sig på rapportdagen | Fondinsyn" `
+  "Hur aktien rörde sig den dag bolaget kom med sin kvartalsrapport, för bolagen som svenska fonder äger: största rörelserna och vilka bolag börsen brukar belöna." `
+  $defaultImg ('<div class="page-head"><h1>Börsens reaktion på rapporterna</h1><p class="meta lead">Hur aktien rörde sig den dag bolaget kom med sin kvartalsrapport.</p></div>') -Crumbs @("Börsens reaktion", "reaktioner/")
 foreach ($bl in @(@("large-cap", "Large Cap Stockholm", "de största bolagen på Stockholmsbörsen"), @("mid-cap", "Mid Cap Stockholm", "de medelstora bolagen på Stockholmsbörsen"),
     @("small-cap", "Small Cap Stockholm", "de mindre bolagen på Stockholmsbörsen"), @("first-north", "First North Stockholm", "tillväxtbolagen på First North"))) {
   Page "lista/$($bl[0])/" "lista/$($bl[0])" "$($bl[1]) – vad köper fonderna? | Fondinsyn" `
