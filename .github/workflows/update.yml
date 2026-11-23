@@ -250,12 +250,10 @@ jobs:
             echo "Release data-$q finns redan eller datasetet saknas"
           fi
 
-      # Kvartalsrapporterna som PDF (Chrome skriver ut rapportsidorna). Misslyckas det länkar sajten till webbversionen.
-      # Körs vid varje publicering (tar ungefär en kvart minut): hela site/ byts ut varje gång, så utan det här steget
-      # försvann PDF:erna från sajten efter körningarna mitt på dagen.
-      # Mindre skript till besökarna: app.js och charts.js minifieras (ungefär 40 % mindre att ladda ner och tolka på mobilen).
-      # Källkoden i repot är oförändrad. Går något fel behålls originalet, och röktestet nedan kör mot det som publiceras.
-      - name: Minifiera skripten
+      # Mindre skript till besökarna: app.js och charts.js minifieras (ungefär 40 % mindre att ladda ner och tolka på mobilen),
+      # och style.css, som blockerar första ritningen. Källkoden i repot är oförändrad. Går något fel behålls originalet,
+      # och röktestet nedan kör mot det som publiceras.
+      - name: Minifiera skripten och CSS:en
         continue-on-error: true
         run: |
           for f in app charts; do
@@ -267,7 +265,17 @@ jobs:
               echo "::warning::$f.js gick inte att minifiera, originalet publiceras"
             fi
           done
+          src="site/assets/style.css"
+          if npx --yes esbuild@0.24.0 "$src" --minify --outfile="$RUNNER_TEMP/style.min.css" && [ -s "$RUNNER_TEMP/style.min.css" ]; then
+            echo "style.css: $(wc -c < "$src") -> $(wc -c < "$RUNNER_TEMP/style.min.css") byte"
+            cp "$RUNNER_TEMP/style.min.css" "$src"
+          else
+            echo "::warning::style.css gick inte att minifiera, originalet publiceras"
+          fi
 
+      # Kvartalsrapporterna som PDF (Chrome skriver ut rapportsidorna). Misslyckas det länkar sajten till webbversionen.
+      # Körs vid varje publicering (tar ungefär en kvart minut): hela site/ byts ut varje gång, så utan det här steget
+      # försvann PDF:erna från sajten efter körningarna mitt på dagen.
       - name: Skriv ut kvartalsrapporterna som PDF
         continue-on-error: true
         run: bash scripts/build-pdf.sh site

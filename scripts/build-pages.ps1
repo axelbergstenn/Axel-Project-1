@@ -1458,7 +1458,7 @@ Page "rapport/" "rapport" "Kvartalsrapporter – vad fonderna köpte och sålde 
 $rows = NewList
 foreach ($r in $enList) { $rows.Add(@((A "/en/report/$($r.slug)/" $r.label), (Esc $r.headline))) }
 Page "en/" "en" "Fondinsyn in English – what Swedish funds buy and sell" "Quarterly reports in English on what Swedish mutual funds bought and sold, based on the holdings funds report to Finansinspektionen." $defaultImg -Crumbs @("Reports in English", "en/") -Keep -Lang "en" (
-  '<div lang="en"><div class="page-head"><h1>Reports in English</h1></div><p class="lead">Every quarter, Swedish mutual funds report their full holdings to Finansinspektionen, the Swedish financial supervisory authority. Fondinsyn compares them with the previous quarter to show what the funds bought and sold. These are short English summaries; the full reports, stock pages and fund pages are in Swedish.</p>' +
+  '<div lang="en"><div class="page-head"><h1>Reports in English</h1><p class="meta lead">Every quarter, Swedish mutual funds report their full holdings to Finansinspektionen, the Swedish financial supervisory authority. Fondinsyn compares them with the previous quarter to show what the funds bought and sold. These are short English summaries; the full reports, stock pages and fund pages are in Swedish.</p></div>' +
   '<div class="section-gap">' + (Table @("Quarter", "Headline") $rows -Left 2) + "</div></div>")
 Write-Host "  $($reportList.Count) kvartalsrapporter"
 
@@ -1555,7 +1555,7 @@ foreach ($x in @($secList | Sort-Object flow -Descending)) {
   $rows.Add(@((A "/sektor/$($x.slug)/" $x.name), (Colored $x.flow (BigSek $x.flow -Sign)), (BigSek $x.val), $(if ($topB.Count) { A (StockUrl $topB[0]) $topB[0].name } else { "–" })))
 }
 Page "sektor/" "sektor" "Sektorer – vad köper fonderna i varje bransch? | Fondinsyn" "Svenska fonders köp, sälj och innehav per sektor ${QL}: industri, finans, fastigheter, hälsovård, IT och fler." $defaultImg -Crumbs @("Sektorer", "sektor/") -Keep (
-  '<div class="page-head"><h1>Sektorer</h1></div><p class="lead">Vad svenska fonder köpte och sålde inom varje bransch under ' + $QL + ', och hur mycket de äger. Sektorn är den som fonderna själva anger (GICS).</p>' +
+  '<div class="page-head"><h1>Sektorer</h1><p class="meta lead">Vad svenska fonder köpte och sålde inom varje bransch under ' + $QL + ', och hur mycket de äger. Sektorn är den som fonderna själva anger (GICS).</p></div>' +
   '<div class="section-gap">' + (Table @("Sektor", "Nettoköp $QL", "Innehav", "Mest köpt") $rows) + "</div>" + (Source "/#/oversikt" "Sektorrotation över tid"))
 Write-Host "  $($secList.Count) sektorsidor"
 
@@ -1983,27 +1983,161 @@ if ($offersSeo -and $offersSeo.offers) {
     $defaultImg $content -Crumbs @("Uppköp", "uppkop/")
 }
 
-# Återköp och nyemissioner (scripts/build-news.py). Appen ritar listorna; den fasta sidan har rubrik och beskrivning för sökmotorer.
-Page "aterkop/" "aterkop" "Återköp av egna aktier – vilka bolag köper tillbaka aktier? | Fondinsyn" `
-  "Svenska börsbolag som köper tillbaka sina egna aktier: belopp senaste 30 och 90 dagarna, snittpris och nya återköpsprogram. Ur bolagens egna pressmeddelanden." `
-  $defaultImg ('<div class="page-head"><h1>Återköp av egna aktier</h1><p class="meta lead">Bolag som köper tillbaka sina egna aktier, ur bolagens veckovisa pressmeddelanden.</p></div>') -Crumbs @("Återköp", "aterkop/")
-Page "emissioner/" "emissioner" "Nyemissioner – börsbolag som tar in nya pengar | Fondinsyn" `
-  "Riktade emissioner och företrädesemissioner i bolag som svenska fonder äger, med belopp, teckningskurs och vilka fonder som köpte. Ur bolagens egna pressmeddelanden." `
-  $defaultImg ('<div class="page-head"><h1>Nyemissioner</h1><p class="meta lead">Börsbolag som tar in nya pengar genom att ge ut nya aktier.</p></div>') -Crumbs @("Nyemissioner", "emissioner/")
+# Bolagens rapporter, börsens reaktion och börslistorna (site/data/stocklist.json från scripts/build-stocklists.py).
+# Appen ritar de fullständiga sidorna. De fasta sidorna får tabeller ur samma data, för sökmotorer och läsare utan JavaScript.
+$stockList = $null
+try { if (Test-Path (Join-Path $DataDir "stocklist.json")) { $stockList = ReadJson "stocklist.json" } } catch { Write-Host "  stocklist.json kunde inte läsas: $($_.Exception.Message)" }
+$sByIsin = @{}; foreach ($s in $stocks) { $sByIsin[$s.isin] = $s }
+# "2026-11-20" blir "20 nov"
+function ShortDay($iso) {
+  $d = [string]$iso
+  if ($d -notmatch '^\d{4}-\d\d-\d\d') { return $d }
+  return [string][int]$d.Substring(8, 2) + " " + $KnowMon[[int]$d.Substring(5, 2) - 1]
+}
+# Det aktieslag som fonderna äger mest av (ett bolag kan ha flera ISIN)
+function OwnedOf($isins) {
+  $best = $null
+  foreach ($i in @($isins)) { $s = $sByIsin[[string]$i]; if ($s -and $s.f2 -gt 0 -and (-not $best -or $s.val2 -gt $best.val2)) { $best = $s } }
+  return $best
+}
+# Förändring mot samma kvartal året innan ([i år, året innan]), bara när båda är positiva
+function GrowthText($pair) {
+  if (-not $pair -or $null -eq $pair[0] -or $null -eq $pair[1] -or [double]$pair[0] -le 0 -or [double]$pair[1] -le 0) { return "–" }
+  $g = [double]$pair[0] / [double]$pair[1] - 1
+  if ($g -gt 3) { return Colored 1 "över +300 %" }
+  return Colored $g (PctChange $g)
+}
+# Rörelseresultatet: procent när båda åren gick med vinst, annars i ord (som i appen)
+function ResultText($pair) {
+  if (-not $pair -or $null -eq $pair[0] -or $null -eq $pair[1]) { return "–" }
+  $a = [double]$pair[0]; $b = [double]$pair[1]
+  if ($a -gt 0 -and $b -gt 0) { return GrowthText $pair }
+  if ($a -gt 0) { return Colored 1 "Till vinst" }
+  if ($b -gt 0) { return Colored -1 "Till förlust" }
+  if ($a -ge $b) { return Colored 1 "Mindre förlust" }
+  return Colored -1 "Större förlust"
+}
+function ReactText($v) { $v = [double]$v; return Colored $v (Signed ((Fmt $v 1) + " %") $v) }
+$slSource = '<p class="desc section-gap">Källa: bolagens egna kvartalsrapporter och pressmeddelanden (via MFN), för de bolag som svenska fonder äger. ' +
+  'Förändringen jämförs med samma kvartal året innan. ' + (A "/#/om" "Mer om datan") + "</p>"
 
-# Bolagens rapporter och börslistorna (scripts/build-stocklists.py). Appen ritar tabellerna.
+$brHead = '<div class="page-head"><h1>Bolagens rapporter</h1><p class="meta lead">Den senaste kvartalsrapporten från varje bolag som svenska fonder äger, med siffrorna ur bolagens egna rapporter.</p></div>'
+$rxHead = '<div class="page-head"><h1>Börsens reaktion på rapporterna</h1><p class="meta lead">Hur aktien rörde sig den dag bolaget kom med sin kvartalsrapport.</p></div>'
+$brBody = ""; $rxBody = ""
+if ($stockList) {
+  $rows = NewList
+  foreach ($r in @($stockList.reports)) {
+    if ($rows.Count -ge 50) { break }
+    if ($r[8]) { continue }
+    $s = OwnedOf $r[0]
+    if (-not $s) { continue }
+    $rows.Add(@((A (StockUrl $s) (KnowShort $s.name)), (Esc ((ShortDay $r[1]) + " · " + (KnowPeriod $r[2] $r[3]))), (GrowthText $r[5]), (ResultText $r[6])))
+  }
+  if ($rows.Count) { $brBody += Block "Senaste rapporterna" (Table @("Bolag", "Rapport", "Försäljning", "Rörelseresultat") $rows -Left 2) "section-gap" }
+  $limit = (Get-Date).Date.AddDays(30).ToString("yyyy-MM-dd")
+  $rows = NewList
+  foreach ($r in @($stockList.next | Where-Object { [string]$_[1] -le $limit })) {
+    if ($rows.Count -ge 60) { break }
+    $s = OwnedOf $r[0]
+    if (-not $s) { continue }
+    $rows.Add(@((A (StockUrl $s) (KnowShort $s.name)), (Esc (ShortDay $r[1])), (Esc ([string]$r[2]))))
+  }
+  if ($rows.Count) { $brBody += Block "Kommande rapporter" (Table @("Bolag", "Datum", "Rapport") $rows -Left 3) "section-gap" }
+  if ($brBody) { $brBody += $slSource }
+
+  $moves = @($stockList.reports | Where-Object { $null -ne $_[9] } | ForEach-Object { [pscustomobject]@{ r = $_; s = (OwnedOf $_[0]); v = [double]$_[9] } } | Where-Object { $_.s })
+  $moveRows = {
+    param($list)
+    $t = NewList
+    foreach ($x in $list) { $t.Add(@((A (StockUrl $x.s) (KnowShort $x.s.name)), (Esc (ShortDay $x.r[1])), (ReactText $x.v))) }
+    , $t
+  }
+  $ups = @($moves | Where-Object { $_.v -gt 0 } | Sort-Object v -Descending | Select-Object -First 15)
+  $downs = @($moves | Where-Object { $_.v -lt 0 } | Sort-Object v | Select-Object -First 15)
+  if ($ups.Count -or $downs.Count) {
+    $rxBody = TwoBlocks "Steg mest på rapportdagen" (Table @("Bolag", "Rapportdag", "Aktien") (& $moveRows $ups) -Left 2) "Föll mest på rapportdagen" (Table @("Bolag", "Rapportdag", "Aktien") (& $moveRows $downs) -Left 2)
+    $rxBody += '<p class="desc section-gap">Källa: kursuppgiften på bolagets pressmeddelande hos MFN. Bara rapporter som kom före börsöppning räknas, och rörelsen gäller hela dagen. ' + (A "/bolagsrapporter/" "Alla rapporter och rapportkalendern") + "</p>"
+  }
+}
 Page "bolagsrapporter/" "bolagsrapporter" "Bolagens rapporter – kvartalssiffror och rapportkalender | Fondinsyn" `
   "Senaste kvartalsrapporten från bolagen som svenska fonder äger: försäljning, resultat och marginal mot samma kvartal i fjol, och vilka bolag som rapporterar de närmaste 30 dagarna." `
-  $defaultImg ('<div class="page-head"><h1>Bolagens rapporter</h1><p class="meta lead">Den senaste kvartalsrapporten från varje bolag som svenska fonder äger, med siffrorna ur bolagens egna rapporter.</p></div>') -Crumbs @("Bolagens rapporter", "bolagsrapporter/")
+  $defaultImg ($brHead + $brBody) -Crumbs @("Bolagens rapporter", "bolagsrapporter/")
 Page "reaktioner/" "reaktioner" "Börsens reaktion på rapporterna – hur aktien rör sig på rapportdagen | Fondinsyn" `
   "Hur aktien rörde sig den dag bolaget kom med sin kvartalsrapport, för bolagen som svenska fonder äger: största rörelserna och vilka bolag börsen brukar belöna." `
-  $defaultImg ('<div class="page-head"><h1>Börsens reaktion på rapporterna</h1><p class="meta lead">Hur aktien rörde sig den dag bolaget kom med sin kvartalsrapport.</p></div>') -Crumbs @("Börsens reaktion", "reaktioner/")
-foreach ($bl in @(@("large-cap", "Large Cap Stockholm", "de största bolagen på Stockholmsbörsen"), @("mid-cap", "Mid Cap Stockholm", "de medelstora bolagen på Stockholmsbörsen"),
-    @("small-cap", "Small Cap Stockholm", "de mindre bolagen på Stockholmsbörsen"), @("first-north", "First North Stockholm", "tillväxtbolagen på First North"))) {
+  $defaultImg ($rxHead + $rxBody) -Crumbs @("Börsens reaktion", "reaktioner/")
+
+$listOf = @{}
+if ($stockList -and $stockList.lists) { foreach ($p in $stockList.lists.PSObject.Properties) { $listOf[$p.Name] = [string]$p.Value } }
+foreach ($bl in @(@("large-cap", "Large Cap Stockholm", "de största bolagen på Stockholmsbörsen", "large"), @("mid-cap", "Mid Cap Stockholm", "de medelstora bolagen på Stockholmsbörsen", "mid"),
+    @("small-cap", "Small Cap Stockholm", "de mindre bolagen på Stockholmsbörsen", "small"), @("first-north", "First North Stockholm", "tillväxtbolagen på First North", "fn"))) {
+  $inList = @($pageStocks | Where-Object { $listOf[$_.isin] -eq $bl[3] } | Sort-Object val2 -Descending)
+  $lead = "Vad svenska fonder köper och säljer i " + $bl[2] + "."
+  if ($inList.Count) { $lead += " " + $inList.Count + " aktier på listan ägs av svenska fonder; nettoköpet gäller " + $QL + "." }
+  $content = '<div class="page-head"><h1>' + $bl[1] + '</h1><p class="meta lead">' + $lead + '</p></div>'
+  if ($inList.Count) {
+    $rows = NewList
+    foreach ($s in @($inList | Select-Object -First 80)) {
+      $rows.Add(@((A (StockUrl $s) $s.name), (Num0 $s.f2), (Mkr $s.val2), $(if ($null -eq $s.netFlow) { "–" } else { Colored $s.flow (Mkr $s.flow -Sign) })))
+    }
+    $content += (Block "Aktierna, efter fondernas innehav" (Table @("Aktie", "Fonder", "Innehav (mkr)", "Nettoköp (mkr)") $rows) "section-gap") +
+      '<p class="desc section-gap">Källa: Finansinspektionens fondinnehav per kvartal, ' + $asOf + ". Börslistan enligt MFN. " + (A "/aktier/" "Alla aktier") + "</p>"
+  }
   Page "lista/$($bl[0])/" "lista/$($bl[0])" "$($bl[1]) – vad köper fonderna? | Fondinsyn" `
     "Vad svenska fonder köper och säljer i $($bl[2]), med insynshandel de senaste 90 dagarna och blankning." `
-    $defaultImg ('<div class="page-head"><h1>' + $bl[1] + '</h1><p class="meta lead">Vad svenska fonder köper och säljer i ' + $bl[2] + '.</p></div>') -Crumbs @($bl[1], "lista/$($bl[0])/")
+    $defaultImg $content -Crumbs @($bl[1], "lista/$($bl[0])/")
 }
+
+# Återköp och nyemissioner (scripts/build-news.py). Appen ritar de fullständiga listorna; de fasta sidorna får
+# tabeller ur samma data, för sökmotorer och läsare utan JavaScript.
+function NewsJson($name) {
+  try { if (Test-Path (Join-Path $DataDir $name)) { return ReadJson $name } } catch { Write-Host "  $name kunde inte läsas: $($_.Exception.Message)" }
+  return $null
+}
+# Belopp i bolagets valuta, som i appen: kronor som "52,6 mkr", euro som "4,1 MEUR"
+function CurAmount($v, $cur) { if ([string]$cur -eq "EUR") { return (Fmt ([double]$v / 1e6) 1) + " MEUR" }; return BigSek $v }
+function NameLink($isins, $fallback) {
+  foreach ($i in @($isins)) { if ($slugOf.ContainsKey([string]$i)) { return A "/aktie/$($slugOf[[string]$i])/" $sByIsin[[string]$i].name } }
+  return Esc (KnowShort $fallback)
+}
+$newsSource = '<p class="desc section-gap">Källa: bolagens egna pressmeddelanden via MFN. ' + (A "/#/om" "Mer om datan") + "</p>"
+
+$bbContent = '<div class="page-head"><h1>Återköp av egna aktier</h1><p class="meta lead">Bolag som köper tillbaka sina egna aktier, ur bolagens veckovisa pressmeddelanden.</p></div>'
+$bb = NewsJson "buybacks.json"
+if ($bb -and @($bb.rows).Count) {
+  $rows = NewList
+  foreach ($r in @($bb.rows | Where-Object { [double]$_[3] -gt 0 } | Sort-Object { -[double]$_[4] } | Select-Object -First 40)) {
+    $rows.Add(@((NameLink @($r[0]) $r[1]), (CurAmount $r[4] $r[2]), (CurAmount $r[6] $r[2]), (Esc (ShortDay $r[7]))))
+  }
+  if ($rows.Count) {
+    $bbContent += Block "Störst återköp de senaste 30 dagarna" (Table @("Bolag", "30 dagar", "90 dagar", "Senast") $rows) "section-gap"
+    $bbContent += $newsSource
+  }
+}
+Page "aterkop/" "aterkop" "Återköp av egna aktier – vilka bolag köper tillbaka aktier? | Fondinsyn" `
+  "Svenska börsbolag som köper tillbaka sina egna aktier: belopp senaste 30 och 90 dagarna, snittpris och nya återköpsprogram. Ur bolagens egna pressmeddelanden." `
+  $defaultImg $bbContent -Crumbs @("Återköp", "aterkop/")
+
+$isContent = '<div class="page-head"><h1>Nyemissioner</h1><p class="meta lead">Börsbolag som tar in nya pengar genom att ge ut nya aktier.</p></div>'
+$iss = NewsJson "issues.json"
+$issueKind = @{ riktad = "Riktad emission"; foretrade = "Företrädesemission"; ny = "Nyemission" }
+if ($iss -and @($iss.rows).Count) {
+  $rows = NewList
+  foreach ($r in @($iss.rows | Sort-Object { [string]$_[0] } -Descending)) {
+    if ($rows.Count -ge 40) { break }
+    # bara bolag med egen aktiesida (annars finns inget kort namn, bara pressmeddelandets rubrik)
+    if (-not @(@($r[1]) | Where-Object { $slugOf.ContainsKey([string]$_) }).Count) { continue }
+    $kind = $issueKind[[string]$r[2]]
+    if (-not $kind) { $kind = "Nyemission" }
+    $rows.Add(@((NameLink $r[1] $r[6]), (Esc (ShortDay $r[0])), $kind, $(if ($r[3]) { CurAmount $r[3] $r[4] } else { "–" })))
+  }
+  if ($rows.Count) {
+    $isContent += Block "Senaste nyemissionerna" (Table @("Bolag", "Datum", "Typ", "Belopp") $rows -Left 3) "section-gap"
+    $isContent += $newsSource
+  }
+}
+Page "emissioner/" "emissioner" "Nyemissioner – börsbolag som tar in nya pengar | Fondinsyn" `
+  "Riktade emissioner och företrädesemissioner i bolag som svenska fonder äger, med belopp, teckningskurs och vilka fonder som köpte. Ur bolagens egna pressmeddelanden." `
+  $defaultImg $isContent -Crumbs @("Nyemissioner", "emissioner/")
 
 # Avgiftskollen: indexnära aktiefonder med hög avgift (samma regler som viewFees i app.js)
 $closet = @($infos | Where-Object { $_.aum -ge 100e6 -and (Category $_) -eq "closet" } | Sort-Object { -($_.aum * $_.feeMax) })

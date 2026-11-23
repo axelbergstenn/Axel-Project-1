@@ -31,6 +31,9 @@ CHROME=... PYTHON=py bash scripts/smoke-test.sh site                     # rökt
 - Data laddas lat via `need(key, fn)`, och `render()` körs om när den kommit.
 - Diagram registreras med `chart(draw)` och ritas efter att HTML:en satts in, med `FFCharts` i `charts.js` (SVG, färger från CSS-klasser).
 - Händelser hanteras centralt med delegering på `document`, till exempel `data-rep-pick` och `id="repQ"`.
+- Stora filer som bara behövs långt ner på en sida hämtas när man scrollar nära: lägg `<div data-lazy="namn">` och en laddare i `LAZY` (som historiken på startsidan).
+- Länkar till externa källor (pressmeddelanden, SEC, bolagens webbplatser) skrivs med `safeUrl()`, MFN-sökvägar med `mfnHref()`; aldrig bara `esc()`.
+- Menyraden: Aktier och Fonder fälls ut med sidorna i `SECTIONS` (`DD_SECTIONS`). På mobilen visas samma sidor som en rullgardin överst på sidan.
 
 **Statiska sidor.** `scripts/build-pages.ps1` skapar en sida per aktie, fond, fondbolag och så vidare utifrån `site/index.html` (med `<base href="/">`), plus sitemap, RSS, delningsbilder (SVG→PNG med rsvg-convert) och sökdata. Appen tar över sidan när den laddats; `body[data-route]` talar om vilken vy den ska rita. Sidor med `data-keep` (ordlistan, rapportlistan, sektorsidorna `/sektor/` och rapporterna på engelska `/en/`) ritas inte om av appen. Kör inte `-WriteHome` lokalt utan att återställa `site/index.html` efteråt, eftersom den skriver in startsidan i mallen.
 

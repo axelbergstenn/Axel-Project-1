@@ -500,7 +500,6 @@ td.empty { text-align: center; color: var(--fg-muted); padding: 28px; white-spac
   .hide-sm { display: none !important; }
   .show-sm { display: block; }
   .show-sm-i { display: inline; }
-  .bar { display: none; }
 }
 /* Rubriker får radbrytas först när tabellen är riktigt smal */
 @container (max-width: 480px) { thead th { white-space: normal; } }
@@ -518,6 +517,10 @@ table.cmp-table td { overflow-wrap: anywhere; }
 .barcell { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
 .bar { display: inline-block; width: 72px; height: 6px; background: var(--border-muted); border-radius: 3px; overflow: hidden; flex: none; }
 .bar i { display: block; height: 100%; border-radius: 4px; }
+/* Ägarandel i tabellen: stapel (full vid 40 %) bredvid procenten */
+.own-cell { display: inline-flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.own-bar { display: inline-block; width: 64px; height: 6px; background: var(--border-muted); border-radius: 3px; overflow: hidden; flex: none; }
+.own-bar i { display: block; height: 100%; background: var(--brand); border-radius: 3px; }
 .bar.neg i { transform-origin: left; }
 .bar.pos i { background: var(--bar-pos); }
 .bar.neg i { background: var(--bar-neg); }
