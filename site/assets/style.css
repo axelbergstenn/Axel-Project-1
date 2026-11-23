@@ -146,7 +146,6 @@
   --dot-active: #2fa67a;
 }
 
-
 :root[data-theme="dark"] .select-sm { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5l3 3 3-3' fill='none' stroke='%238f9c96' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 
 /* ---------- Grund ---------- */
@@ -170,12 +169,10 @@ h3 { font-size: 15px; font-weight: 600; }
 p { margin: 0; }
 b, strong { font-weight: 600; }
 /* Rubriker och de stora siffrorna i Schibsted Grotesk, allt annat i Inter Tight */
-h1, .section-title, .block-head h2, .module-head h2, .ac-text h2, .rc-title, .sp-word, .know-card h3, .kq-head h3, .know-h, .panel h3,
-.story h3, .rep-head h2, .md-sec h2, .empty-state h2, .newsletter h2, .prose h2, .text-page h2, .brand,
-.figures dd, .hf-value, .hl-name, .ql-v, .mod-big b, .kt-big, .cmp-num { font-family: var(--display); letter-spacing: -0.01em; }
+h1, .section-title, .block-head h2, .module-head h2, .ac-text h2, .rc-title, .know-card h3, .kq-head h3, .know-h, .panel h3, .story h3, .rep-head h2, .md-sec h2, .empty-state h2, .newsletter h2, .prose h2, .text-page h2, .brand, .figures dd, .hf-value, .hl-name, .ql-v, .kt-big, .cmp-num { font-family: var(--display); letter-spacing: -0.01em; }
 /* Schibsteds tabellsiffror är breda: de stora talen får proportionella siffror */
-.figures dd, .hf-value, .ql-v, .mod-big b, .kt-big, .cmp-num, .hero-stats dd { font-variant-numeric: proportional-nums lining-nums; }
-table, .hl-value, .tk-v, .mod-v, .rep-v { font-variant-numeric: tabular-nums; }
+.figures dd, .hf-value, .ql-v, .kt-big, .cmp-num, .hero-stats dd { font-variant-numeric: proportional-nums lining-nums; }
+table, .hl-value, .tk-v, .mod-v { font-variant-numeric: tabular-nums; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .skip-link { position: absolute; left: 12px; top: -48px; z-index: 100; background: var(--brand); color: #fff; padding: 8px 14px; border-radius: var(--radius-sm); font-weight: 600; transition: top 0.15s; }
 .skip-link:focus { top: 12px; text-decoration: none; }
@@ -366,8 +363,7 @@ body.sheet-open { overflow: hidden; }
 .switch input:focus-visible + .switch-track { outline: 2px solid var(--brand); outline-offset: 2px; }
 .switch input:checked ~ .switch-text { color: var(--fg); }
 .switch:hover .switch-track { box-shadow: inset 0 0 0 1px var(--fg-muted); }
-.check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; color: var(--fg-soft); }
-.check input { margin: 0; width: 16px; height: 16px; accent-color: var(--brand); }
+
 /* På startsidan står nyckeltalen redan i toppen */
 /* Kort bekräftelse när ett filter ändras */
 .toast { position: fixed; left: 50%; bottom: 28px; z-index: 60; transform: translate(-50%, 16px); opacity: 0; pointer-events: none; padding: 10px 18px; border-radius: 999px; font-size: 14px; font-weight: 600; color: #fff; background: var(--navy); box-shadow: var(--shadow-lg); white-space: nowrap; transition: opacity 0.25s, transform 0.45s var(--spring); }
@@ -430,7 +426,6 @@ main { padding-top: 0; padding-bottom: 72px; outline: none; min-height: 60vh; }
 .avatar { display: inline-grid; place-items: center; flex: none; width: 52px; height: 52px; border-radius: 10px; font-family: var(--display); font-size: 15px; font-weight: 700; letter-spacing: 0.01em; background: var(--brand-soft); color: var(--brand-ink); }
 .avatar-sm { width: 30px; height: 30px; border-radius: 8px; font-size: 11px; }
 
-
 /* ---------- Nyckeltal och markeringar ---------- */
 
 /* Nyckeltal som en tidningsrad: tunna linjer i stället för rutor */
@@ -446,7 +441,7 @@ main { padding-top: 0; padding-bottom: 72px; outline: none; min-height: 60vh; }
 .page-head + .figures { column-gap: 28px; }
 .page-head + .figures > div { padding-left: 0; padding-right: 0; }
 .page-head + .figures > div::before { display: none !important; }
-.figures dd { margin: 5px 0 0; font-size: 27px; font-weight: 650; line-height: 1.12; letter-spacing: -0.02em; }
+.figures dd { margin: 5px 0 0; font-size: 27px; font-weight: 650; line-height: 1.12; letter-spacing: -0.02em; overflow-wrap: anywhere; hyphens: auto; }
 .fig-note { display: block; font-size: 12.5px; color: var(--fg-muted); margin-top: 4px; }
 
 .highlights { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 32px; padding: 0 22px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
@@ -553,7 +548,7 @@ a.btn { color: var(--fg); }
 .btn-primary:hover, a.btn-primary:hover { background: var(--navy-2); border-color: var(--navy-2); color: #fff; }
 :root[data-theme="dark"] .btn-primary, :root[data-theme="dark"] a.btn-primary { background: var(--brand); border-color: var(--brand); color: #07100c; }
 :root[data-theme="dark"] .btn-primary:hover, :root[data-theme="dark"] a.btn-primary:hover { background: var(--brand-ink); border-color: var(--brand-ink); color: #07100c; }
-:root[data-theme="dark"] .btn-primary .btn-tag { background: rgba(0, 0, 0, 0.1); }
+
 .star { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 14px; font-weight: 500; color: var(--fg); background: var(--bg); border: 1px solid var(--border-strong); border-radius: 999px; height: 40px; padding: 0 14px; cursor: pointer; transition: background 0.15s, border-color 0.15s, transform 0.08s; }
 .star svg { fill: none; stroke: var(--fg-muted); stroke-width: 1.3; transition: transform 0.3s var(--ease); }
 .star:hover { background: var(--bg-hover); }
@@ -602,7 +597,6 @@ a.btn { color: var(--fg); }
 .sk-chart { height: 132px; margin-bottom: 8px; }
 .w40 { width: 40%; } .w70 { width: 70%; } .w90 { width: 90%; }
 @keyframes sk-shine { from { background-position: 100% 0; } to { background-position: 0 0; } }
-.spinner { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--brand); border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------- Startsidan: huvudnyhet, nyckeltal och moduler ---------- */
@@ -614,7 +608,7 @@ a.btn { color: var(--fg); }
 .hero h1 a { color: inherit; background: linear-gradient(currentColor, currentColor) 0 100% / 0 1.5px no-repeat; transition: background-size 0.45s var(--spring), color 0.2s; }
 .hero h1 a:hover { text-decoration: none; background-size: 100% 1.5px; }
 .hero .intro { margin: 0; font-size: 16.5px; line-height: 1.6; max-width: 54ch; color: var(--fg-soft); }
-.hero-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+
 .hero-sub { color: var(--fg-muted); font-size: 12.5px; margin-top: 18px; }
 .hero-side { display: flex; flex-direction: column; justify-content: space-between; gap: 20px; min-width: 0; padding-left: 40px; border-left: 1px solid var(--border); }
 .hero-figure { min-width: 0; }
@@ -724,14 +718,13 @@ a.btn { color: var(--fg); }
 .rep-card .select-sm option { color: var(--fg); background: var(--bg); }
 .rep-card .btn-primary { background: #fff; border-color: #fff; color: var(--navy); }
 .rep-card .btn-primary:hover { background: var(--brand-soft); border-color: var(--brand-soft); color: var(--navy); }
-.rep-card .btn-primary .btn-tag { background: var(--brand-soft); }
+
 .rc-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .rc-controls .select-sm { font-weight: 600; }
 .rc-go { display: inline-flex; align-items: center; gap: 18px; margin-top: 10px; }
 .rc-go .btn { height: 46px; padding: 0 22px; font-size: 15px; font-weight: 600; }
 .rc-web { font-size: 14px; font-weight: 600; white-space: nowrap; text-decoration: underline; text-decoration-color: var(--navy-line); text-underline-offset: 4px; }
 .rc-web:hover { text-decoration-color: #fff; }
-.btn-tag { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 5px; background: rgba(255, 255, 255, 0.18); }
 
 /* Bädda in och RSS på aktiesidan */
 .embed-box { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; }
@@ -861,43 +854,6 @@ a.btn { color: var(--fg); }
 .mod-n > a:hover { color: var(--link); text-decoration: none; }
 .mod-s { display: block; font-size: 11.5px; color: var(--fg-muted); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mod-v { flex: none; font-weight: 700; font-size: 13.5px; }
-.mod-big { display: flex; align-items: baseline; gap: 10px; margin: 2px 0 8px; }
-.mod-big b { font-size: 44px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
-.spark { display: block; width: 100%; height: 44px; margin: 4px 0 10px; }
-.spark path { fill: none; stroke: var(--brand); stroke-width: 1.75; stroke-linejoin: round; stroke-linecap: round; }
-.spark .spark-area { fill: var(--brand); fill-opacity: 0.08; stroke: none; }
-.mod-rates { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; font-size: 13px; margin-top: auto; }
-.mod-rates span { color: var(--fg-muted); }
-.mod-rates b { text-align: right; }
-
-/* ---------- Samlad signal ---------- */
-
-.sig { display: inline-grid; place-items: center; min-width: 46px; height: 26px; padding: 0 8px; border-radius: 999px; font-size: 13px; font-variant-numeric: tabular-nums; }
-.sig b { font-weight: 700; }
-.sig.sp2 { background: var(--bar-pos); color: #fff; }
-.sig.sp1 { background: var(--pos-bg); color: var(--pos); }
-.sig.s0 { background: var(--chip-bg); color: var(--fg-soft); }
-.sig.sn1 { background: var(--neg-bg); color: var(--neg); }
-.sig.sn2 { background: var(--bar-neg); color: #fff; }
-.sig-cell { display: inline-flex; align-items: center; gap: 10px; justify-content: flex-end; }
-.sig-meter { position: relative; display: inline-block; width: 64px; height: 6px; border-radius: 3px; background: linear-gradient(var(--border-strong), var(--border-strong)) center / 1px 100% no-repeat, var(--border-muted); }
-.sig-meter i { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
-.sig-meter i.pos { background: var(--bar-pos); }
-.sig-meter i.neg { background: var(--bar-neg); transform-origin: right; }
-.part { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 3px; vertical-align: 1px; background: var(--bar-neutral); }
-.part.pos { background: var(--bar-pos); }
-.part.neg { background: var(--bar-neg); }
-.signal-panel { margin: 0 0 28px; padding: 22px 24px; border-radius: var(--radius-lg); background: var(--bg); border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
-.sp-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.sp-word { font-size: 22px; font-weight: 650; letter-spacing: -0.015em; margin-top: 2px; }
-.sp-score { display: flex; align-items: center; gap: 12px; }
-.sp-score .sig { min-width: 56px; height: 32px; font-size: 15px; }
-.sp-score .sig-meter { width: 120px; }
-.sp-parts { list-style: none; margin: 14px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; border-top: 1px solid var(--border-muted); padding-top: 12px; }
-.sp-parts li { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.sp-l { font-weight: 650; font-size: 14px; }
-.sp-t { font-size: 13px; color: var(--fg-muted); }
-.signal-panel .more { margin-top: 10px; font-size: 13px; }
 
 /* ---------- Känn bolaget (aktiesidan) ---------- */
 
@@ -909,9 +865,7 @@ a.btn { color: var(--fg); }
 .know-facts dt { font-size: 12px; color: var(--fg-muted); }
 .know-facts dd { margin: 2px 0 0; font-size: 15px; font-weight: 650; color: var(--fg); overflow-wrap: anywhere; }
 .know-facts dd .muted { font-weight: 400; font-size: 13px; }
-.know-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 16px; }
-.know-chips .lbl { font-size: 12.5px; color: var(--fg-muted); margin-right: 4px; }
-.know-chips .chip { font-size: 13px; padding: 3px 10px; border-radius: 999px; background: var(--brand-soft); color: var(--fg); }
+
 .know-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
 .know-grid.one { grid-template-columns: minmax(0, 1fr); }
 .know-lead { font-size: 14px; line-height: 1.55; color: var(--fg-soft); margin: 0 0 16px; }
@@ -1182,15 +1136,13 @@ a.btn { color: var(--fg); }
 .chart svg { display: block; overflow: visible; font-family: var(--font); }
 .chart svg:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; border-radius: 4px; }
 .chart svg.c-in { animation: fade-in-plain 0.35s var(--ease) both; }
-:root[data-theme="dark"] .spark path { stroke: var(--brand-ink); }
-:root[data-theme="dark"] .spark .spark-area { fill: var(--brand-ink); }
 :root[data-theme="dark"] .sb-track i, :root[data-theme="dark"] .mat-bar i, :root[data-theme="dark"] .cmp-bar i { background: var(--brand-ink); }
 
 /* Seriernas färger */
 .s1, .c-brand, .c-active { --c: var(--s1); }
 .s2 { --c: var(--s2); }
 .s3, .c-closet { --c: var(--s3); }
-.s-ink, .s0 { --c: var(--s-ink); }
+.s-ink { --c: var(--s-ink); }
 .c-index, .c-other { --c: var(--s-muted); }
 .c-pos, .sp { --c: var(--bar-pos); }
 .c-neg, .sn { --c: var(--bar-neg); }
@@ -1267,16 +1219,10 @@ a.btn { color: var(--fg); }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--fg-soft); margin-bottom: 10px; }
 .legend-item { display: inline-flex; align-items: center; gap: 6px; }
 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: var(--c); }
-.legend .ln { display: inline-block; width: 18px; height: 0; border-top: 2px solid var(--c); vertical-align: middle; margin-right: 6px; }
-.legend .ln.dash { border-top-style: dashed; }
 
 .chart-howto { font-size: 13.5px; line-height: 1.55; color: var(--fg-soft); margin: 0 2px 12px; }
 .chart-howto b { color: var(--fg); font-weight: 650; }
-.chart-examples { margin: 14px 2px 0; padding-top: 12px; border-top: 1px solid var(--border-muted); }
-.chart-examples h3 { font-size: 12.5px; font-weight: 500; color: var(--fg-muted); margin: 0 0 6px; }
-.chart-examples ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px 24px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
-.chart-examples li { font-size: 13.5px; line-height: 1.5; color: var(--fg-soft); }
-.chart-examples a { font-weight: 650; }
+
 /* "Närstående till" vid insideraffärer, med förklaring när man pekar */
 .close-of { color: var(--fg-muted); border-bottom: 1px dotted var(--border-strong); cursor: help; }
 .chart-note { font-size: 13px; color: var(--fg-muted); margin: 10px 2px 2px; line-height: 1.55; }
@@ -1446,7 +1392,6 @@ table.cmp-table thead th { font-size: 13px; color: var(--fg); text-transform: no
 .story p { font-size: 15px; line-height: 1.65; color: var(--fg-soft); margin: 0; }
 .story .more { margin-top: auto; padding-top: 12px; }
 
-.rep-lead p, .rep-list li { font-size: 16px; }
 .newsletter { display: flex; align-items: center; justify-content: space-between; gap: 16px 24px; flex-wrap: wrap; padding: 24px 28px; background: var(--navy); color: var(--navy-fg); border-radius: var(--radius); }
 .newsletter h2 { font-size: 22px; font-weight: 600; margin-bottom: 4px; color: #fff; }
 .newsletter .desc { margin: 0; color: var(--navy-muted); }
@@ -1614,8 +1559,7 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .subnav { display: none; }
   .subnav-pick { display: block; margin: 0; padding: 16px 0 0; border-image: conic-gradient(var(--bg) 0 0) fill 0 / / 0 100vw; }
   .lg { display: none; }
-  .sp-parts { grid-template-columns: minmax(0, 1fr); gap: 8px; }
-  .sig-cell .sig-meter { display: none; }
+
   .rep-card { padding: 18px 0 26px; }
   .rep-card::before { display: none; }
   .rc-top { margin-bottom: 22px; }
@@ -1659,7 +1603,6 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .subbar-controls { gap: 8px 12px; }
   .seg-btn { padding: 6px 14px; }
   .switch { font-size: 13px; }
-  .check { font-size: 13.5px; gap: 7px; }
 
   /* Flikrad fast längst ner, som i en app. Markeringen glider mellan flikarna som en linje upptill. */
   .tabbar { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); position: fixed; left: 0; right: 0; bottom: 0; z-index: 46; padding: 0 0 var(--tabbar-gap); background: var(--bg); border-top: 1px solid var(--border); }
@@ -1710,8 +1653,7 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .hero { padding: 24px 20px 20px; gap: 24px; margin-bottom: 4px; }
   .hero h1 { font-size: 25px; line-height: 1.15; margin-bottom: 12px; }
   .hero .intro { font-size: 15px; }
-  .hero-links { margin-top: 20px; }
-  .hero-links .btn { flex: 1 1 auto; }
+
   .hero-side { padding-top: 22px; gap: 18px; }
   .hf-value { font-size: 38px; }
   .hero-stats dd { font-size: 16px; }
@@ -1773,8 +1715,8 @@ a.term:hover { color: var(--link); border-bottom-style: solid; }
   .panel { padding: 14px; }
 
   .report h1 { font-size: 24px; }
-  .report .prose, .rep-lead { padding: 14px; }
-  .rep-lead p { font-size: 15px; }
+  .report .prose { padding: 14px; }
+
   .newsletter { padding: 18px; }
   .glossary { grid-template-columns: minmax(0, 1fr); }
 
@@ -1835,8 +1777,7 @@ html.pdf *, html.pdf *::before, html.pdf *::after { animation: none !important; 
   :root { --canvas: #ffffff; }
   html, body { background: #fff !important; }
   body { padding: 0 !important; font-size: 13px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .ticker, .topbar, .subbar, .site-footer, .tabbar, .skip-link, .mega, .sheet-backdrop, .search-modal, .toast,
-  .rep-tools, .rep-share, .newsletter, .hero-links, .crumbs, .more, .csv-btn, .more-rows, .chart-tip, .subnav, .subnav-pick { display: none !important; }
+  .ticker, .topbar, .subbar, .site-footer, .tabbar, .skip-link, .mega, .sheet-backdrop, .search-modal, .toast, .rep-tools, .rep-share, .newsletter, .crumbs, .more, .csv-btn, .more-rows, .chart-tip, .subnav, .subnav-pick { display: none !important; }
   main, .container { padding: 0 !important; max-width: none; min-height: 0; }
   /* utskriften börjar högst upp på sidan (annars sköts omslaget ner och spillde över på nästa sida) */
   #app > :first-child { margin-top: 0 !important; }

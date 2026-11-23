@@ -66,6 +66,8 @@
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
   }
+  // Adress till en extern källa (bolagens pressmeddelanden, SEC): bara http(s) och sajtens egna sökvägar släpps igenom
+  function safeUrl(u) { u = String(u == null ? "" : u).trim(); return esc(/^(https?:\/\/|\/(?!\/)|#)/i.test(u) ? u : "#"); }
   // Bricka med initialer i en färg som räknas fram ur namnet, så att samma bolag alltid får samma färg
   var AVATAR_SKIP = /^(ab|publ|ser|series|class|inc|ltd|plc|corp|co|the|sa|asa|oyj|nv|sdb|[a-d])$/i;
   function avatar(name, small) {
@@ -759,8 +761,9 @@
     var goneCols = [col.rank, col.stock, { key: "v", label: "Förra kv. (mkr)", cell: function (s) { return mkr(s.val1); } }, { key: "f", label: "Fonder", cell: function (s) { return int(s.f1b); } }];
     var st = { static: true };
 
-    // Köpsviter kräver historiken
-    var hasHist = needHistory();
+    // Köpsviterna och sektorrotationen kräver historiken (drygt 200 kB). Den hämtas först när man scrollat nära
+    // dem (data-lazy), så att startsidan laddas snabbare.
+    var hasHist = state.lazyHist ? needHistory() : state.loading["history-" + (state.market === "world" ? "world" : "se")] === "done";
     var buyStreaks = hasHist ? streakList(ds, 1) : null;
     var sellStreaks = hasHist ? streakList(ds, -1) : null;
     var streakCols = function (sign) {
@@ -775,7 +778,7 @@
       '<div class="grid-2 section-gap">' +
       block("Störst nettoköp", "Förändring i antal aktier × kurs vid kvartalsslut. " + termLink("nettokop", "Hur räknas det?"), table("ov-buy", flowCols, buys, st) + '<a class="more" href="#/aktier">Alla aktier</a>') +
       block("Störst nettosälj", "&nbsp;", table("ov-sell", flowCols, sells, st)) +
-      "</div>" +
+      "</div>" + (hasHist ? "" : '<div data-lazy="hist" aria-hidden="true"></div>') +
       sectorBlock(hasHist) +
       '<div class="grid-2 section-gap">' +
       block("Längsta köpsviter", "Aktier som fonderna nettoköpt flest kvartal i rad", buyStreaks ? table("ov-bs", streakCols(1), streakRows(buyStreaks.slice(0, 10)), st) : loadingBlock("Laddar historik…")) +
@@ -841,17 +844,6 @@
     return m ? parseInt(m[3], 10) + " " + MONTHS[parseInt(m[2], 10) - 1].slice(0, 3) + (m[4] ? " " + m[4] : "") : String(s || "");
   }
 
-  function sparkline(pts) {
-    var v = pts.filter(function (x) { return x != null; });
-    if (v.length < 2) return "";
-    var min = Math.min.apply(null, v), max = Math.max.apply(null, v), span = max - min || 1;
-    var W = 200, H = 44, step = W / (pts.length - 1);
-    var xy = pts.map(function (p, i) { return [i * step, H - 3 - (p - min) / span * (H - 6)]; });
-    var line = xy.map(function (p, i) { return (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1); }).join("");
-    return '<svg class="spark" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="none" aria-hidden="true">' +
-      '<path class="spark-area" d="' + line + "L" + W + " " + H + "L0 " + H + 'Z"/>' +
-      '<path vector-effect="non-scaling-stroke" d="' + line + '"/></svg>';
-  }
 
   function signalModules() {
     var f = state.front;
@@ -970,7 +962,8 @@
 
   var NEWS_TAG = { rapport: "Rapport", ledning: "Ledning", forvarv: "Förvärv", order: "Order", aterkop: "Återköp", emission: "Emission", bud: "Bud", stamma: "Stämma" };
   var ISSUE_KIND = { riktad: "Riktad emission", foretrade: "Företrädesemission", ny: "Nyemission" };
-  function mfnHref(u) { return "https://mfn.se" + u; }
+  // Länkar till MFN sparas som sökvägar ("/a/bolag/rubrik"); allt annat blir ingen länk
+  function mfnHref(u) { return /^\/[^\/\\]/.test(u || "") ? "https://mfn.se" + u : "#"; }
   function newsTag(k) { return k && NEWS_TAG[k] ? '<span class="news-tag nt-' + k + '">' + NEWS_TAG[k] + "</span>" : ""; }
   // Belopp i bolagets valuta: kronor som "52,6 mkr", euro som "4,1 MEUR"
   function curAmount(v, cur) { return cur === "EUR" ? nf1.format(v / 1e6) + " MEUR" : bigSek(v); }
@@ -997,11 +990,11 @@
     }
     (d.issues || []).slice(0, 2).forEach(function (x) {
       facts.push((ISSUE_KIND[x[1]] || "Nyemission") + " " + esc(x[0]) + (x[2] ? " om " + curAmount(x[2], x[3]) : "") + (x[4] ? ", teckningskurs " + nf2.format(x[4]) + " kr" : "") +
-        '. <a href="' + esc(mfnHref(x[5])) + '" target="_blank" rel="noopener">Pressmeddelandet ↗</a>');
+        '. <a href="' + safeUrl(mfnHref(x[5])) + '" target="_blank" rel="noopener">Pressmeddelandet ↗</a>');
     });
     var row = function (r) {
       return '<li><span class="nw-date">' + esc(shortStamp(r[0])) + "</span>" + newsTag(r[4]) +
-        '<a class="nw-title" href="' + esc(mfnHref(r[3])) + '" target="_blank" rel="noopener">' + esc(r[2]) + "</a></li>";
+        '<a class="nw-title" href="' + safeUrl(mfnHref(r[3])) + '" target="_blank" rel="noopener">' + esc(r[2]) + "</a></li>";
     };
     // Veckorapporterna om återköp sammanfattas i raden ovan och visas inte i listan
     var items = d.items.filter(function (r) { return !(r[4] === "aterkop" && r[5]); });
@@ -1040,7 +1033,7 @@
       '<ul class="nw-list nw-front">' + list.map(function (r) {
         return '<li><span class="nw-date">' + esc(r[0] === new Date().toISOString().slice(0, 10) ? r[1] : shortStamp(r[0])) + "</span>" +
           '<span class="nw-co"><a href="' + stockHref(r.s) + '">' + esc(shortCo(r.s.name)) + "</a>" + newsTag(r[5]) + "</span>" +
-          '<a class="nw-title" href="' + esc(mfnHref(r[4])) + '" target="_blank" rel="noopener">' + esc(r[3]) + "</a></li>";
+          '<a class="nw-title" href="' + safeUrl(mfnHref(r[4])) + '" target="_blank" rel="noopener">' + esc(r[3]) + "</a></li>";
       }).join("") + "</ul></section>";
   }
 
@@ -1074,7 +1067,7 @@
     var starts = (d.starts || []).map(function (x) {
       var s = x[1].map(function (i) { return se.byIsin[i]; }).filter(Boolean)[0];
       return "<li>" + '<span class="nw-date">' + esc(shortStamp(x[0])) + "</span>" + (s ? '<span class="nw-co"><a href="' + stockHref(s) + '">' + esc(shortCo(s.name)) + "</a></span>" : "") +
-        '<a class="nw-title" href="' + esc(mfnHref(x[3])) + '" target="_blank" rel="noopener">' + esc(x[2]) + "</a></li>";
+        '<a class="nw-title" href="' + safeUrl(mfnHref(x[3])) + '" target="_blank" rel="noopener">' + esc(x[2]) + "</a></li>";
     });
     return head +
       (active.length ? '<p class="lead-figure"><b>' + int(active.length) + " bolag</b> köpte tillbaka egna aktier de senaste 30 dagarna, tillsammans för <b>" + bigSek(tot30) + "</b>" +
@@ -1122,7 +1115,7 @@
       { key: "amount", label: "Belopp", cell: function (r) { return r.amount ? curAmount(r.amount, r.cur) : "–"; }, value: function (r) { return r.amount; } },
       { key: "price", label: "Teckningskurs", hideSm: true, cell: function (r) { return r.price ? nf2.format(r.price) + " kr" : "–"; }, value: function (r) { return r.price; } },
       { key: "funds", label: "Fonderna", align: "l", hideSm: true, cell: fundsCell },
-      { key: "date", label: "Pressmeddelande", align: "l", hideSm: true, cell: function (r) { return '<a href="' + esc(mfnHref(r.url)) + '" target="_blank" rel="noopener">' + esc(r.date) + " ↗</a>"; }, value: function (r) { return r.date; } }
+      { key: "date", label: "Pressmeddelande", align: "l", hideSm: true, cell: function (r) { return '<a href="' + safeUrl(mfnHref(r.url)) + '" target="_blank" rel="noopener">' + esc(r.date) + " ↗</a>"; }, value: function (r) { return r.date; } }
     ];
     return head +
       '<section class="block section-gap"><div class="block-head"><h2>Senaste nyemissionerna</h2><span class="note">' + int(rows.length) + " de senaste fyra månaderna</span></div>" +
@@ -1606,7 +1599,7 @@
         html += '<div class="notice offer-notice"><b>Nytt uppköpserbjudande ' + b.date + "</b>" + (b.bidder ? " från " + esc(b.bidder) : "") +
           (b.price != null ? ", " + bidPriceText(b) + " per aktie" : "") + (b.premium != null ? " (premie " + nf1.format(b.premium) + " %)" : "") +
           (b.rec === "ja" ? ". Styrelsen rekommenderar budet" : b.rec === "nej" ? ". Styrelsen avråder från budet" : "") +
-          '. <a href="' + esc(b.url) + '" target="_blank" rel="noopener">Pressmeddelandet ↗</a></div>';
+          '. <a href="' + safeUrl(b.url) + '" target="_blank" rel="noopener">Pressmeddelandet ↗</a></div>';
       });
     }
 
@@ -2189,8 +2182,8 @@
       bars + '<div class="know-tiles in-card">' + tiles.join("") + "</div>" +
       '<div class="nav-explain">' + explain + "<p>Fondinsyn har bara aktiekursen vid kvartalsslut (ur fondernas rapporter till Finansinspektionen), inte dagens kurs. " +
         "Rabatten gäller därför den dag som står, och kan vara en annan i dag.</p></div>" +
-      '<p class="kq-link"><a href="' + esc(n.url) + '" target="_blank" rel="noopener">Källa: ' + esc(n.title) + " (" + dateText(n.date) + ") ↗</a>" +
-        (c && c.url !== n.url ? ' · <a href="' + esc(c.url) + '" target="_blank" rel="noopener">Rapporten för ' + dateText(c.end) + " ↗</a>" : "") + "</p></div>";
+      '<p class="kq-link"><a href="' + safeUrl(n.url) + '" target="_blank" rel="noopener">Källa: ' + esc(n.title) + " (" + dateText(n.date) + ") ↗</a>" +
+        (c && c.url !== n.url ? ' · <a href="' + safeUrl(c.url) + '" target="_blank" rel="noopener">Rapporten för ' + dateText(c.end) + " ↗</a>" : "") + "</p></div>";
   }
 
   // ---------- Vad räknar börsen med? Värdering ur det fria kassaflödet ----------
@@ -2529,7 +2522,7 @@
       '<p class="know-explain">Måtten väljs efter vad som betyder mest i branschen och kommer ur bolagets egen kvartalsrapport. Ett värde visas bara när samma tal står både i rapportens nyckeltalstabell och i texten' +
       (vol.length ? ", eller, för produktion och priser, när nästa rapport visar samma tal som jämförelse" : "") + ". Staplar och linjer visar de senaste kvartalen." +
       (vol.some(function (x) { return x.kind === "pris"; }) ? " Priserna är de metallpriser som bolaget själv redovisar i rapporten." : "") + "</p>" +
-      '<p class="kq-link"><a href="' + esc(k.url) + '" target="_blank" rel="noopener">Källa: ' + esc(k.title) + " (" + dateText(k.date) + ") ↗</a></p></div>";
+      '<p class="kq-link"><a href="' + safeUrl(k.url) + '" target="_blank" rel="noopener">Källa: ' + esc(k.title) + " (" + dateText(k.date) + ") ↗</a></p></div>";
   }
 
   function companySection(isin, name, sector) {
@@ -2563,10 +2556,10 @@
     if (f.ticker && f.ticker.length) facts.push([f.ticker.length > 1 ? "Kortnamn" : "Kortnamn på börsen", esc(f.ticker.join(" och "))]);
     if (f.inc) facts.push(["Registrerat i", "delstaten " + esc(f.inc)]);
     if (f.fye) facts.push(["Räkenskapsåret slutar", "i " + esc(f.fye)]);
-    if (f.web) facts.push(["Webbplats", '<a href="' + esc(f.web) + '" target="_blank" rel="noopener">' + esc(f.web.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")) + "</a>"]);
+    if (f.web) facts.push(["Webbplats", '<a href="' + safeUrl(f.web) + '" target="_blank" rel="noopener">' + esc(f.web.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")) + "</a>"]);
     if (about || facts.length) {
       html += '<div class="know-card">' +
-        (about ? '<p class="know-about">' + esc(about.text) + (about.url ? ' <a class="src" href="' + esc(about.url) + '" target="_blank" rel="noopener">' +
+        (about ? '<p class="know-about">' + esc(about.text) + (about.url ? ' <a class="src" href="' + safeUrl(about.url) + '" target="_blank" rel="noopener">' +
           (about.src === "pm" ? "Bolagets egen beskrivning" : about.src === "sec" ? "Bolagets rapporter hos SEC" : "Ur årsredovisningen") + " ↗</a>" : "") + "</p>" : "") +
         (facts.length ? '<dl class="know-facts">' + facts.map(function (x) { return "<div><dt>" + x[0] + "</dt><dd>" + x[1] + "</dd></div>"; }).join("") + "</dl>" : "") +
         "</div>";
@@ -2666,7 +2659,7 @@
         pair(charts ? '<div class="qb-charts">' + charts + "</div>" : "", (c.qs && !finance && marginLine(c.qs) ? '<div class="qb-charts">' + marginLine(c.qs) + "</div>" : "") + insHtml) +
         pair(evHtml, voice) +
         (thHtml ? '<div class="kq-split th-split">' + thHtml + "</div>" : "") +
-        '<p class="kq-link"><a href="' + esc(q.url) + '" target="_blank" rel="noopener">Läs hela rapporten: ' + esc(q.title) + " ↗</a></p></div>";
+        '<p class="kq-link"><a href="' + safeUrl(q.url) + '" target="_blank" rel="noopener">Läs hela rapporten: ' + esc(q.title) + " ↗</a></p></div>";
     }
 
     // Branschens nyckeltal ur rapporten
@@ -2823,17 +2816,17 @@
 
     if (us) {
       var usSrc = [];
-      if (q && q.url) usSrc.push('<a href="' + esc(q.url) + '" target="_blank" rel="noopener">' + (/10-K/.test(q.title) ? "årsrapporten (10-K)" : "kvartalsrapporten (10-Q)") + "</a>");
-      if (r && r.url && (!q || r.url !== q.url)) usSrc.push('<a href="' + esc(r.url) + '" target="_blank" rel="noopener">årsrapporten (10-K) för ' + fyText(r) + "</a>");
-      if (c.about && c.about.url) usSrc.push('<a href="' + esc(c.about.url) + '" target="_blank" rel="noopener">alla bolagets rapporter hos SEC</a>');
+      if (q && q.url) usSrc.push('<a href="' + safeUrl(q.url) + '" target="_blank" rel="noopener">' + (/10-K/.test(q.title) ? "årsrapporten (10-K)" : "kvartalsrapporten (10-Q)") + "</a>");
+      if (r && r.url && (!q || r.url !== q.url)) usSrc.push('<a href="' + safeUrl(r.url) + '" target="_blank" rel="noopener">årsrapporten (10-K) för ' + fyText(r) + "</a>");
+      if (c.about && c.about.url) usSrc.push('<a href="' + safeUrl(c.about.url) + '" target="_blank" rel="noopener">alla bolagets rapporter hos SEC</a>');
       html += '<p class="know-src">Källor: ' + usSrc.join(", ") + ". Allt kommer från bolagets egna rapporter till SEC och läses automatiskt ur deras maskinläsbara siffror (XBRL)." +
         " Bolagen lämnar ingen egen rapport för det fjärde kvartalet, så det räknas fram som helåret minus årets tre första kvartal, och kvartalens kassaflöde på samma sätt." +
         (cal.est ? " Nästa rapportdag är beräknad utifrån när bolaget rapporterade samma kvartal förra året." : "") + "</p>";
       return html + "</section>";
     }
     var src = [];
-    if (q) src.push('<a href="' + esc(q.url) + '" target="_blank" rel="noopener">kvartalsrapporten</a>');
-    if (r) src.push((r.url ? '<a href="' + esc(r.url) + '" target="_blank" rel="noopener">årsredovisningen ' + r.fy + "</a>" : "årsredovisningen " + r.fy));
+    if (q) src.push('<a href="' + safeUrl(q.url) + '" target="_blank" rel="noopener">kvartalsrapporten</a>');
+    if (r) src.push((r.url ? '<a href="' + safeUrl(r.url) + '" target="_blank" rel="noopener">årsredovisningen ' + r.fy + "</a>" : "årsredovisningen " + r.fy));
     if (c.mfn) src.push('<a href="https://mfn.se/all/a/' + encodeURIComponent(c.mfn) + '" target="_blank" rel="noopener">bolagets pressmeddelanden och kalender på MFN</a>');
     html += '<p class="know-src">Källor: ' + src.join(", ") + ". Allt kommer från bolagets egna rapporter och pressmeddelanden. Siffrorna läses automatiskt och visas bara när de" +
       " stämmer med pressmeddelandet eller med bolagets totala omsättning.</p>";
@@ -4115,7 +4108,7 @@
 
   function outcomeText(s) {
     if (s.url) {
-      var link = ' <a href="' + esc(s.url) + '" target="_blank" rel="noopener">Läs pressmeddelandet ↗</a>';
+      var link = ' <a href="' + safeUrl(s.url) + '" target="_blank" rel="noopener">Läs pressmeddelandet ↗</a>';
       var e = s.ev;
       return (s.key === "done" ? "Enligt pressmeddelandet den " + dateText(e.date) + " fullföljs budet" + (e.pct != null ? ": budgivaren har fått " + e.pct.toLocaleString("sv-SE", { maximumFractionDigits: 2 }) + " % av aktierna" : "") +
           ". Budgivaren tar alltså över bolaget, som sedan brukar lämna börsen."
@@ -4207,7 +4200,7 @@
         return (b.rec === "ja" ? "Rekommenderar budet" : b.rec === "nej" ? '<span class="neg">Avråder</span>' : "–") +
           (s ? '<span class="sub">' + outcomeLabel(s) + " " + s.note + "</span>" : "");
       } },
-      { key: "src", label: "", cell: function (b) { return '<a href="' + esc(b.url) + '" target="_blank" rel="noopener">Pressmeddelande ↗</a>'; } }
+      { key: "src", label: "", cell: function (b) { return '<a href="' + safeUrl(b.url) + '" target="_blank" rel="noopener">Pressmeddelande ↗</a>'; } }
     ];
     var freshHtml = fresh.length ? '<section class="block section-gap"><div class="block-head"><h2>Nya bud</h2><span class="note">' +
       (fresh.length === 1 ? "1 bud" : int(fresh.length) + " bud") + " utan erbjudandehandling än</span></div>" +
@@ -4238,7 +4231,7 @@
   function viewOffer(id) {
     var o = state.offers.offers.filter(function (x) { return x.id === id; })[0];
     if (!o) return notFound("Budet finns inte.");
-    document.title = (o.name || "Uppköp") + " – Fondinsyn";
+    document.title = (o.name ? o.name + ": uppköp" : "Bud från " + o.bidder) + " – Fondinsyn";
     var st = offerStatus(o);
     var cols = [
       { key: "name", label: "Fond", align: "l", cls: "name", cell: function (h) { return nameCell(fundHref(h), h.name, bigSek(h.v) + (h.w != null ? " · " + nf1.format(h.w * 100) + " % av fonden" : "")); } },
@@ -4596,14 +4589,6 @@
     for (var i = 0; i < 60; i++) { var mid = (lo + hi) / 2; if (pFromT(mid, df) > 0.05) lo = mid; else hi = mid; }
     return (lo + hi) / 2;
   }
-  function seeded(seed) {
-    return function () {
-      seed = seed + 0x6D2B79F5 | 0;
-      var t = Math.imul(seed ^ seed >>> 15, 1 | seed);
-      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-      return ((t ^ t >>> 14) >>> 0) / 4294967296;
-    };
-  }
   function avgOf(v) { return v.reduce(function (a, b) { return a + b; }, 0) / v.length; }
 
   // Bedömningen. Utan p under 0,05 dras ingen slutsats. Med signifikans avgör effektens storlek om sambandet kallas
@@ -4611,35 +4596,6 @@
   function strength(p, size) { return !(p < 0.05) ? "none" : Math.abs(size) >= 0.5 ? "strong" : "weak"; }
   var STRENGTH = { strong: "Starkt samband", weak: "Svagt samband", none: "Inget statistiskt säkerställt samband" };
 
-  // Skiljer sig snittet från noll? Två test: ett t-test och ett permutationstest där varje utfall slumpvis får byta
-  // tecken (utan någon effekt är ett utfall lika troligt positivt som negativt). Slutsatsen kräver att båda ger p under
-  // 0,05, och p-värdet som visas är det högsta. Är utfallen skeva kommer intervallet från bootstrap, annars från t-testet.
-  function testMean(v) {
-    var n = v.length, m = avgOf(v), i, r, s;
-    var sd = Math.sqrt(v.reduce(function (a, x) { return a + (x - m) * (x - m); }, 0) / Math.max(1, n - 1));
-    var se = sd / Math.sqrt(n), t = se ? m / se : 0, pT = n > 1 ? pFromT(t, n - 1) : 1;
-    var m3 = v.reduce(function (a, x) { return a + Math.pow(x - m, 3); }, 0) / n, sdN = sd * Math.sqrt((n - 1) / n);
-    var skewed = n > 2 && sdN > 0 && Math.abs(m3 / Math.pow(sdN, 3)) > 1;
-    var rnd = seeded(20261102), R = 10000, B = 5000, hits = 0, boot = [];
-    for (r = 0; r < R; r++) {
-      for (s = 0, i = 0; i < n; i++) s += rnd() < 0.5 ? -v[i] : v[i];
-      if (Math.abs(s / n) >= Math.abs(m) - 1e-12) hits++;
-    }
-    for (r = 0; r < B; r++) {
-      for (s = 0, i = 0; i < n; i++) s += v[Math.floor(rnd() * n)];
-      boot.push(s / n);
-    }
-    boot.sort(function (a, b) { return a - b; });
-    var tc = tCrit(n - 1), pPerm = (hits + 1) / (R + 1), p = Math.max(pT, pPerm);
-    return { n: n, mean: m, sd: sd, d: sd ? m / sd : 0, t: t, pT: pT, pPerm: pPerm, p: p, skewed: skewed, level: strength(p, sd ? m / sd : 0),
-      ci: skewed ? [boot[Math.floor(0.025 * B)], boot[Math.ceil(0.975 * B) - 1]] : [m - tc * se, m + tc * se] };
-  }
-  // Teckentest: hur troligt är det att minst k av n utfall hamnar på samma sida om noll av en slump (tvåsidigt)?
-  function signTest(k, n) {
-    var lo = Math.min(k, n - k), tail = 0;
-    for (var j = 0; j <= lo; j++) tail += Math.exp(lnGamma(n + 1) - lnGamma(j + 1) - lnGamma(n - j + 1) - n * Math.LN2);
-    return Math.min(1, 2 * tail);
-  }
   function ranks(v) {
     var idx = v.map(function (x, i) { return i; }).sort(function (a, b) { return v[a] - v[b]; }), r = [];
     for (var i = 0; i < idx.length;) {
@@ -4673,8 +4629,6 @@
   var nf3 = new Intl.NumberFormat("sv-SE", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
   function pText(p) { return p < 0.001 ? "under 0,001" : (p < 0.01 ? nf3 : nf2).format(p); }
   function rText(r) { return (r > 0 ? "+" : "") + fixMinus(nf2.format(r)); }
-  // "i ungefär 13 fall av 100": p-värdet i ord
-  function pChance(p) { return p < 0.01 ? "i färre än 1 fall av 100" : "i ungefär " + nf0.format(Math.max(1, Math.round(p * 100))) + " fall av 100"; }
   function ciText(ci, f) { return f(ci[0]) + " till " + f(ci[1]); }
 
   // Förklaringen som står under varje statistikruta
@@ -4808,7 +4762,6 @@
       '<div class="print-only print-foot">Fondinsyn (www.fondinsyn.se). Metodrapport skapad ' + dateText(new Date().toISOString().slice(0, 10)) + ". Inte investeringsrådgivning.</div>" +
       "</article>";
   }
-  function prevQuarterId(q) { var y = +q.slice(0, 4), n = +q.slice(5); return n === 1 ? (y - 1) + "Q4" : y + "Q" + (n - 1); }
 
   // ---------- Fondsparandet ----------
   // data/flows.json byggs av scripts/build-flows.ps1: månadsstatistik från Fondbolagens förening (MSEK)
@@ -5591,7 +5544,7 @@
     var cover = '<section class="print-only print-cover"><div class="pc-top"><span class="pc-brand"><svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">' +
       '<path class="bm-a" d="M17.5 2.08A14 14 0 0 1 29.92 14.5H17.5Z"/><path d="M29.92 17.5A14 14 0 0 1 17.5 29.92V17.5Z"/><path d="M14.5 29.92A14 14 0 0 1 2.08 17.5H14.5Z"/>' +
       '<path d="M2.08 14.5A14 14 0 0 1 14.5 2.08V14.5Z"/></svg>Fondinsyn</span><span>www.fondinsyn.se</span></div>' +
-      '<div class="pc-main"><p class="pc-kicker">Kvartalsrapport ' + quarterLabel(state.q) + " · " + Word + '</p><h1 class="pc-title">' + esc(headline) + "</h1>" +
+      '<div class="pc-main"><p class="pc-kicker">Kvartalsrapport ' + quarterLabel(state.q) + " · " + Word + '</p><p class="pc-title">' + esc(headline) + "</p>" +
       '<p class="pc-lead">' + lead + "</p></div>" +
       '<dl class="pc-figs">' + pcFig("Fondernas nettoköp", bigSek(net, true), word + " aktier") + pcFig("Fonder i jämförelsen", int(t.funds), int(t.held) + " " + word + " aktier") +
       (buys[0] ? pcFig("Mest köpt", esc(shortCo(buys[0].name)), bigSek(buys[0].flow, true)) : "") +
@@ -5978,7 +5931,7 @@
     if (hasMarket && m) {
       var pr = last("SECBREPOEFF"), g10 = last("SEGVB10YC"), mb5 = last("SEMB5YCACOMB");
       var prNext = pr ? policyNext(m.next, pr.v) : null;
-      if (pr) figs.push(fig(termLink("styrranta", "Styrränta"), ratePct(pr.v), prNext ? '<a href="' + esc(prNext.url) + '" target="_blank" rel="noopener">' +
+      if (pr) figs.push(fig(termLink("styrranta", "Styrränta"), ratePct(pr.v), prNext ? '<a href="' + safeUrl(prNext.url) + '" target="_blank" rel="noopener">' +
         capFirst(policyNextText(prNext, pr.v)) + "</a>, beslutat " + dateText(prNext.date).replace(/ \d{4}$/, "") : "Riksbanken, " + dateText(pr.d)));
       if (g10) figs.push(fig("Statsobligation 10 år", ratePct(g10.v), ppChange(yearAgo("SEGVB10YC")) + " på ett år"));
       if (mb5) figs.push(fig(termLink("bostadsobligation", "Bostadsobligation 5 år"), ratePct(mb5.v), ppChange(yearAgo("SEMB5YCACOMB")) + " på ett år"));
@@ -6212,6 +6165,20 @@
     return html + table("fund-units-" + info.id, cols, rows.u, { sort: { col: "v", dir: -1 }, limit: 15, expand: true, csv: true }) + "</section>";
   }
 
+  // Delar av en sida som hämtar sin data först när man scrollat nära dem (<div data-lazy="hist">)
+  var LAZY = { hist: function () { state.lazyHist = true; needHistory(); } }, lazyObs = null;
+  function lazyLoad() {
+    if (lazyObs) lazyObs.disconnect();
+    var els = app.querySelectorAll("[data-lazy]");
+    if (!els.length) return;
+    var run = function (el) { var f = LAZY[el.getAttribute("data-lazy")]; if (f) f(); };
+    if (!("IntersectionObserver" in window)) { Array.prototype.forEach.call(els, run); return; }
+    lazyObs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) { lazyObs.unobserve(e.target); run(e.target); } });
+    }, { rootMargin: "900px 0px" });
+    Array.prototype.forEach.call(els, function (el) { lazyObs.observe(el); });
+  }
+
   // ---------- Routing ----------
 
   // Avdelningarna i menyraden och sidorna i varje avdelning (flikarna överst på sidan)
@@ -6245,9 +6212,14 @@
     // Menyn stängs när man valt en sida och öppnas igen nästa gång musen kommer tillbaka
     dd.addEventListener("click", function (e) {
       var l = e.target.closest(".nav-dd-menu a");
-      if (l) { dd.classList.add("shut"); l.blur(); }
+      if (l) { l.blur(); dd.classList.add("shut"); }
     });
     dd.addEventListener("mouseleave", function () { dd.classList.remove("shut"); });
+    // Esc stänger menyn och lämnar fokus på Aktier eller Fonder
+    dd.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") { dd.classList.add("shut"); a.focus(); }
+    });
+    dd.addEventListener("focusout", function (e) { if (!dd.contains(e.relatedTarget)) dd.classList.remove("shut"); });
   });
 
   // Kvartalsrapporten har egna flikar för marknaden
@@ -6337,6 +6309,7 @@
     if (r.page === "fonder") renderFundTable();
     if (r.page === "rantor") renderIssuerTable();
     drawCharts();
+    lazyLoad();
     // Sidan markeras i menyn, och dess avdelning i menyraden och flikraden
     var navKey = { aktie: "aktier", fond: "fonder", blankare: "blankning", emittent: "rantor", reaktioner: "bolagsrapporter" }[r.page] || r.page;
     var section = PAGE_SECTION[r.page] || navKey;
